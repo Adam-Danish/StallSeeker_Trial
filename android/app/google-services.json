@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "586878001660",
+    "project_id": "ga-for-windows-2-3180",
+    "storage_bucket": "ga-for-windows-2-3180.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:586878001660:android:358498a2359f2c460cd279",
+        "android_client_info": {
+          "package_name": "com.example.stallseeker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "586878001660-b2ab1a88712q52hmg5u6sb07u1ds9ps7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJfOnz_h7Z9o5pt2vAb1k7L1Y21MTvdgI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "586878001660-b2ab1a88712q52hmg5u6sb07u1ds9ps7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
