@@ -41,46 +41,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAizAZCaWcALu7F2y-wz31w3uGcquOGkjo',
-    appId: '1:586878001660:web:3f46ad80d138555c0cd279',
-    messagingSenderId: '586878001660',
-    projectId: 'ga-for-windows-2-3180',
-    authDomain: 'ga-for-windows-2-3180.firebaseapp.com',
-    storageBucket: 'ga-for-windows-2-3180.firebasestorage.app',
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:e9cb5587fb777961911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-KEBYKY2P8P',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAJfOnz_h7Z9o5pt2vAb1k7L1Y21MTvdgI',
-    appId: '1:586878001660:android:358498a2359f2c460cd279',
-    messagingSenderId: '586878001660',
-    projectId: 'ga-for-windows-2-3180',
-    storageBucket: 'ga-for-windows-2-3180.firebasestorage.app',
+    apiKey: 'AIzaSyBzTEscU-ljvVtKgSVFs-KN3J3BtDre2Cs',
+    appId: '1:793011933510:android:7127576788f40c81911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBlSjkPlqxNctnvAAzSRtL_7NEo3IJ-4xw',
-    appId: '1:586878001660:ios:ff94c699dbb6648d0cd279',
-    messagingSenderId: '586878001660',
-    projectId: 'ga-for-windows-2-3180',
-    storageBucket: 'ga-for-windows-2-3180.firebasestorage.app',
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
     iosBundleId: 'com.example.stallseeker',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBlSjkPlqxNctnvAAzSRtL_7NEo3IJ-4xw',
-    appId: '1:586878001660:ios:ff94c699dbb6648d0cd279',
-    messagingSenderId: '586878001660',
-    projectId: 'ga-for-windows-2-3180',
-    storageBucket: 'ga-for-windows-2-3180.firebasestorage.app',
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
     iosBundleId: 'com.example.stallseeker',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAizAZCaWcALu7F2y-wz31w3uGcquOGkjo',
-    appId: '1:586878001660:web:a97f114cae3634120cd279',
-    messagingSenderId: '586878001660',
-    projectId: 'ga-for-windows-2-3180',
-    authDomain: 'ga-for-windows-2-3180.firebaseapp.com',
-    storageBucket: 'ga-for-windows-2-3180.firebasestorage.app',
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:b99eecd2060151e1911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-QFFLHPN0GT',
   );
 }
