@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'core/constants/app_theme.dart';
+import 'core/theme/app_theme.dart';
+import 'features/auth/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    // Catches duplicate-app exception if initialized natively
+    print('Firebase initialization error ignored: $e');
+  }
 
   runApp(const StallSeekerApp());
 }
@@ -23,14 +30,7 @@ class StallSeekerApp extends StatelessWidget {
       title: 'StallSeeker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const Scaffold(
-        body: Center(
-          child: Text(
-            'StallSeeker Initialization Complete!',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
+      home: const AuthWrapper(),
     );
   }
 }
