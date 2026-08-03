@@ -16,16 +16,32 @@ class MenuService {
             .toList());
   }
 
-  // Add new menu item
-  Future<void> addMenuItem(String vendorId, String name, double price) async {
-    final docRef =
-        _db.collection('vendors').doc(vendorId).collection('menu').doc();
+  // Generates a new, unused document ID for a menu item before it exists.
+  // Needed when a photo has to be uploaded (and named after the item's ID)
+  // before the item document itself is written.
+  String newMenuItemId(String vendorId) {
+    return _db.collection('vendors').doc(vendorId).collection('menu').doc().id;
+  }
+
+  // Add new menu item. Pass itemId (from newMenuItemId) when a photo was
+  // uploaded ahead of time so the item is saved under that same ID.
+  Future<void> addMenuItem(
+    String vendorId,
+    String name,
+    double price, {
+    String? itemId,
+    String? imageUrl,
+  }) async {
+    final docRef = itemId != null
+        ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
+        : _db.collection('vendors').doc(vendorId).collection('menu').doc();
 
     final newItem = MenuItemModel(
       itemId: docRef.id,
       name: name,
       price: price,
       status: 'available',
+      imageUrl: imageUrl ?? '',
     );
 
     await docRef.set(newItem.toMap());
@@ -40,6 +56,17 @@ class MenuService {
         .collection('menu')
         .doc(itemId)
         .update({'status': newStatus});
+  }
+
+  // Update just the photo for an existing menu item
+  Future<void> updateItemImage(
+      String vendorId, String itemId, String imageUrl) async {
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update({'imageUrl': imageUrl});
   }
 
   // Delete item

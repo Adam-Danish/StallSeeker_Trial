@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/menu_service.dart';
+import '../../../core/services/storage_service.dart';
 
 class VendorMenuScreen extends StatefulWidget {
   const VendorMenuScreen({super.key});
@@ -12,51 +14,110 @@ class VendorMenuScreen extends StatefulWidget {
 
 class _VendorMenuScreenState extends State<VendorMenuScreen> {
   final _menuService = MenuService();
+  final _storageService = StorageService();
   final _auth = FirebaseAuth.instance;
 
   void _showAddDialog() {
     final nameController = TextEditingController();
     final priceController = TextEditingController();
+    File? pickedImage;
+    bool isUploading = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Menu Item'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                  labelText: 'Item Name (e.g. Nasi Lemak)'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Add Menu Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final file = await _storageService.pickImage();
+                  if (file != null) {
+                    setDialogState(() {
+                      pickedImage = file;
+                    });
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: pickedImage != null
+                      ? Image.file(pickedImage!, fit: BoxFit.cover)
+                      : const Center(
+                          child: Icon(Icons.add_a_photo, color: Colors.grey),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                    labelText: 'Item Name (e.g. Nasi Lemak)'),
+              ),
+              TextField(
+                controller: priceController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Price (RM)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            TextField(
-              controller: priceController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Price (RM)'),
+            ElevatedButton(
+              onPressed: isUploading
+                  ? null
+                  : () async {
+                      final name = nameController.text.trim();
+                      final price =
+                          double.tryParse(priceController.text.trim()) ?? 0.0;
+                      final user = _auth.currentUser;
+
+                      if (name.isNotEmpty && price > 0 && user != null) {
+                        setDialogState(() {
+                          isUploading = true;
+                        });
+
+                        // Photo needs the item's ID in its filename, so
+                        // generate the ID first if a photo was picked.
+                        String? itemId;
+                        String? imageUrl;
+                        if (pickedImage != null) {
+                          itemId = _menuService.newMenuItemId(user.uid);
+                          imageUrl = await _storageService.uploadMenuItemImage(
+                              user.uid, itemId, pickedImage!);
+                        }
+
+                        await _menuService.addMenuItem(
+                          user.uid,
+                          name,
+                          price,
+                          itemId: itemId,
+                          imageUrl: imageUrl,
+                        );
+                        if (mounted) Navigator.pop(ctx);
+                      }
+                    },
+              child: isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Add Item'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              final price = double.tryParse(priceController.text.trim()) ?? 0.0;
-              final user = _auth.currentUser;
-
-              if (name.isNotEmpty && price > 0 && user != null) {
-                await _menuService.addMenuItem(user.uid, name, price);
-                if (mounted) Navigator.pop(ctx);
-              }
-            },
-            child: const Text('Add Item'),
-          ),
-        ],
       ),
     );
   }
@@ -117,6 +178,31 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                         padding: const EdgeInsets.all(12.0),
                         child: Row(
                           children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: item.imageUrl.isNotEmpty
+                                    ? Image.network(
+                                        item.imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                Container(
+                                          color: Colors.grey.shade200,
+                                          child: const Icon(Icons.fastfood,
+                                              color: Colors.grey),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: Colors.grey.shade200,
+                                        child: const Icon(Icons.fastfood,
+                                            color: Colors.grey),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,

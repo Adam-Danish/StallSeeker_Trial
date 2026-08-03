@@ -4,12 +4,14 @@ class MenuItemModel {
   final double price;
   final String
       status; // 'available' (Green), 'low_stock' (Yellow), 'out_of_stock' (Red)
+  final String imageUrl;
 
   MenuItemModel({
     required this.itemId,
     required this.name,
     required this.price,
     this.status = 'available',
+    this.imageUrl = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -18,6 +20,7 @@ class MenuItemModel {
       'name': name,
       'price': price,
       'status': status,
+      'imageUrl': imageUrl,
     };
   }
 
@@ -27,6 +30,7 @@ class MenuItemModel {
       name: map['name'] ?? '',
       price: (map['price'] ?? 0.0).toDouble(),
       status: map['status'] ?? 'available',
+      imageUrl: map['imageUrl'] ?? '',
     );
   }
 }

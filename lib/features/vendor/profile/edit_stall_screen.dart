@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/vendor_service.dart';
+import '../../../core/services/storage_service.dart';
 
 class EditStallScreen extends StatefulWidget {
   const EditStallScreen({super.key});
@@ -13,6 +15,7 @@ class EditStallScreen extends StatefulWidget {
 class _EditStallScreenState extends State<EditStallScreen> {
   final _formKey = GlobalKey<FormState>();
   final _vendorService = VendorService();
+  final _storageService = StorageService();
   final _auth = FirebaseAuth.instance;
 
   final _stallNameController = TextEditingController();
@@ -34,6 +37,11 @@ class _EditStallScreenState extends State<EditStallScreen> {
   bool _isSaving = false;
   bool _isOpen = false;
 
+  // Existing photo URL loaded from Firestore, and a newly picked local
+  // file (not yet uploaded) if the vendor chose a new photo this session.
+  String _existingImageUrl = '';
+  File? _pickedImage;
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +58,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
         _descriptionController.text = vendor.description;
         _openingHoursController.text = vendor.openingHours;
         _isOpen = vendor.isOpen;
+        _existingImageUrl = vendor.imageUrl;
         if (_categories.contains(vendor.category)) {
           _selectedCategory = vendor.category;
         }
@@ -58,6 +67,15 @@ class _EditStallScreenState extends State<EditStallScreen> {
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<void> _pickImage() async {
+    final file = await _storageService.pickImage();
+    if (file != null) {
+      setState(() {
+        _pickedImage = file;
+      });
+    }
   }
 
   // Save updated stall profile to Firestore
@@ -72,6 +90,14 @@ class _EditStallScreenState extends State<EditStallScreen> {
     });
 
     try {
+      // Only upload if the vendor picked a new photo this session.
+      // Otherwise keep whatever URL was already saved.
+      String imageUrl = _existingImageUrl;
+      if (_pickedImage != null) {
+        imageUrl =
+            await _storageService.uploadStallImage(user.uid, _pickedImage!);
+      }
+
       final vendor = VendorModel(
         vendorId: user.uid,
         stallName: _stallNameController.text.trim(),
@@ -79,6 +105,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
         category: _selectedCategory,
         openingHours: _openingHoursController.text.trim(),
         isOpen: _isOpen,
+        imageUrl: imageUrl,
       );
 
       await _vendorService.saveVendorProfile(vendor);
@@ -112,6 +139,50 @@ class _EditStallScreenState extends State<EditStallScreen> {
     super.dispose();
   }
 
+  Widget _buildImagePicker() {
+    Widget imageContent;
+    if (_pickedImage != null) {
+      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
+    } else if (_existingImageUrl.isNotEmpty) {
+      imageContent = Image.network(
+        _existingImageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.storefront, size: 48, color: Colors.grey),
+      );
+    } else {
+      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
+    }
+
+    return GestureDetector(
+      onTap: _pickImage,
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 160,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageContent,
+          ),
+          Container(
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Colors.black54,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -126,6 +197,10 @@ class _EditStallScreenState extends State<EditStallScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
+                    // Stall Photo
+                    _buildImagePicker(),
+                    const SizedBox(height: 16),
+
                     // Stall Name
                     TextFormField(
                       controller: _stallNameController,

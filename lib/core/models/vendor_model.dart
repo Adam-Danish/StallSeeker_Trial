@@ -7,6 +7,7 @@ class VendorModel {
   final bool isOpen;
   final double latitude;
   final double longitude;
+  final String imageUrl;
 
   VendorModel({
     required this.vendorId,
@@ -17,6 +18,7 @@ class VendorModel {
     this.isOpen = false,
     this.latitude = 0.0,
     this.longitude = 0.0,
+    this.imageUrl = '',
   });
 
   // Convert VendorModel to Map for Firestore
@@ -30,6 +32,7 @@ class VendorModel {
       'isOpen': isOpen,
       'latitude': latitude,
       'longitude': longitude,
+      'imageUrl': imageUrl,
     };
   }
 
@@ -44,6 +47,7 @@ class VendorModel {
       isOpen: map['isOpen'] ?? false,
       latitude: (map['latitude'] ?? 0.0).toDouble(),
       longitude: (map['longitude'] ?? 0.0).toDouble(),
+      imageUrl: map['imageUrl'] ?? '',
     );
   }
 
@@ -56,6 +60,7 @@ class VendorModel {
     bool? isOpen,
     double? latitude,
     double? longitude,
+    String? imageUrl,
   }) {
     return VendorModel(
       vendorId: vendorId,
@@ -66,6 +71,7 @@ class VendorModel {
       isOpen: isOpen ?? this.isOpen,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 }
