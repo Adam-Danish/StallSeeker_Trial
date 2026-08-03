@@ -1,30 +1,32 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:stallseeker/core/models/user_model.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-import 'package:stallseeker/features/auth/screens/login_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'screens/login_screen.dart';
+import '../vendor/dashboard/vendor_dashboard_screen.dart';
+import '../customer/home/customer_home_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService();
-
     return StreamBuilder<User?>(
-      stream: authService.authStateChanges,
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // If checking auth state
+        // 1. Waiting for auth status
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // If user is logged in
+        // 2. User is logged in
         if (snapshot.hasData && snapshot.data != null) {
-          return FutureBuilder<UserModel?>(
-            future: authService.getUserData(snapshot.data!.uid),
+          final String uid = snapshot.data!.uid;
+
+          return FutureBuilder<DocumentSnapshot>(
+            future:
+                FirebaseFirestore.instance.collection('users').doc(uid).get(),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
@@ -32,45 +34,24 @@ class AuthWrapper extends StatelessWidget {
                 );
               }
 
-              final userModel = userSnapshot.data;
+              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                final userData =
+                    userSnapshot.data!.data() as Map<String, dynamic>?;
+                final String role = userData?['role'] ?? 'customer';
 
-              if (userModel != null && userModel.role == 'vendor') {
-                return Scaffold(
-                  appBar: AppBar(
-                    title: const Text('Vendor Dashboard'),
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.logout),
-                        onPressed: () => authService.signOut(),
-                      )
-                    ],
-                  ),
-                  body: Center(
-                      child: Text('Welcome, Vendor ${userModel.fullName}!')),
-                );
+                if (role == 'vendor') {
+                  return const VendorDashboardScreen();
+                } else {
+                  return const CustomerHomeScreen();
+                }
               }
 
-              // Default: Customer Home
-              return Scaffold(
-                appBar: AppBar(
-                  title: const Text('Customer Home'),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.logout),
-                      onPressed: () => authService.signOut(),
-                    )
-                  ],
-                ),
-                body: Center(
-                  child:
-                      Text('Welcome, Customer ${userModel?.fullName ?? ''}!'),
-                ),
-              );
+              return const LoginScreen();
             },
           );
         }
 
-        // If not logged in
+        // 3. User is NOT logged in
         return const LoginScreen();
       },
     );

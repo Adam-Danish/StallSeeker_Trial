@@ -20,9 +20,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _isLoading = true); // loading spinner
 
     String? error = await _authService.login(
+      // code pauses here until firebase responds
       email: _emailController.text,
       password: _passwordController.text,
     );
