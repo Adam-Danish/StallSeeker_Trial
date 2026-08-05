@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
-import '../vendor/dashboard/vendor_dashboard_screen.dart';
+import '../vendor/vendor_main_screen.dart';
 import '../customer/home/customer_home_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
@@ -40,7 +40,7 @@ class AuthWrapper extends StatelessWidget {
                 final String role = userData?['role'] ?? 'customer';
 
                 if (role == 'vendor') {
-                  return const VendorDashboardScreen();
+                  return const VendorMainScreen();
                 } else {
                   return const CustomerHomeScreen();
                 }

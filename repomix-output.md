@@ -45,13 +45,10 @@ lib/
       user_model.dart
       vendor_model.dart
     services/
-      lib/
-        core/
-          services/
-            storage_service.dart
       auth_service.dart
       follow_service.dart
       menu_service.dart
+      storage_service.dart
       vendor_service.dart
     theme/
       app_theme.dart
@@ -77,53 +74,238 @@ lib/
         vendor_menu_screen.dart
       profile/
         edit_stall_screen.dart
+        vendor_profile_screen.dart
   firebase_options.dart
   main.dart
 ````
 
 # Files
 
-## File: lib/core/services/lib/core/services/storage_service.dart
+## File: lib/features/vendor/profile/vendor_profile_screen.dart
 ````dart
-import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
 
-class StorageService {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
+class VendorProfileScreen extends StatefulWidget {
+  const VendorProfileScreen({super.key});
 
-  // Opens the gallery picker. Returns null if the vendor backed out
-  // without choosing anything.
-  Future<File?> pickImage() async {
-    final XFile? picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1080,
-      imageQuality: 80,
+  @override
+  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+}
+
+class _VendorProfileScreenState extends State<VendorProfileScreen> {
+  final _authService = AuthService();
+  final _nameController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+  bool _isSavingName = false;
+  bool _isChangingPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _newPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _nameController.text = userData?.fullName ?? '';
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name cannot be empty.')),
+      );
+      return;
+    }
+
+    setState(() => _isSavingName = true);
+
+    final error = await _authService.updateFullName(user.uid, newName);
+
+    if (mounted) {
+      setState(() => _isSavingName = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Name updated.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final newPassword = _newPasswordController.text.trim();
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be 6+ characters.')),
+      );
+      return;
+    }
+
+    setState(() => _isChangingPassword = true);
+
+    final error = await _authService.changePassword(newPassword);
+
+    if (mounted) {
+      setState(() => _isChangingPassword = false);
+      if (error == null) {
+        _newPasswordController.clear();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Password changed successfully.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('My Profile')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                // Account info (read-only)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Account Info',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 12),
+                        Text('Email: ${_userModel?.email ?? "N/A"}'),
+                        const SizedBox(height: 4),
+                        Text('Role: ${_userModel?.role ?? "N/A"}'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Edit name
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Edit Name',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Full Name',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isSavingName ? null : _saveName,
+                            child: _isSavingName
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Text('Save Name'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Change password
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Change Password',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _newPasswordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'New Password',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed:
+                                _isChangingPassword ? null : _changePassword,
+                            child: _isChangingPassword
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Text('Change Password'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.logout, color: Colors.red),
+                    label: const Text('Log Out',
+                        style: TextStyle(color: Colors.red)),
+                    onPressed: () => FirebaseAuth.instance.signOut(),
+                  ),
+                ),
+              ],
+            ),
     );
-    if (picked == null) return null;
-    return File(picked.path);
-  }
-
-  // Uploads a stall's cover photo. Always uses the same file name per
-  // vendor, so re-uploading overwrites the old photo instead of leaving
-  // unused files in Storage.
-  Future<String> uploadStallImage(String vendorId, File imageFile) async {
-    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
-  }
-
-  // Uploads a photo for one menu item. Named by itemId so each dish has
-  // its own file, and re-uploading a photo for the same dish overwrites it.
-  Future<String> uploadMenuItemImage(
-    String vendorId,
-    String itemId,
-    File imageFile,
-  ) async {
-    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
   }
 }
 ````
@@ -173,6 +355,367 @@ class FollowService {
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
+  }
+}
+````
+
+## File: lib/core/services/storage_service.dart
+````dart
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+
+class StorageService {
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
+
+  // Opens the gallery picker. Returns null if the vendor backed out
+  // without choosing anything.
+  Future<File?> pickImage() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 80,
+    );
+    if (picked == null) return null;
+    return File(picked.path);
+  }
+
+  // Uploads a stall's cover photo. Always uses the same file name per
+  // vendor, so re-uploading overwrites the old photo instead of leaving
+  // unused files in Storage.
+  Future<String> uploadStallImage(String vendorId, File imageFile) async {
+    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
+  }
+
+  // Uploads a photo for one menu item. Named by itemId so each dish has
+  // its own file, and re-uploading a photo for the same dish overwrites it.
+  Future<String> uploadMenuItemImage(
+    String vendorId,
+    String itemId,
+    File imageFile,
+  ) async {
+    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
+  }
+}
+````
+
+## File: lib/core/services/vendor_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/vendor_model.dart';
+
+class VendorService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  CollectionReference get _vendorsRef => _firestore.collection('vendors');
+
+  Future<VendorModel?> getVendorProfile(String vendorId) async {
+    try {
+      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
+      if (doc.exists && doc.data() != null) {
+        return VendorModel.fromMap(
+          doc.data() as Map<String, dynamic>,
+          doc.id,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching vendor profile: $e');
+      return null;
+    }
+  }
+
+  Future<void> saveVendorProfile(VendorModel vendor) async {
+    try {
+      await _vendorsRef.doc(vendor.vendorId).set(
+            vendor.toMap(),
+            SetOptions(merge: true),
+          );
+    } catch (e) {
+      print('Error saving vendor profile: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
+    try {
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
+        'isOpen': isOpen,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error toggling stall status: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateVendorLocation(
+    String vendorId,
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      await _vendorsRef.doc(vendorId).update({
+        'latitude': latitude,
+        'longitude': longitude,
+      });
+    } catch (e) {
+      print('Error updating vendor location: $e');
+      rethrow;
+    }
+  }
+
+  // Live stream of vendors currently marked as open — used by the
+  // customer map screen to show markers that update in real time.
+  Stream<List<VendorModel>> getOpenVendors() {
+    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
+        (snapshot) => snapshot.docs
+            .map((doc) =>
+                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList());
+  }
+}
+````
+
+## File: lib/core/theme/app_theme.dart
+````dart
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  static ThemeData get lightTheme {
+    return ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      useMaterial3: true,
+    );
+  }
+}
+````
+
+## File: lib/features/customer/profile/customer_profile_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
+
+  @override
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
+}
+
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+  final _authService = AuthService();
+  final _nameController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+  bool _isSavingName = false;
+  bool _isChangingPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _newPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _nameController.text = userData?.fullName ?? '';
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name cannot be empty.')),
+      );
+      return;
+    }
+
+    setState(() => _isSavingName = true);
+
+    final error = await _authService.updateFullName(user.uid, newName);
+
+    if (mounted) {
+      setState(() => _isSavingName = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Name updated.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final newPassword = _newPasswordController.text.trim();
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be 6+ characters.')),
+      );
+      return;
+    }
+
+    setState(() => _isChangingPassword = true);
+
+    final error = await _authService.changePassword(newPassword);
+
+    if (mounted) {
+      setState(() => _isChangingPassword = false);
+      if (error == null) {
+        _newPasswordController.clear();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Password changed successfully.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        // Account info (read-only)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Account Info',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                Text('Email: ${_userModel?.email ?? "N/A"}'),
+                const SizedBox(height: 4),
+                Text('Role: ${_userModel?.role ?? "N/A"}'),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Edit name
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Edit Name',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSavingName ? null : _saveName,
+                    child: _isSavingName
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save Name'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Change password
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Change Password',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _newPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'New Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isChangingPassword ? null : _changePassword,
+                    child: _isChangingPassword
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Change Password'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('Log Out', style: TextStyle(color: Colors.red)),
+            onPressed: () => FirebaseAuth.instance.signOut(),
+          ),
+        ),
+      ],
+    );
   }
 }
 ````
@@ -411,6 +954,36 @@ class VendorDetailsScreen extends StatelessWidget {
 }
 ````
 
+## File: lib/core/constants/app_colors.dart
+````dart
+import 'package:flutter/material.dart';
+
+class AppColors {
+  static const Color primary =
+      Color(0xFFE65100); // Deep Orange / Food Stall theme
+  static const Color primaryLight = Color(0xFFFF8142);
+  static const Color background = Color(0xFFF8F9FA);
+  static const Color cardColor = Colors.white;
+  static const Color textDark = Color(0xFF212121);
+  static const Color textMuted = Color(0xFF757575);
+
+  // Status Colors
+  static const Color openGreen = Color(0xFF2E7D32);
+  static const Color closedRed = Color(0xFFC62828);
+  static const Color limitedYellow = Color(0xFFF57F17);
+}
+````
+
+## File: lib/core/constants/firestore_collections.dart
+````dart
+class FirestoreCollections {
+  static const String users = 'users';
+  static const String vendors = 'vendors';
+  static const String menus = 'menus';
+  static const String follows = 'follows';
+}
+````
+
 ## File: lib/core/models/menu_item_model.dart
 ````dart
 class MenuItemModel {
@@ -447,6 +1020,196 @@ class MenuItemModel {
       status: map['status'] ?? 'available',
       imageUrl: map['imageUrl'] ?? '',
     );
+  }
+}
+````
+
+## File: lib/core/models/user_model.dart
+````dart
+class UserModel {
+  final String uid;
+  final String email;
+  final String fullName;
+  final String role; // 'customer' or 'vendor'
+  final DateTime createdAt;
+
+  UserModel({
+    required this.uid,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    required this.createdAt,
+  });
+
+  // Convert Firestore Document to UserModel Object
+  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
+    return UserModel(
+      uid: docId,
+      email: map['email'] ?? '',
+      fullName: map['fullName'] ?? '',
+      role: map['role'] ?? 'customer',
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as dynamic).toDate()
+          : DateTime.now(),
+    );
+  }
+
+  // Convert UserModel Object to Map for Firestore storage
+  Map<String, dynamic> toMap() {
+    return {
+      'uid': uid,
+      'email': email,
+      'fullName': fullName,
+      'role': role,
+      'createdAt': createdAt,
+    };
+  }
+}
+````
+
+## File: lib/core/services/auth_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/user_model.dart';
+import '../constants/firestore_collections.dart';
+
+class AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Stream of auth state changes (logged in / logged out)
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Get current Firebase user
+  User? get currentUser => _auth.currentUser;
+
+  // Register user with Email, Password, Name & Role
+  Future<String?> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+    required String role,
+  }) async {
+    try {
+      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      if (credential.user != null) {
+        UserModel newUser = UserModel(
+          uid: credential.user!.uid,
+          email: email.trim(),
+          fullName: fullName.trim(),
+          role: role,
+          createdAt: DateTime.now(),
+        );
+
+        // Save user details into Firestore 'users' collection
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(credential.user!.uid)
+            .set(newUser.toMap());
+
+        return null; // Success (no error message)
+      }
+      return "User creation failed.";
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Login user with Email & Password
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Fetch current user's data from Firestore
+  Future<UserModel?> getUserData(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching user data: $e");
+      return null;
+    }
+  }
+
+  // Sign Out
+  Future<void> signOut() async {
+    await _auth.signOut();
+  }
+
+  // Sends Firebase's built-in password reset email. Firebase handles
+  // generating the reset link and the email itself -- this app never
+  // sees or handles the new password directly.
+  Future<String?> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not send reset email.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Changes the password of the currently logged-in user.
+  // Firebase requires a "recent" login for this -- if the user logged
+  // in a while ago, this will fail with 'requires-recent-login' and
+  // they need to log out and back in first before it will work.
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return "No user is currently logged in.";
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return "For security, please log out and log back in before changing your password.";
+      }
+      return e.message ?? "Could not change password.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Updates just the fullName field on the user's Firestore profile
+  // document. Uses .update() (not .set()) so it only touches this one
+  // field and leaves email/role/createdAt untouched.
+  Future<String?> updateFullName(String uid, String newName) async {
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .update({'fullName': newName});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 }
 ````
@@ -536,93 +1299,120 @@ class MenuService {
 }
 ````
 
-## File: lib/core/services/vendor_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/vendor_model.dart';
-
-class VendorService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  CollectionReference get _vendorsRef => _firestore.collection('vendors');
-
-  Future<VendorModel?> getVendorProfile(String vendorId) async {
-    try {
-      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
-      if (doc.exists && doc.data() != null) {
-        return VendorModel.fromMap(
-          doc.data() as Map<String, dynamic>,
-          doc.id,
-        );
-      }
-      return null;
-    } catch (e) {
-      print('Error fetching vendor profile: $e');
-      return null;
-    }
-  }
-
-  Future<void> saveVendorProfile(VendorModel vendor) async {
-    try {
-      await _vendorsRef.doc(vendor.vendorId).set(
-            vendor.toMap(),
-            SetOptions(merge: true),
-          );
-    } catch (e) {
-      print('Error saving vendor profile: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
-    try {
-      await _vendorsRef.doc(vendorId).set({
-        'vendorId': vendorId,
-        'isOpen': isOpen,
-      }, SetOptions(merge: true));
-    } catch (e) {
-      print('Error toggling stall status: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> updateVendorLocation(
-    String vendorId,
-    double latitude,
-    double longitude,
-  ) async {
-    try {
-      await _vendorsRef.doc(vendorId).update({
-        'latitude': latitude,
-        'longitude': longitude,
-      });
-    } catch (e) {
-      print('Error updating vendor location: $e');
-      rethrow;
-    }
-  }
-
-  // Live stream of vendors currently marked as open — used by the
-  // customer map screen to show markers that update in real time.
-  Stream<List<VendorModel>> getOpenVendors() {
-    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
-        (snapshot) => snapshot.docs
-            .map((doc) =>
-                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-            .toList());
-  }
-}
-````
-
-## File: lib/core/theme/app_theme.dart
+## File: lib/features/auth/screens/register_screen.dart
 ````dart
 import 'package:flutter/material.dart';
+import 'package:stallseeker/core/services/auth_service.dart';
 
-class AppTheme {
-  static ThemeData get lightTheme {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      useMaterial3: true,
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  String _selectedRole = 'customer';
+  bool _isLoading = false;
+
+  void _register() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    String? error = await _authService.signUp(
+      email: _emailController.text,
+      password: _passwordController.text,
+      fullName: _fullNameController.text,
+      role: _selectedRole,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    } else if (mounted) {
+      Navigator.pop(context); // Go back to login after successful registration
+    }
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Create Account')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: _fullNameController,
+                  decoration: const InputDecoration(labelText: 'Full Name'),
+                  validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter your name' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (val) => val == null || !val.contains('@')
+                      ? 'Enter a valid email'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passwordController,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                  validator: (val) => val == null || val.length < 6
+                      ? 'Password must be 6+ chars'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _selectedRole,
+                  decoration: const InputDecoration(labelText: 'I am a...'),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'customer', child: Text('Customer')),
+                    DropdownMenuItem(
+                        value: 'vendor', child: Text('Vendor / Stall Owner')),
+                  ],
+                  onChanged: (val) => setState(() => _selectedRole = val!),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _register,
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text('Register'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1078,30 +1868,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 }
 ````
 
-## File: lib/features/customer/profile/customer_profile_screen.dart
-````dart
-import 'package:flutter/material.dart';
-
-/// Placeholder for now. Will be replaced with real profile editing,
-/// change password, FAQ, and About screens in a later roadmap step.
-class CustomerProfileScreen extends StatelessWidget {
-  const CustomerProfileScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24.0),
-        child: Text(
-          'Profile, Change Password, FAQ, and About\nwill appear here.\n(Coming soon)',
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1111,6 +1877,7 @@ import '../../../core/services/vendor_service.dart';
 import '../profile/edit_stall_screen.dart';
 import '../menu/vendor_menu_screen.dart';
 import 'package:geolocator/geolocator.dart';
+import '../profile/vendor_profile_screen.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
   const VendorDashboardScreen({super.key});
@@ -1262,6 +2029,15 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
       appBar: AppBar(
         title: const Text('Vendor Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VendorProfileScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => FirebaseAuth.instance.signOut(),
@@ -1969,377 +2745,6 @@ class _EditStallScreenState extends State<EditStallScreen> {
 }
 ````
 
-## File: lib/core/constants/app_colors.dart
-````dart
-import 'package:flutter/material.dart';
-
-class AppColors {
-  static const Color primary =
-      Color(0xFFE65100); // Deep Orange / Food Stall theme
-  static const Color primaryLight = Color(0xFFFF8142);
-  static const Color background = Color(0xFFF8F9FA);
-  static const Color cardColor = Colors.white;
-  static const Color textDark = Color(0xFF212121);
-  static const Color textMuted = Color(0xFF757575);
-
-  // Status Colors
-  static const Color openGreen = Color(0xFF2E7D32);
-  static const Color closedRed = Color(0xFFC62828);
-  static const Color limitedYellow = Color(0xFFF57F17);
-}
-````
-
-## File: lib/core/constants/firestore_collections.dart
-````dart
-class FirestoreCollections {
-  static const String users = 'users';
-  static const String vendors = 'vendors';
-  static const String menus = 'menus';
-  static const String follows = 'follows';
-}
-````
-
-## File: lib/core/models/user_model.dart
-````dart
-class UserModel {
-  final String uid;
-  final String email;
-  final String fullName;
-  final String role; // 'customer' or 'vendor'
-  final DateTime createdAt;
-
-  UserModel({
-    required this.uid,
-    required this.email,
-    required this.fullName,
-    required this.role,
-    required this.createdAt,
-  });
-
-  // Convert Firestore Document to UserModel Object
-  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
-    return UserModel(
-      uid: docId,
-      email: map['email'] ?? '',
-      fullName: map['fullName'] ?? '',
-      role: map['role'] ?? 'customer',
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as dynamic).toDate()
-          : DateTime.now(),
-    );
-  }
-
-  // Convert UserModel Object to Map for Firestore storage
-  Map<String, dynamic> toMap() {
-    return {
-      'uid': uid,
-      'email': email,
-      'fullName': fullName,
-      'role': role,
-      'createdAt': createdAt,
-    };
-  }
-}
-````
-
-## File: lib/core/models/vendor_model.dart
-````dart
-class VendorModel {
-  final String vendorId;
-  final String stallName;
-  final String description;
-  final String category;
-  final String openingHours;
-  final bool isOpen;
-  final double latitude;
-  final double longitude;
-  final String imageUrl;
-
-  VendorModel({
-    required this.vendorId,
-    required this.stallName,
-    required this.description,
-    required this.category,
-    required this.openingHours,
-    this.isOpen = false,
-    this.latitude = 0.0,
-    this.longitude = 0.0,
-    this.imageUrl = '',
-  });
-
-  // Convert VendorModel to Map for Firestore
-  Map<String, dynamic> toMap() {
-    return {
-      'vendorId': vendorId,
-      'stallName': stallName,
-      'description': description,
-      'category': category,
-      'openingHours': openingHours,
-      'isOpen': isOpen,
-      'latitude': latitude,
-      'longitude': longitude,
-      'imageUrl': imageUrl,
-    };
-  }
-
-  // Create VendorModel from Firestore Document Snapshot
-  factory VendorModel.fromMap(Map<String, dynamic> map, String documentId) {
-    return VendorModel(
-      vendorId: documentId,
-      stallName: map['stallName'] ?? '',
-      description: map['description'] ?? '',
-      category: map['category'] ?? '',
-      openingHours: map['openingHours'] ?? '',
-      isOpen: map['isOpen'] ?? false,
-      latitude: (map['latitude'] ?? 0.0).toDouble(),
-      longitude: (map['longitude'] ?? 0.0).toDouble(),
-      imageUrl: map['imageUrl'] ?? '',
-    );
-  }
-
-  // CopyWith method for easy state updates
-  VendorModel copyWith({
-    String? stallName,
-    String? description,
-    String? category,
-    String? openingHours,
-    bool? isOpen,
-    double? latitude,
-    double? longitude,
-    String? imageUrl,
-  }) {
-    return VendorModel(
-      vendorId: vendorId,
-      stallName: stallName ?? this.stallName,
-      description: description ?? this.description,
-      category: category ?? this.category,
-      openingHours: openingHours ?? this.openingHours,
-      isOpen: isOpen ?? this.isOpen,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      imageUrl: imageUrl ?? this.imageUrl,
-    );
-  }
-}
-````
-
-## File: lib/core/services/auth_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/user_model.dart';
-import '../constants/firestore_collections.dart';
-
-class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // Stream of auth state changes (logged in / logged out)
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Get current Firebase user
-  User? get currentUser => _auth.currentUser;
-
-  // Register user with Email, Password, Name & Role
-  Future<String?> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String role,
-  }) async {
-    try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-
-      if (credential.user != null) {
-        UserModel newUser = UserModel(
-          uid: credential.user!.uid,
-          email: email.trim(),
-          fullName: fullName.trim(),
-          role: role,
-          createdAt: DateTime.now(),
-        );
-
-        // Save user details into Firestore 'users' collection
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(credential.user!.uid)
-            .set(newUser.toMap());
-
-        return null; // Success (no error message)
-      }
-      return "User creation failed.";
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Login user with Email & Password
-  Future<String?> login({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-      return null; // Success
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Fetch current user's data from Firestore
-  Future<UserModel?> getUserData(String uid) async {
-    try {
-      DocumentSnapshot doc = await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      }
-      return null;
-    } catch (e) {
-      print("Error fetching user data: $e");
-      return null;
-    }
-  }
-
-  // Sign Out
-  Future<void> signOut() async {
-    await _auth.signOut();
-  }
-}
-````
-
-## File: lib/features/auth/screens/register_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  String _selectedRole = 'customer';
-  bool _isLoading = false;
-
-  void _register() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    String? error = await _authService.signUp(
-      email: _emailController.text,
-      password: _passwordController.text,
-      fullName: _fullNameController.text,
-      role: _selectedRole,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    } else if (mounted) {
-      Navigator.pop(context); // Go back to login after successful registration
-    }
-  }
-
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _fullNameController,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter your name' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (val) => val == null || !val.contains('@')
-                      ? 'Enter a valid email'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  obscureText: true,
-                  validator: (val) => val == null || val.length < 6
-                      ? 'Password must be 6+ chars'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: _selectedRole,
-                  decoration: const InputDecoration(labelText: 'I am a...'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'customer', child: Text('Customer')),
-                    DropdownMenuItem(
-                        value: 'vendor', child: Text('Vendor / Stall Owner')),
-                  ],
-                  onChanged: (val) => setState(() => _selectedRole = val!),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
-                  child: _isLoading
-                      ? const CircularProgressIndicator()
-                      : const Text('Register'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/firebase_options.dart
 ````dart
 // File generated by FlutterFire CLI.
@@ -2432,6 +2837,87 @@ class DefaultFirebaseOptions {
 }
 ````
 
+## File: lib/core/models/vendor_model.dart
+````dart
+class VendorModel {
+  final String vendorId;
+  final String stallName;
+  final String description;
+  final String category;
+  final String openingHours;
+  final bool isOpen;
+  final double latitude;
+  final double longitude;
+  final String imageUrl;
+
+  VendorModel({
+    required this.vendorId,
+    required this.stallName,
+    required this.description,
+    required this.category,
+    required this.openingHours,
+    this.isOpen = false,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
+    this.imageUrl = '',
+  });
+
+  // Convert VendorModel to Map for Firestore
+  Map<String, dynamic> toMap() {
+    return {
+      'vendorId': vendorId,
+      'stallName': stallName,
+      'description': description,
+      'category': category,
+      'openingHours': openingHours,
+      'isOpen': isOpen,
+      'latitude': latitude,
+      'longitude': longitude,
+      'imageUrl': imageUrl,
+    };
+  }
+
+  // Create VendorModel from Firestore Document Snapshot
+  factory VendorModel.fromMap(Map<String, dynamic> map, String documentId) {
+    return VendorModel(
+      vendorId: documentId,
+      stallName: map['stallName'] ?? '',
+      description: map['description'] ?? '',
+      category: map['category'] ?? '',
+      openingHours: map['openingHours'] ?? '',
+      isOpen: map['isOpen'] ?? false,
+      latitude: (map['latitude'] ?? 0.0).toDouble(),
+      longitude: (map['longitude'] ?? 0.0).toDouble(),
+      imageUrl: map['imageUrl'] ?? '',
+    );
+  }
+
+  // CopyWith method for easy state updates
+  VendorModel copyWith({
+    String? stallName,
+    String? description,
+    String? category,
+    String? openingHours,
+    bool? isOpen,
+    double? latitude,
+    double? longitude,
+    String? imageUrl,
+  }) {
+    return VendorModel(
+      vendorId: vendorId,
+      stallName: stallName ?? this.stallName,
+      description: description ?? this.description,
+      category: category ?? this.category,
+      openingHours: openingHours ?? this.openingHours,
+      isOpen: isOpen ?? this.isOpen,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
+  }
+}
+````
+
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -2453,7 +2939,25 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // --- Add this method inside _LoginScreenState ---
+  void _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true); // loading spinner
+
+    String? error = await _authService.login(
+      // code pauses here until firebase responds
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
+  }
 
   void _showForgotPasswordDialog() {
     final resetEmailController = TextEditingController(
@@ -2538,34 +3042,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // --- Add this TextButton in your build() method, right below the
-  // existing Login ElevatedButton (before the Register TextButton) ---
-
-  //   TextButton(
-  //     onPressed: _showForgotPasswordDialog,
-  //     child: const Text('Forgot Password?'),
-  //   ),
-
-  void _login() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true); // loading spinner
-
-    String? error = await _authService.login(
-      // code pauses here until firebase responds
-      email: _emailController.text,
-      password: _passwordController.text,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
   @override
   void dispose() {
     _emailController.dispose();
@@ -2612,6 +3088,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: _isLoading
                     ? const CircularProgressIndicator()
                     : const Text('Login'),
+              ),
+              TextButton(
+                onPressed: _showForgotPasswordDialog,
+                child: const Text('Forgot Password?'),
               ),
               TextButton(
                 onPressed: () {

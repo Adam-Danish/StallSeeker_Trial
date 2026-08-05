@@ -91,4 +91,53 @@ class AuthService {
   Future<void> signOut() async {
     await _auth.signOut();
   }
+
+  // Sends Firebase's built-in password reset email. Firebase handles
+  // generating the reset link and the email itself -- this app never
+  // sees or handles the new password directly.
+  Future<String?> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not send reset email.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Changes the password of the currently logged-in user.
+  // Firebase requires a "recent" login for this -- if the user logged
+  // in a while ago, this will fail with 'requires-recent-login' and
+  // they need to log out and back in first before it will work.
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return "No user is currently logged in.";
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return "For security, please log out and log back in before changing your password.";
+      }
+      return e.message ?? "Could not change password.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Updates just the fullName field on the user's Firestore profile
+  // document. Uses .update() (not .set()) so it only touches this one
+  // field and leaves email/role/createdAt untouched.
+  Future<String?> updateFullName(String uid, String newName) async {
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .update({'fullName': newName});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
 }
