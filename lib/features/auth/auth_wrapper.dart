@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
 import '../vendor/vendor_main_screen.dart';
 import '../customer/home/customer_home_screen.dart';
+import '../../core/services/notification_service.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -13,16 +14,18 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. Waiting for auth status
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // 2. User is logged in
         if (snapshot.hasData && snapshot.data != null) {
           final String uid = snapshot.data!.uid;
+
+          // Save/refresh this device's push token now that we know who
+          // is logged in.
+          NotificationService.instance.syncTokenForCurrentUser();
 
           return FutureBuilder<DocumentSnapshot>(
             future:
@@ -51,7 +54,6 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // 3. User is NOT logged in
         return const LoginScreen();
       },
     );

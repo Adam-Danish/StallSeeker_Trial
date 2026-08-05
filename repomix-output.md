@@ -48,6 +48,7 @@ lib/
       auth_service.dart
       follow_service.dart
       menu_service.dart
+      notification_service.dart
       storage_service.dart
       vendor_service.dart
     theme/
@@ -67,6 +68,9 @@ lib/
         customer_profile_screen.dart
       vendor_details/
         vendor_details_screen.dart
+    shared/
+      about_screen.dart
+      faq_screen.dart
     vendor/
       dashboard/
         vendor_dashboard_screen.dart
@@ -75,236 +79,146 @@ lib/
       profile/
         edit_stall_screen.dart
         vendor_profile_screen.dart
+      vendor_main_screen.dart
   firebase_options.dart
   main.dart
 ````
 
 # Files
 
-## File: lib/features/vendor/profile/vendor_profile_screen.dart
+## File: lib/core/services/notification_service.dart
 ````dart
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../models/vendor_model.dart';
+import 'vendor_service.dart';
+import '../../features/customer/vendor_details/vendor_details_screen.dart';
 
-class VendorProfileScreen extends StatefulWidget {
-  const VendorProfileScreen({super.key});
+// Runs in its own isolate when a push arrives while the app is backgrounded
+// or fully closed. Android shows the system notification on its own from
+// the message's payload -- this only needs to exist so FCM has something
+// to call.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
-  @override
-  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
-}
+class NotificationService {
+  NotificationService._internal();
+  static final NotificationService instance = NotificationService._internal();
 
-class _VendorProfileScreenState extends State<VendorProfileScreen> {
-  final _authService = AuthService();
-  final _nameController = TextEditingController();
-  final _newPasswordController = TextEditingController();
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+  final VendorService _vendorService = VendorService();
 
-  UserModel? _userModel;
-  bool _isLoading = true;
-  bool _isSavingName = false;
-  bool _isChangingPassword = false;
+  static const _channel = AndroidNotificationChannel(
+    'stallseeker_channel',
+    'StallSeeker Notifications',
+    description: 'Notifies you when a followed vendor starts selling.',
+    importance: Importance.high,
+  );
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
+  GlobalKey<NavigatorState>? _navigatorKey;
+  bool _initialized = false;
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _newPasswordController.dispose();
-    super.dispose();
-  }
+  // One-time setup: creates the notification channel, requests
+  // permission, and wires up listeners for taps in every app state
+  // (foreground, background, terminated). Safe to call more than once.
+  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
+    if (_initialized) return;
+    _initialized = true;
+    _navigatorKey = navigatorKey;
 
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _nameController.text = userData?.fullName ?? '';
-          _isLoading = false;
-        });
+    await _localNotifications
+        .resolvePlatformSpecificImplementation
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
+
+    await _localNotifications.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (response) {
+        final vendorId = response.payload;
+        if (vendorId != null) _openVendorDetails(vendorId);
+      },
+    );
+
+    await _messaging.requestPermission();
+
+    // FCM does not show a system notification by itself while the app is
+    // in the foreground, so display one manually using the same channel.
+    FirebaseMessaging.onMessage.listen((message) {
+      final notification = message.notification;
+      final vendorId = message.data['vendorId'];
+      if (notification != null) {
+        _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              _channel.id,
+              _channel.name,
+              channelDescription: _channel.description,
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          payload: vendorId,
+        );
       }
-    } else {
-      setState(() => _isLoading = false);
-    }
+    });
+
+    // App was backgrounded and the user tapped the notification.
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final vendorId = message.data['vendorId'];
+      if (vendorId != null) _openVendorDetails(vendorId);
+    });
+
+    // App was fully closed and got launched by tapping the notification.
+    final initialMessage = await _messaging.getInitialMessage();
+    final vendorId = initialMessage?.data['vendorId'];
+    if (vendorId != null) _openVendorDetails(vendorId);
   }
 
-  Future<void> _saveName() async {
+  // Fetches this device's FCM token and saves it on the logged-in user's
+  // Firestore record, and keeps it updated if it ever rotates. Call this
+  // once the user is known to be logged in.
+  Future<void> syncTokenForCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final newName = _nameController.text.trim();
-    if (newName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty.')),
-      );
-      return;
+    final token = await _messaging.getToken();
+    if (token != null) {
+      await _saveToken(user.uid, token);
     }
 
-    setState(() => _isSavingName = true);
-
-    final error = await _authService.updateFullName(user.uid, newName);
-
-    if (mounted) {
-      setState(() => _isSavingName = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Name updated.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
-        ),
-      );
-    }
+    _messaging.onTokenRefresh.listen((newToken) {
+      final current = FirebaseAuth.instance.currentUser;
+      if (current != null) _saveToken(current.uid, newToken);
+    });
   }
 
-  Future<void> _changePassword() async {
-    final newPassword = _newPasswordController.text.trim();
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be 6+ characters.')),
-      );
-      return;
-    }
-
-    setState(() => _isChangingPassword = true);
-
-    final error = await _authService.changePassword(newPassword);
-
-    if (mounted) {
-      setState(() => _isChangingPassword = false);
-      if (error == null) {
-        _newPasswordController.clear();
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Password changed successfully.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
-        ),
-      );
-    }
+  Future<void> _saveToken(String uid, String token) async {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set({'fcmToken': token}, SetOptions(merge: true));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('My Profile')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16.0),
-              children: [
-                // Account info (read-only)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Account Info',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 12),
-                        Text('Email: ${_userModel?.email ?? "N/A"}'),
-                        const SizedBox(height: 4),
-                        Text('Role: ${_userModel?.role ?? "N/A"}'),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+  Future<void> _openVendorDetails(String vendorId) async {
+    final navState = _navigatorKey?.currentState;
+    if (navState == null) return;
 
-                // Edit name
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Edit Name',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Full Name',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _isSavingName ? null : _saveName,
-                            child: _isSavingName
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Text('Save Name'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+    final VendorModel? vendor =
+        await _vendorService.getVendorProfile(vendorId);
+    if (vendor == null) return;
 
-                // Change password
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Change Password',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _newPasswordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'New Password',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed:
-                                _isChangingPassword ? null : _changePassword,
-                            child: _isChangingPassword
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Text('Change Password'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.logout, color: Colors.red),
-                    label: const Text('Log Out',
-                        style: TextStyle(color: Colors.red)),
-                    onPressed: () => FirebaseAuth.instance.signOut(),
-                  ),
-                ),
-              ],
-            ),
+    navState.push(
+      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
     );
   }
 }
@@ -491,230 +405,6 @@ class AppTheme {
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       useMaterial3: true,
-    );
-  }
-}
-````
-
-## File: lib/features/customer/profile/customer_profile_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
-
-class CustomerProfileScreen extends StatefulWidget {
-  const CustomerProfileScreen({super.key});
-
-  @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
-}
-
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
-  final _authService = AuthService();
-  final _nameController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-
-  UserModel? _userModel;
-  bool _isLoading = true;
-  bool _isSavingName = false;
-  bool _isChangingPassword = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _newPasswordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _nameController.text = userData?.fullName ?? '';
-          _isLoading = false;
-        });
-      }
-    } else {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveName() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final newName = _nameController.text.trim();
-    if (newName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty.')),
-      );
-      return;
-    }
-
-    setState(() => _isSavingName = true);
-
-    final error = await _authService.updateFullName(user.uid, newName);
-
-    if (mounted) {
-      setState(() => _isSavingName = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Name updated.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
-        ),
-      );
-    }
-  }
-
-  Future<void> _changePassword() async {
-    final newPassword = _newPasswordController.text.trim();
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be 6+ characters.')),
-      );
-      return;
-    }
-
-    setState(() => _isChangingPassword = true);
-
-    final error = await _authService.changePassword(newPassword);
-
-    if (mounted) {
-      setState(() => _isChangingPassword = false);
-      if (error == null) {
-        _newPasswordController.clear();
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Password changed successfully.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        // Account info (read-only)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Account Info',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                Text('Email: ${_userModel?.email ?? "N/A"}'),
-                const SizedBox(height: 4),
-                Text('Role: ${_userModel?.role ?? "N/A"}'),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Edit name
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Edit Name',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSavingName ? null : _saveName,
-                    child: _isSavingName
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Name'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Change password
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Change Password',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _newPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isChangingPassword ? null : _changePassword,
-                    child: _isChangingPassword
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Change Password'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            label: const Text('Log Out', style: TextStyle(color: Colors.red)),
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -954,6 +644,527 @@ class VendorDetailsScreen extends StatelessWidget {
 }
 ````
 
+## File: lib/features/shared/about_screen.dart
+````dart
+import 'package:flutter/material.dart';
+
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('About StallSeeker')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Center(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.storefront, size: 40),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'StallSeeker',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'StallSeeker connects food stall vendors with nearby customers. '
+            'Vendors can share their live location, opening hours, and menu '
+            'availability, while customers can discover open stalls nearby, '
+            'view menus in real time, and follow their favorite stalls.',
+            style: TextStyle(height: 1.5),
+          ),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 12),
+          const Text(
+            'This app was developed as a Final Year Project.',
+            style: TextStyle(color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/shared/faq_screen.dart
+````dart
+import 'package:flutter/material.dart';
+
+class FaqScreen extends StatelessWidget {
+  const FaqScreen({super.key});
+
+  static const List<Map<String, String>> _faqs = [
+    {
+      'question': 'How do I mark my stall as open?',
+      'answer': 'On your Dashboard, flip the "Stall Status" switch to Open. '
+          'The app will ask for your location permission the first time '
+          '-- this is needed so customers can find you on the map.',
+    },
+    {
+      'question': 'Why is my stall not showing up on the customer map?',
+      'answer': 'Make sure your stall is toggled Open, and that you allowed '
+          'location permission when prompted. If location services are '
+          'off on your phone, the app cannot save your position.',
+    },
+    {
+      'question': 'How do I update my menu prices or stock status?',
+      'answer':
+          'Go to Dashboard > Manage Menu & Stock. Tap the colored circles '
+              'next to a dish to mark it Available, Low Stock, or Out of '
+              'Stock -- customers see this update instantly.',
+    },
+    {
+      'question': 'How do I follow a stall as a customer?',
+      'answer':
+          'Open a stall\'s details page (tap its marker on the map or its '
+              'card in the nearby list) and tap the heart icon in the top '
+              'right corner.',
+    },
+    {
+      'question': 'I forgot my password. What do I do?',
+      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
+          'email. You will receive a link to reset your password.',
+    },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('FAQ')),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _faqs.length,
+        itemBuilder: (context, index) {
+          final faq = _faqs[index];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ExpansionTile(
+              title: Text(
+                faq['question']!,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  faq['answer']!,
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/profile/vendor_profile_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+
+class VendorProfileScreen extends StatefulWidget {
+  const VendorProfileScreen({super.key});
+
+  @override
+  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+}
+
+class _VendorProfileScreenState extends State<VendorProfileScreen> {
+  final _authService = AuthService();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showEditProfileDialog() {
+    final nameController =
+        TextEditingController(text: _userModel?.fullName ?? '');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          final newName = nameController.text.trim();
+                          if (user == null || newName.isEmpty) return;
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateFullName(
+                              user.uid, newName);
+
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
+
+                          if (error == null) {
+                            await _loadUserData(); // refresh header card
+                          }
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error ?? 'Profile updated.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final passwordController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newPassword = passwordController.text.trim();
+                          if (newPassword.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Password must be 6+ characters.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          final error =
+                              await _authService.changePassword(newPassword);
+
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  error ?? 'Password changed successfully.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              FirebaseAuth.instance.signOut();
+            },
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(title, style: TextStyle(color: textColor)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      onTap: onTap,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Header card: avatar, name, email
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.person, size: 32),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _userModel?.fullName.isNotEmpty == true
+                            ? _userModel!.fullName
+                            : 'Name Not Set',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _userModel?.email ?? '',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        _sectionHeader('ACCOUNT SETTINGS'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.person_outline,
+                title: 'Edit Profile',
+                onTap: _showEditProfileDialog,
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.lock_outline,
+                title: 'Change Password',
+                onTap: _showChangePasswordDialog,
+              ),
+            ],
+          ),
+        ),
+
+        _sectionHeader('SUPPORT & INFORMATION'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.help_outline,
+                title: 'FAQ',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FaqScreen()),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.info_outline,
+                title: 'About StallSeeker',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        Card(
+          child: _settingsTile(
+            icon: Icons.logout,
+            title: 'Logout',
+            iconColor: Colors.red,
+            textColor: Colors.red,
+            onTap: _confirmLogout,
+          ),
+        ),
+      ],
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/vendor_main_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'dashboard/vendor_dashboard_screen.dart';
+import 'profile/vendor_profile_screen.dart';
+
+class VendorMainScreen extends StatefulWidget {
+  const VendorMainScreen({super.key});
+
+  @override
+  State<VendorMainScreen> createState() => _VendorMainScreenState();
+}
+
+class _VendorMainScreenState extends State<VendorMainScreen> {
+  int _selectedIndex = 0;
+
+  static const _titles = ['Vendor Dashboard', 'My Profile'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_titles[_selectedIndex])),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: const [
+          VendorDashboardScreen(),
+          VendorProfileScreen(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) =>
+            setState(() => _selectedIndex = index),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+}
+````
+
 ## File: lib/core/constants/app_colors.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1063,153 +1274,6 @@ class UserModel {
       'role': role,
       'createdAt': createdAt,
     };
-  }
-}
-````
-
-## File: lib/core/services/auth_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/user_model.dart';
-import '../constants/firestore_collections.dart';
-
-class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // Stream of auth state changes (logged in / logged out)
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Get current Firebase user
-  User? get currentUser => _auth.currentUser;
-
-  // Register user with Email, Password, Name & Role
-  Future<String?> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String role,
-  }) async {
-    try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-
-      if (credential.user != null) {
-        UserModel newUser = UserModel(
-          uid: credential.user!.uid,
-          email: email.trim(),
-          fullName: fullName.trim(),
-          role: role,
-          createdAt: DateTime.now(),
-        );
-
-        // Save user details into Firestore 'users' collection
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(credential.user!.uid)
-            .set(newUser.toMap());
-
-        return null; // Success (no error message)
-      }
-      return "User creation failed.";
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Login user with Email & Password
-  Future<String?> login({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-      return null; // Success
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Fetch current user's data from Firestore
-  Future<UserModel?> getUserData(String uid) async {
-    try {
-      DocumentSnapshot doc = await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      }
-      return null;
-    } catch (e) {
-      print("Error fetching user data: $e");
-      return null;
-    }
-  }
-
-  // Sign Out
-  Future<void> signOut() async {
-    await _auth.signOut();
-  }
-
-  // Sends Firebase's built-in password reset email. Firebase handles
-  // generating the reset link and the email itself -- this app never
-  // sees or handles the new password directly.
-  Future<String?> resetPassword({required String email}) async {
-    try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
-      return null; // Success
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "Could not send reset email.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Changes the password of the currently logged-in user.
-  // Firebase requires a "recent" login for this -- if the user logged
-  // in a while ago, this will fail with 'requires-recent-login' and
-  // they need to log out and back in first before it will work.
-  Future<String?> changePassword(String newPassword) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return "No user is currently logged in.";
-      await user.updatePassword(newPassword);
-      return null;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        return "For security, please log out and log back in before changing your password.";
-      }
-      return e.message ?? "Could not change password.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Updates just the fullName field on the user's Firestore profile
-  // document. Uses .update() (not .set()) so it only touches this one
-  // field and leaves email/role/createdAt untouched.
-  Future<String?> updateFullName(String uid, String newName) async {
-    try {
-      await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .update({'fullName': newName});
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
   }
 }
 ````
@@ -1868,296 +1932,225 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 }
 ````
 
-## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
+## File: lib/features/customer/profile/customer_profile_screen.dart
 ````dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../profile/edit_stall_screen.dart';
-import '../menu/vendor_menu_screen.dart';
-import 'package:geolocator/geolocator.dart';
-import '../profile/vendor_profile_screen.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
 
-class VendorDashboardScreen extends StatefulWidget {
-  const VendorDashboardScreen({super.key});
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
 
   @override
-  State<VendorDashboardScreen> createState() => _VendorDashboardScreenState();
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
 }
 
-class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
-  final _vendorService = VendorService();
-  final _auth = FirebaseAuth.instance;
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+  final _authService = AuthService();
+  final _nameController = TextEditingController();
+  final _newPasswordController = TextEditingController();
 
-  VendorModel? _vendorModel;
+  UserModel? _userModel;
   bool _isLoading = true;
-  bool _isOpen = false;
+  bool _isSavingName = false;
+  bool _isChangingPassword = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchVendorDetails();
+    _loadUserData();
   }
 
-  // Fetch Vendor Profile from Firestore
-  Future<void> _fetchVendorDetails() async {
-    final user = _auth.currentUser;
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _newPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+      final userData = await _authService.getUserData(user.uid);
       if (mounted) {
         setState(() {
-          _vendorModel = vendor;
-          _isOpen = vendor?.isOpen ?? false;
+          _userModel = userData;
+          _nameController.text = userData?.fullName ?? '';
           _isLoading = false;
         });
       }
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 
-  // Gets the vendor's current GPS position, handling permission requests
-  // and the various ways a phone can refuse to give location.
-  // Returns null if location could not be obtained for any reason.
-  Future<Position?> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please turn on location services on your phone.'),
-          ),
-        );
-      }
-      return null;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      // First time asking, or the vendor said "no" before but can still
-      // be asked again (as opposed to "denied forever" below).
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied.')),
-          );
-        }
-        return null;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      // The vendor permanently blocked location for this app. The app
-      // cannot ask again -- they must go into phone Settings manually.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Location permission is permanently denied. '
-              'Please enable it in your phone Settings > Apps > StallSeeker.',
-            ),
-          ),
-        );
-      }
-      return null;
-    }
-
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-  }
-
-  // Fast toggle for Open/Closed status
-  Future<void> _handleStatusToggle(bool val) async {
-    final user = _auth.currentUser;
+  Future<void> _saveName() async {
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    setState(() {
-      _isOpen = val;
-    });
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name cannot be empty.')),
+      );
+      return;
+    }
 
-    try {
-      if (val) {
-        // Opening the stall: capture the vendor's current GPS location
-        // first, so customers can actually find this stall on the map.
-        final position = await _determinePosition();
+    setState(() => _isSavingName = true);
 
-        if (position == null) {
-          // Couldn't get a location (permission denied, GPS off, etc).
-          // Revert the switch instead of marking the stall "open" with
-          // no location -- that would show nothing on the customer map
-          // anyway, so it's misleading to leave it toggled on.
-          setState(() {
-            _isOpen = false;
-          });
-          return;
-        }
+    final error = await _authService.updateFullName(user.uid, newName);
 
-        await _vendorService.updateVendorLocation(
-          user.uid,
-          position.latitude,
-          position.longitude,
-        );
+    if (mounted) {
+      setState(() => _isSavingName = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Name updated.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final newPassword = _newPasswordController.text.trim();
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be 6+ characters.')),
+      );
+      return;
+    }
+
+    setState(() => _isChangingPassword = true);
+
+    final error = await _authService.changePassword(newPassword);
+
+    if (mounted) {
+      setState(() => _isChangingPassword = false);
+      if (error == null) {
+        _newPasswordController.clear();
       }
-
-      await _vendorService.toggleStallStatus(user.uid, val);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(val ? 'Stall is now OPEN!' : 'Stall is now CLOSED.'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      // Revert switch state on failure
-      setState(() {
-        _isOpen = !val;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Password changed successfully.'),
+          backgroundColor: error != null ? Colors.red : Colors.green,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vendor Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const VendorProfileScreen()),
-              );
-            },
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        // Account info (read-only)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Account Info',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                Text('Email: ${_userModel?.email ?? "N/A"}'),
+                const SizedBox(height: 4),
+                Text('Role: ${_userModel?.role ?? "N/A"}'),
+              ],
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
+        ),
+        const SizedBox(height: 16),
+
+        // Edit name
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Edit Name',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSavingName ? null : _saveName,
+                    child: _isSavingName
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save Name'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Change password
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Change Password',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _newPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'New Password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isChangingPassword ? null : _changePassword,
+                    child: _isChangingPassword
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Change Password'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            label: const Text('Log Out', style: TextStyle(color: Colors.red)),
             onPressed: () => FirebaseAuth.instance.signOut(),
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _fetchVendorDetails,
-              child: ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  // Live Status Switch Card
-                  Card(
-                    color: _isOpen ? Colors.green.shade50 : Colors.red.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Stall Status',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              Text(
-                                _isOpen ? 'Currently Open' : 'Currently Closed',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: _isOpen ? Colors.green : Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: _isOpen,
-                            onChanged: _handleStatusToggle,
-                            activeTrackColor: Colors.green,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Stall Information Overview Card
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _vendorModel?.stallName.isNotEmpty == true
-                                      ? _vendorModel!.stallName
-                                      : 'Stall Name Not Set',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () async {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const EditStallScreen(),
-                                    ),
-                                  );
-                                  // Refresh details upon returning
-                                  _fetchVendorDetails();
-                                },
-                              ),
-                            ],
-                          ),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          Text('Category: ${_vendorModel?.category ?? "N/A"}'),
-                          const SizedBox(height: 4),
-                          Text('Hours: ${_vendorModel?.openingHours ?? "N/A"}'),
-                          const SizedBox(height: 8),
-                          Text(
-                            _vendorModel?.description ??
-                                'No description provided.',
-                            style: TextStyle(color: Colors.grey.shade700),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Manage Menu Button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              icon: const Icon(Icons.restaurant_menu),
-                              label: const Text('Manage Menu & Stock'),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const VendorMenuScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        ),
+      ],
     );
   }
 }
@@ -2918,6 +2911,476 @@ class VendorModel {
 }
 ````
 
+## File: lib/core/services/auth_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/user_model.dart';
+import '../constants/firestore_collections.dart';
+
+class AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Stream of auth state changes (logged in / logged out)
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Get current Firebase user
+  User? get currentUser => _auth.currentUser;
+
+  // Register user with Email, Password, Name & Role
+  Future<String?> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+    required String role,
+  }) async {
+    try {
+      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      if (credential.user != null) {
+        UserModel newUser = UserModel(
+          uid: credential.user!.uid,
+          email: email.trim(),
+          fullName: fullName.trim(),
+          role: role,
+          createdAt: DateTime.now(),
+        );
+
+        // Save user details into Firestore 'users' collection
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(credential.user!.uid)
+            .set(newUser.toMap());
+
+        return null; // Success (no error message)
+      }
+      return "User creation failed.";
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Login user with Email & Password
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Fetch current user's data from Firestore
+  Future<UserModel?> getUserData(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching user data: $e");
+      return null;
+    }
+  }
+
+  // Sign Out
+  Future<void> signOut() async {
+    await _auth.signOut();
+  }
+
+  // Sends Firebase's built-in password reset email. Firebase handles
+  // generating the reset link and the email itself -- this app never
+  // sees or handles the new password directly.
+  Future<String?> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not send reset email.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Changes the password of the currently logged-in user.
+  // Firebase requires a "recent" login for this -- if the user logged
+  // in a while ago, this will fail with 'requires-recent-login' and
+  // they need to log out and back in first before it will work.
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return "No user is currently logged in.";
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return "For security, please log out and log back in before changing your password.";
+      }
+      return e.message ?? "Could not change password.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Updates just the fullName field on the user's Firestore profile
+  // document. Uses .update() (not .set()) so it only touches this one
+  // field and leaves email/role/createdAt untouched.
+  Future<String?> updateFullName(String uid, String newName) async {
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .update({'fullName': newName});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+}
+````
+
+## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/vendor_service.dart';
+import '../profile/edit_stall_screen.dart';
+import '../menu/vendor_menu_screen.dart';
+import 'package:geolocator/geolocator.dart';
+
+class VendorDashboardScreen extends StatefulWidget {
+  const VendorDashboardScreen({super.key});
+
+  @override
+  State<VendorDashboardScreen> createState() => _VendorDashboardScreenState();
+}
+
+class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
+  final _vendorService = VendorService();
+  final _auth = FirebaseAuth.instance;
+
+  VendorModel? _vendorModel;
+  bool _isLoading = true;
+  bool _isOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchVendorDetails();
+  }
+
+  // Fetch Vendor Profile from Firestore
+  Future<void> _fetchVendorDetails() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+      if (mounted) {
+        setState(() {
+          _vendorModel = vendor;
+          _isOpen = vendor?.isOpen ?? false;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Gets the vendor's current GPS position, handling permission requests
+  // and the various ways a phone can refuse to give location.
+  // Returns null if location could not be obtained for any reason.
+  Future<Position?> _determinePosition() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please turn on location services on your phone.'),
+          ),
+        );
+      }
+      return null;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      // First time asking, or the vendor said "no" before but can still
+      // be asked again (as opposed to "denied forever" below).
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied.')),
+          );
+        }
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // The vendor permanently blocked location for this app. The app
+      // cannot ask again -- they must go into phone Settings manually.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Location permission is permanently denied. '
+              'Please enable it in your phone Settings > Apps > StallSeeker.',
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
+
+  // Fast toggle for Open/Closed status
+  Future<void> _handleStatusToggle(bool val) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isOpen = val;
+    });
+
+    try {
+      if (val) {
+        // Opening the stall: capture the vendor's current GPS location
+        // first, so customers can actually find this stall on the map.
+        final position = await _determinePosition();
+
+        if (position == null) {
+          // Couldn't get a location (permission denied, GPS off, etc).
+          // Revert the switch instead of marking the stall "open" with
+          // no location -- that would show nothing on the customer map
+          // anyway, so it's misleading to leave it toggled on.
+          setState(() {
+            _isOpen = false;
+          });
+          return;
+        }
+
+        await _vendorService.updateVendorLocation(
+          user.uid,
+          position.latitude,
+          position.longitude,
+        );
+      }
+
+      await _vendorService.toggleStallStatus(user.uid, val);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(val ? 'Stall is now OPEN!' : 'Stall is now CLOSED.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert switch state on failure
+      setState(() {
+        _isOpen = !val;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No Scaffold/AppBar here -- VendorMainScreen (the bottom-nav shell)
+    // now provides those, so this widget is just the tab's content.
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _fetchVendorDetails,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                // Live Status Switch Card
+                Card(
+                  color: _isOpen ? Colors.green.shade50 : Colors.red.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Stall Status',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              _isOpen ? 'Currently Open' : 'Currently Closed',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _isOpen ? Colors.green : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Switch(
+                          value: _isOpen,
+                          onChanged: _handleStatusToggle,
+                          activeTrackColor: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Stall Information Overview Card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _vendorModel?.stallName.isNotEmpty == true
+                                    ? _vendorModel!.stallName
+                                    : 'Stall Name Not Set',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const EditStallScreen(),
+                                  ),
+                                );
+                                // Refresh details upon returning
+                                _fetchVendorDetails();
+                              },
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Text('Category: ${_vendorModel?.category ?? "N/A"}'),
+                        const SizedBox(height: 4),
+                        Text('Hours: ${_vendorModel?.openingHours ?? "N/A"}'),
+                        const SizedBox(height: 8),
+                        Text(
+                          _vendorModel?.description ??
+                              'No description provided.',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Manage Menu Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.restaurant_menu),
+                            label: const Text('Manage Menu & Stock'),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const VendorMenuScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+  }
+}
+````
+
+## File: lib/main.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/notification_service.dart';
+import 'features/auth/auth_wrapper.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    print('Firebase initialization error ignored: $e');
+  }
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await NotificationService.instance.initialize(navigatorKey);
+
+  runApp(const StallSeekerApp());
+}
+
+class StallSeekerApp extends StatelessWidget {
+  const StallSeekerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'StallSeeker',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const AuthWrapper(),
+    );
+  }
+}
+````
+
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -3111,54 +3574,15 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 ````
 
-## File: lib/main.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
-import 'features/auth/auth_wrapper.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    // Catches duplicate-app exception if initialized natively
-    print('Firebase initialization error ignored: $e');
-  }
-
-  runApp(const StallSeekerApp());
-}
-
-class StallSeekerApp extends StatelessWidget {
-  const StallSeekerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'StallSeeker',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const AuthWrapper(),
-    );
-  }
-}
-````
-
 ## File: lib/features/auth/auth_wrapper.dart
 ````dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
-import '../vendor/dashboard/vendor_dashboard_screen.dart';
+import '../vendor/vendor_main_screen.dart';
 import '../customer/home/customer_home_screen.dart';
+import '../../core/services/notification_service.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -3168,16 +3592,18 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. Waiting for auth status
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // 2. User is logged in
         if (snapshot.hasData && snapshot.data != null) {
           final String uid = snapshot.data!.uid;
+
+          // Save/refresh this device's push token now that we know who
+          // is logged in.
+          NotificationService.instance.syncTokenForCurrentUser();
 
           return FutureBuilder<DocumentSnapshot>(
             future:
@@ -3195,7 +3621,7 @@ class AuthWrapper extends StatelessWidget {
                 final String role = userData?['role'] ?? 'customer';
 
                 if (role == 'vendor') {
-                  return const VendorDashboardScreen();
+                  return const VendorMainScreen();
                 } else {
                   return const CustomerHomeScreen();
                 }
@@ -3206,7 +3632,6 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // 3. User is NOT logged in
         return const LoginScreen();
       },
     );
