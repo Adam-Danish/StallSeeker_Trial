@@ -55,18 +55,18 @@ class MenuService {
         .doc(vendorId)
         .collection('menu')
         .doc(itemId)
-        .update({'status': newStatus});
+        .update(data);
   }
 
-  // Update just the photo for an existing menu item
-  Future<void> updateItemImage(
-      String vendorId, String itemId, String imageUrl) async {
+  // Quick Traffic Light Status Update
+  Future<void> updateItemStatus(
+      String vendorId, String itemId, String newStatus) async {
     await _db
         .collection('vendors')
         .doc(vendorId)
         .collection('menu')
         .doc(itemId)
-        .update({'imageUrl': imageUrl});
+        .update({'status': newStatus});
   }
 
   // Delete item

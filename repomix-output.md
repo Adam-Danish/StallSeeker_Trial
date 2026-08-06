@@ -565,424 +565,6 @@ class AboutScreen extends StatelessWidget {
 }
 ````
 
-## File: lib/features/shared/faq_screen.dart
-````dart
-import 'package:flutter/material.dart';
-
-class FaqScreen extends StatelessWidget {
-  const FaqScreen({super.key});
-
-  static const List<Map<String, String>> _faqs = [
-    {
-      'question': 'How do I mark my stall as open?',
-      'answer': 'On your Dashboard, flip the "Stall Status" switch to Open. '
-          'The app will ask for your location permission the first time '
-          '-- this is needed so customers can find you on the map.',
-    },
-    {
-      'question': 'Why is my stall not showing up on the customer map?',
-      'answer': 'Make sure your stall is toggled Open, and that you allowed '
-          'location permission when prompted. If location services are '
-          'off on your phone, the app cannot save your position.',
-    },
-    {
-      'question': 'How do I update my menu prices or stock status?',
-      'answer':
-          'Go to Dashboard > Manage Menu & Stock. Tap the colored circles '
-              'next to a dish to mark it Available, Low Stock, or Out of '
-              'Stock -- customers see this update instantly.',
-    },
-    {
-      'question': 'How do I follow a stall as a customer?',
-      'answer':
-          'Open a stall\'s details page (tap its marker on the map or its '
-              'card in the nearby list) and tap the heart icon in the top '
-              'right corner.',
-    },
-    {
-      'question': 'I forgot my password. What do I do?',
-      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
-          'email. You will receive a link to reset your password.',
-    },
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('FAQ')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: _faqs.length,
-        itemBuilder: (context, index) {
-          final faq = _faqs[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ExpansionTile(
-              title: Text(
-                faq['question']!,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              expandedCrossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  faq['answer']!,
-                  style: TextStyle(color: Colors.grey.shade700),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-````
-
-## File: lib/features/vendor/profile/vendor_profile_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../shared/faq_screen.dart';
-import '../../shared/about_screen.dart';
-
-class VendorProfileScreen extends StatefulWidget {
-  const VendorProfileScreen({super.key});
-
-  @override
-  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
-}
-
-class _VendorProfileScreenState extends State<VendorProfileScreen> {
-  final _authService = AuthService();
-
-  UserModel? _userModel;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _isLoading = false;
-        });
-      }
-    } else {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  void _showEditProfileDialog() {
-    final nameController =
-        TextEditingController(text: _userModel?.fullName ?? '');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Profile'),
-              content: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final user = FirebaseAuth.instance.currentUser;
-                          final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) return;
-
-                          setDialogState(() => isSaving = true);
-                          final error = await _authService.updateFullName(
-                              user.uid, newName);
-
-                          if (!mounted) return;
-                          Navigator.pop(dialogContext);
-
-                          if (error == null) {
-                            await _loadUserData(); // refresh header card
-                          }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error ?? 'Profile updated.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final passwordController = TextEditingController();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Change Password'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final newPassword = passwordController.text.trim();
-                          if (newPassword.length < 6) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Password must be 6+ characters.')),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-                          final error =
-                              await _authService.changePassword(newPassword);
-
-                          if (!mounted) return;
-                          Navigator.pop(dialogContext);
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  error ?? 'Password changed successfully.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _confirmLogout() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Log Out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _authService.signOut();
-            },
-            child: const Text('Log Out'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _settingsTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    Color? iconColor,
-    Color? textColor,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: onTap,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Header card: avatar, name, email
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primaryContainer,
-                  child: const Icon(Icons.person, size: 32),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _userModel?.fullName.isNotEmpty == true
-                            ? _userModel!.fullName
-                            : 'Name Not Set',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _userModel?.email ?? '',
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        _sectionHeader('ACCOUNT SETTINGS'),
-        Card(
-          child: Column(
-            children: [
-              _settingsTile(
-                icon: Icons.person_outline,
-                title: 'Edit Profile',
-                onTap: _showEditProfileDialog,
-              ),
-              const Divider(height: 1),
-              _settingsTile(
-                icon: Icons.lock_outline,
-                title: 'Change Password',
-                onTap: _showChangePasswordDialog,
-              ),
-            ],
-          ),
-        ),
-
-        _sectionHeader('SUPPORT & INFORMATION'),
-        Card(
-          child: Column(
-            children: [
-              _settingsTile(
-                icon: Icons.help_outline,
-                title: 'FAQ',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const FaqScreen()),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              _settingsTile(
-                icon: Icons.info_outline,
-                title: 'About StallSeeker',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AboutScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-        Card(
-          child: _settingsTile(
-            icon: Icons.logout,
-            title: 'Logout',
-            iconColor: Colors.red,
-            textColor: Colors.red,
-            onTap: _confirmLogout,
-          ),
-        ),
-      ],
-    );
-  }
-}
-````
-
 ## File: lib/features/vendor/vendor_main_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1191,6 +773,32 @@ class MenuService {
     await docRef.set(newItem.toMap());
   }
 
+  // Edit an existing item's name, price, and (optionally) photo, without
+  // touching its current status. Pass imageUrl only if a new photo was
+  // uploaded -- omit it to keep whatever photo the item already has.
+  Future<void> updateMenuItem(
+    String vendorId,
+    String itemId,
+    String name,
+    double price, {
+    String? imageUrl,
+  }) async {
+    final data = <String, dynamic>{
+      'name': name,
+      'price': price,
+    };
+    if (imageUrl != null) {
+      data['imageUrl'] = imageUrl;
+    }
+
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update(data);
+  }
+
   // Quick Traffic Light Status Update
   Future<void> updateItemStatus(
       String vendorId, String itemId, String newStatus) async {
@@ -1200,17 +808,6 @@ class MenuService {
         .collection('menu')
         .doc(itemId)
         .update({'status': newStatus});
-  }
-
-  // Update just the photo for an existing menu item
-  Future<void> updateItemImage(
-      String vendorId, String itemId, String imageUrl) async {
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .update({'imageUrl': imageUrl});
   }
 
   // Delete item
@@ -1583,6 +1180,1250 @@ class CustomerFollowingScreen extends StatelessWidget {
 }
 ````
 
+## File: lib/features/shared/faq_screen.dart
+````dart
+import 'package:flutter/material.dart';
+
+class FaqScreen extends StatelessWidget {
+  final bool isVendor;
+
+  const FaqScreen({super.key, required this.isVendor});
+
+  static const List<Map<String, String>> _vendorFaqs = [
+    {
+      'question': 'How do I mark my stall as open?',
+      'answer': 'On your Dashboard, flip the "Stall Status" switch to Open. '
+          'The app will ask for your location permission the first time '
+          '-- this is needed so customers can find you on the map.',
+    },
+    {
+      'question': 'Why is my stall not showing up on the customer map?',
+      'answer': 'Make sure your stall is toggled Open, and that you allowed '
+          'location permission when prompted. If location services are '
+          'off on your phone, the app cannot save your position.',
+    },
+    {
+      'question': 'How do I update my menu prices or stock status?',
+      'answer':
+          'Go to Dashboard > Manage Menu & Stock. Tap the colored circles '
+              'next to a dish to mark it Available, Low Stock, or Out of '
+              'Stock -- customers see this update instantly.',
+    },
+    {
+      'question': 'How do I add a photo to my stall or a menu item?',
+      'answer': 'Go to Edit Stall Profile to set your stall\'s cover photo, '
+          'or Manage Menu & Stock and tap the photo box when adding a dish '
+          'to attach a picture to that item.',
+    },
+    {
+      'question': 'Will customers be notified when I open my stall?',
+      'answer': 'Yes. Anyone who follows your stall gets a push '
+          'notification the moment you switch your status to Open.',
+    },
+    {
+      'question': 'I forgot my password. What do I do?',
+      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
+          'email. You will receive a link to reset your password.',
+    },
+  ];
+
+  static const List<Map<String, String>> _customerFaqs = [
+    {
+      'question': 'How do I find stalls near me?',
+      'answer': 'The Home tab shows a map centered on your current '
+          'location, with a live list of open stalls sorted by distance. '
+          'Use the search bar to filter by name or food category.',
+    },
+    {
+      'question': 'How do I follow a stall?',
+      'answer':
+          'Open a stall\'s details page (tap its marker on the map or its '
+              'card in the nearby list) and tap the heart icon in the top '
+              'right corner.',
+    },
+    {
+      'question': 'How will I know when a stall I follow opens?',
+      'answer': 'You will get a push notification as soon as a followed '
+          'stall switches to Open, and can tap it to jump straight to '
+          'that stall\'s page.',
+    },
+    {
+      'question': 'How do I see what a stall is selling?',
+      'answer': 'Open the stall\'s details page to see its live menu, '
+          'including which items are Available, Low Stock, or Out of '
+          'Stock.',
+    },
+    {
+      'question': 'I forgot my password. What do I do?',
+      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
+          'email. You will receive a link to reset your password.',
+    },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final faqs = isVendor ? _vendorFaqs : _customerFaqs;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('FAQ')),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: faqs.length,
+        itemBuilder: (context, index) {
+          final faq = faqs[index];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ExpansionTile(
+              title: Text(
+                faq['question']!,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  faq['answer']!,
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/menu/vendor_menu_screen.dart
+````dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/services/menu_service.dart';
+import '../../../core/services/storage_service.dart';
+
+class VendorMenuScreen extends StatefulWidget {
+  const VendorMenuScreen({super.key});
+
+  @override
+  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
+}
+
+class _VendorMenuScreenState extends State<VendorMenuScreen> {
+  final _menuService = MenuService();
+  final _storageService = StorageService();
+  final _auth = FirebaseAuth.instance;
+
+  // Shared by both Add and Edit -- existingItem is null when adding.
+  void _showItemDialog({MenuItemModel? existingItem}) {
+    final isEditing = existingItem != null;
+    final nameController =
+        TextEditingController(text: existingItem?.name ?? '');
+    final priceController = TextEditingController(
+        text:
+            existingItem != null ? existingItem.price.toStringAsFixed(2) : '');
+    File? pickedImage;
+    bool isUploading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isEditing ? 'Edit Menu Item' : 'Add Menu Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final file = await _storageService.pickImage();
+                  if (file != null) {
+                    setDialogState(() {
+                      pickedImage = file;
+                    });
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: pickedImage != null
+                      ? Image.file(pickedImage!, fit: BoxFit.cover)
+                      : (isEditing && existingItem.imageUrl.isNotEmpty)
+                          ? Image.network(
+                              existingItem.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                child:
+                                    Icon(Icons.add_a_photo, color: Colors.grey),
+                              ),
+                            )
+                          : const Center(
+                              child:
+                                  Icon(Icons.add_a_photo, color: Colors.grey),
+                            ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                    labelText: 'Item Name (e.g. Nasi Lemak)'),
+              ),
+              TextField(
+                controller: priceController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Price (RM)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isUploading
+                  ? null
+                  : () async {
+                      final name = nameController.text.trim();
+                      final price =
+                          double.tryParse(priceController.text.trim()) ?? 0.0;
+                      final user = _auth.currentUser;
+
+                      if (name.isEmpty || price <= 0 || user == null) return;
+
+                      setDialogState(() {
+                        isUploading = true;
+                      });
+
+                      if (isEditing) {
+                        // Only re-upload if the vendor picked a new photo
+                        // this time -- otherwise leave the existing one.
+                        String? newImageUrl;
+                        if (pickedImage != null) {
+                          newImageUrl =
+                              await _storageService.uploadMenuItemImage(
+                                  user.uid, existingItem.itemId, pickedImage!);
+                        }
+
+                        await _menuService.updateMenuItem(
+                          user.uid,
+                          existingItem.itemId,
+                          name,
+                          price,
+                          imageUrl: newImageUrl,
+                        );
+                      } else {
+                        // Photo needs the item's ID in its filename, so
+                        // generate the ID first if a photo was picked.
+                        String? itemId;
+                        String? imageUrl;
+                        if (pickedImage != null) {
+                          itemId = _menuService.newMenuItemId(user.uid);
+                          imageUrl = await _storageService.uploadMenuItemImage(
+                              user.uid, itemId, pickedImage!);
+                        }
+
+                        await _menuService.addMenuItem(
+                          user.uid,
+                          name,
+                          price,
+                          itemId: itemId,
+                          imageUrl: imageUrl,
+                        );
+                      }
+
+                      if (mounted) Navigator.pop(ctx);
+                    },
+              child: isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(isEditing ? 'Save' : 'Add Item'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _auth.currentUser;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manage Menu'),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showItemDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Dish'),
+      ),
+      body: user == null
+          ? const Center(child: Text('Not logged in.'))
+          : StreamBuilder<List<MenuItemModel>>(
+              stream: _menuService.getMenuItems(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final items = snapshot.data ?? [];
+
+                if (items.isEmpty) {
+                  return const Center(
+                    child:
+                        Text('No menu items added yet.\nTap + Add Dish below!'),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: item.imageUrl.isNotEmpty
+                                    ? Image.network(
+                                        item.imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                Container(
+                                          color: Colors.grey.shade200,
+                                          child: const Icon(Icons.fastfood,
+                                              color: Colors.grey),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: Colors.grey.shade200,
+                                        child: const Icon(Icons.fastfood,
+                                            color: Colors.grey),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('RM ${item.price.toStringAsFixed(2)}'),
+                                ],
+                              ),
+                            ),
+
+                            // Traffic Light Buttons
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Green Button (Available)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'available'
+                                        ? Colors.green
+                                        : Colors.green.shade100,
+                                    size: item.status == 'available' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(
+                                          user.uid, item.itemId, 'available'),
+                                ),
+                                // Yellow Button (Low Stock)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'low_stock'
+                                        ? Colors.orange
+                                        : Colors.orange.shade100,
+                                    size: item.status == 'low_stock' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(
+                                          user.uid, item.itemId, 'low_stock'),
+                                ),
+                                // Red Button (Out of Stock)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'out_of_stock'
+                                        ? Colors.red
+                                        : Colors.red.shade100,
+                                    size:
+                                        item.status == 'out_of_stock' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(user.uid,
+                                          item.itemId, 'out_of_stock'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      color: Colors.blueGrey),
+                                  onPressed: () =>
+                                      _showItemDialog(existingItem: item),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.grey),
+                                  onPressed: () => _menuService.deleteMenuItem(
+                                      user.uid, item.itemId),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/profile/edit_stall_screen.dart
+````dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../../core/services/storage_service.dart';
+
+class EditStallScreen extends StatefulWidget {
+  const EditStallScreen({super.key});
+
+  @override
+  State<EditStallScreen> createState() => _EditStallScreenState();
+}
+
+class _EditStallScreenState extends State<EditStallScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _vendorService = VendorService();
+  final _storageService = StorageService();
+  final _auth = FirebaseAuth.instance;
+
+  final _stallNameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _openingHoursController = TextEditingController();
+
+  String _selectedCategory = 'Beverages';
+  final List<String> _categories = [
+    'Beverages',
+    'Snacks & Desserts',
+    'Malay Food',
+    'Chinese Food',
+    'Indian Food',
+    'Western',
+    'Noodles',
+  ];
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isOpen = false;
+
+  // Existing photo URL loaded from Firestore, and a newly picked local
+  // file (not yet uploaded) if the vendor chose a new photo this session.
+  String _existingImageUrl = '';
+  File? _pickedImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingVendorData();
+  }
+
+  // Fetch vendor info from Firestore to pre-fill the form
+  Future<void> _loadExistingVendorData() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+      if (vendor != null) {
+        _stallNameController.text = vendor.stallName;
+        _descriptionController.text = vendor.description;
+        _openingHoursController.text = vendor.openingHours;
+        _isOpen = vendor.isOpen;
+        _existingImageUrl = vendor.imageUrl;
+        if (_categories.contains(vendor.category)) {
+          _selectedCategory = vendor.category;
+        }
+      }
+    }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final file = await _storageService.pickImage();
+    if (file != null) {
+      setState(() {
+        _pickedImage = file;
+      });
+    }
+  }
+
+  // Save updated stall profile to Firestore
+  Future<void> _saveStallProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      // Only upload if the vendor picked a new photo this session.
+      // Otherwise keep whatever URL was already saved.
+      String imageUrl = _existingImageUrl;
+      if (_pickedImage != null) {
+        imageUrl =
+            await _storageService.uploadStallImage(user.uid, _pickedImage!);
+      }
+
+      final vendor = VendorModel(
+        vendorId: user.uid,
+        stallName: _stallNameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        category: _selectedCategory,
+        openingHours: _openingHoursController.text.trim(),
+        isOpen: _isOpen,
+        imageUrl: imageUrl,
+      );
+
+      await _vendorService.saveVendorProfile(vendor);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stall profile saved successfully!')),
+        );
+        Navigator.pop(context); // Return to Dashboard
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _stallNameController.dispose();
+    _descriptionController.dispose();
+    _openingHoursController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildImagePicker() {
+    Widget imageContent;
+    if (_pickedImage != null) {
+      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
+    } else if (_existingImageUrl.isNotEmpty) {
+      imageContent = Image.network(
+        _existingImageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.storefront, size: 48, color: Colors.grey),
+      );
+    } else {
+      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
+    }
+
+    return GestureDetector(
+      onTap: _pickImage,
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 160,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageContent,
+          ),
+          Container(
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Colors.black54,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Edit Stall Profile'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: [
+                    // Stall Photo
+                    _buildImagePicker(),
+                    const SizedBox(height: 16),
+
+                    // Stall Name
+                    TextFormField(
+                      controller: _stallNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Stall Name',
+                        hintText: 'e.g. Uncle John Drink Stall',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter stall name'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Category Dropdown
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Food Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _categories.map((cat) {
+                        return DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedCategory = val;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Description
+                    TextFormField(
+                      controller: _descriptionController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'Describe your food/drinks offered...',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter description'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Operating Hours
+                    TextFormField(
+                      controller: _openingHoursController,
+                      decoration: const InputDecoration(
+                        labelText: 'Opening Hours',
+                        hintText: 'e.g. 8:00 AM - 5:00 PM',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter opening hours'
+                          : null,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Save Button
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _saveStallProfile,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: _isSaving
+                          ? const CircularProgressIndicator()
+                          : const Text(
+                              'Save Changes',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/profile/vendor_profile_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+
+class VendorProfileScreen extends StatefulWidget {
+  const VendorProfileScreen({super.key});
+
+  @override
+  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+}
+
+class _VendorProfileScreenState extends State<VendorProfileScreen> {
+  final _authService = AuthService();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showEditProfileDialog() {
+    final nameController =
+        TextEditingController(text: _userModel?.fullName ?? '');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          final newName = nameController.text.trim();
+                          if (user == null || newName.isEmpty) return;
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateFullName(
+                              user.uid, newName);
+
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
+
+                          if (error == null) {
+                            await _loadUserData(); // refresh header card
+                          }
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error ?? 'Profile updated.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final passwordController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newPassword = passwordController.text.trim();
+                          if (newPassword.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Password must be 6+ characters.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          final error =
+                              await _authService.changePassword(newPassword);
+
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  error ?? 'Password changed successfully.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _authService.signOut();
+            },
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(title, style: TextStyle(color: textColor)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      onTap: onTap,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Header card: avatar, name, email
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.person, size: 32),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _userModel?.fullName.isNotEmpty == true
+                            ? _userModel!.fullName
+                            : 'Name Not Set',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _userModel?.email ?? '',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        _sectionHeader('ACCOUNT SETTINGS'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.person_outline,
+                title: 'Edit Profile',
+                onTap: _showEditProfileDialog,
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.lock_outline,
+                title: 'Change Password',
+                onTap: _showChangePasswordDialog,
+              ),
+            ],
+          ),
+        ),
+
+        _sectionHeader('SUPPORT & INFORMATION'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.help_outline,
+                title: 'FAQ',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FaqScreen(isVendor: true)),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.info_outline,
+                title: 'About StallSeeker',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        Card(
+          child: _settingsTile(
+            icon: Icons.logout,
+            title: 'Logout',
+            iconColor: Colors.red,
+            textColor: Colors.red,
+            onTap: _confirmLogout,
+          ),
+        ),
+      ],
+    );
+  }
+}
+````
+
+## File: lib/firebase_options.dart
+````dart
+// File generated by FlutterFire CLI.
+// ignore_for_file: type=lint
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+/// Default [FirebaseOptions] for use with your Firebase apps.
+///
+/// Example:
+/// ```dart
+/// import 'firebase_options.dart';
+/// // ...
+/// await Firebase.initializeApp(
+///   options: DefaultFirebaseOptions.currentPlatform,
+/// );
+/// ```
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) {
+      return web;
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+      case TargetPlatform.iOS:
+        return ios;
+      case TargetPlatform.macOS:
+        return macos;
+      case TargetPlatform.windows:
+        return windows;
+      case TargetPlatform.linux:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for linux - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
+      default:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions are not supported for this platform.',
+        );
+    }
+  }
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:e9cb5587fb777961911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-KEBYKY2P8P',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBzTEscU-ljvVtKgSVFs-KN3J3BtDre2Cs',
+    appId: '1:793011933510:android:7127576788f40c81911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+  );
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stallseeker',
+  );
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stallseeker',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:b99eecd2060151e1911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-QFFLHPN0GT',
+  );
+}
+````
+
+## File: lib/core/models/vendor_model.dart
+````dart
+class VendorModel {
+  final String vendorId;
+  final String stallName;
+  final String description;
+  final String category;
+  final String openingHours;
+  final bool isOpen;
+  final double latitude;
+  final double longitude;
+  final String imageUrl;
+
+  VendorModel({
+    required this.vendorId,
+    required this.stallName,
+    required this.description,
+    required this.category,
+    required this.openingHours,
+    this.isOpen = false,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
+    this.imageUrl = '',
+  });
+
+  // Convert VendorModel to Map for Firestore
+  Map<String, dynamic> toMap() {
+    return {
+      'vendorId': vendorId,
+      'stallName': stallName,
+      'description': description,
+      'category': category,
+      'openingHours': openingHours,
+      'isOpen': isOpen,
+      'latitude': latitude,
+      'longitude': longitude,
+      'imageUrl': imageUrl,
+    };
+  }
+
+  // Create VendorModel from Firestore Document Snapshot
+  factory VendorModel.fromMap(Map<String, dynamic> map, String documentId) {
+    return VendorModel(
+      vendorId: documentId,
+      stallName: map['stallName'] ?? '',
+      description: map['description'] ?? '',
+      category: map['category'] ?? '',
+      openingHours: map['openingHours'] ?? '',
+      isOpen: map['isOpen'] ?? false,
+      latitude: (map['latitude'] ?? 0.0).toDouble(),
+      longitude: (map['longitude'] ?? 0.0).toDouble(),
+      imageUrl: map['imageUrl'] ?? '',
+    );
+  }
+
+  // CopyWith method for easy state updates
+  VendorModel copyWith({
+    String? stallName,
+    String? description,
+    String? category,
+    String? openingHours,
+    bool? isOpen,
+    double? latitude,
+    double? longitude,
+    String? imageUrl,
+  }) {
+    return VendorModel(
+      vendorId: vendorId,
+      stallName: stallName ?? this.stallName,
+      description: description ?? this.description,
+      category: category ?? this.category,
+      openingHours: openingHours ?? this.openingHours,
+      isOpen: isOpen ?? this.isOpen,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
+  }
+}
+````
+
 ## File: lib/features/customer/home/customer_home_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1942,14 +2783,14 @@ import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
 import '../../shared/about_screen.dart';
 
-class VendorProfileScreen extends StatefulWidget {
-  const VendorProfileScreen({super.key});
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
 
   @override
-  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
 }
 
-class _VendorProfileScreenState extends State<VendorProfileScreen> {
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   final _authService = AuthService();
 
   UserModel? _userModel;
@@ -2242,7 +3083,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const FaqScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const FaqScreen(isVendor: false)),
                   );
                 },
               ),
@@ -2273,927 +3115,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         ),
       ],
     );
-  }
-}
-````
-
-## File: lib/features/vendor/menu/vendor_menu_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/services/menu_service.dart';
-import '../../../core/services/storage_service.dart';
-
-class VendorMenuScreen extends StatefulWidget {
-  const VendorMenuScreen({super.key});
-
-  @override
-  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
-}
-
-class _VendorMenuScreenState extends State<VendorMenuScreen> {
-  final _menuService = MenuService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
-
-  void _showAddDialog() {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    File? pickedImage;
-    bool isUploading = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Menu Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  final file = await _storageService.pickImage();
-                  if (file != null) {
-                    setDialogState(() {
-                      pickedImage = file;
-                    });
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: pickedImage != null
-                      ? Image.file(pickedImage!, fit: BoxFit.cover)
-                      : const Center(
-                          child: Icon(Icons.add_a_photo, color: Colors.grey),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                    labelText: 'Item Name (e.g. Nasi Lemak)'),
-              ),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Price (RM)'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isUploading
-                  ? null
-                  : () async {
-                      final name = nameController.text.trim();
-                      final price =
-                          double.tryParse(priceController.text.trim()) ?? 0.0;
-                      final user = _auth.currentUser;
-
-                      if (name.isNotEmpty && price > 0 && user != null) {
-                        setDialogState(() {
-                          isUploading = true;
-                        });
-
-                        // Photo needs the item's ID in its filename, so
-                        // generate the ID first if a photo was picked.
-                        String? itemId;
-                        String? imageUrl;
-                        if (pickedImage != null) {
-                          itemId = _menuService.newMenuItemId(user.uid);
-                          imageUrl = await _storageService.uploadMenuItemImage(
-                              user.uid, itemId, pickedImage!);
-                        }
-
-                        await _menuService.addMenuItem(
-                          user.uid,
-                          name,
-                          price,
-                          itemId: itemId,
-                          imageUrl: imageUrl,
-                        );
-                        if (mounted) Navigator.pop(ctx);
-                      }
-                    },
-              child: isUploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Add Item'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'available':
-        return Colors.green;
-      case 'low_stock':
-        return Colors.orange;
-      case 'out_of_stock':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Menu'),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Dish'),
-      ),
-      body: user == null
-          ? const Center(child: Text('Not logged in.'))
-          : StreamBuilder<List<MenuItemModel>>(
-              stream: _menuService.getMenuItems(user.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final items = snapshot.data ?? [];
-
-                if (items.isEmpty) {
-                  return const Center(
-                    child:
-                        Text('No menu items added yet.\nTap + Add Dish below!'),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12.0),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: SizedBox(
-                                width: 48,
-                                height: 48,
-                                child: item.imageUrl.isNotEmpty
-                                    ? Image.network(
-                                        item.imageUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                Container(
-                                          color: Colors.grey.shade200,
-                                          child: const Icon(Icons.fastfood,
-                                              color: Colors.grey),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: Colors.grey.shade200,
-                                        child: const Icon(Icons.fastfood,
-                                            color: Colors.grey),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text('RM ${item.price.toStringAsFixed(2)}'),
-                                ],
-                              ),
-                            ),
-
-                            // Traffic Light Buttons
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Green Button (Available)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'available'
-                                        ? Colors.green
-                                        : Colors.green.shade100,
-                                    size: item.status == 'available' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'available'),
-                                ),
-                                // Yellow Button (Low Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'low_stock'
-                                        ? Colors.orange
-                                        : Colors.orange.shade100,
-                                    size: item.status == 'low_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'low_stock'),
-                                ),
-                                // Red Button (Out of Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'out_of_stock'
-                                        ? Colors.red
-                                        : Colors.red.shade100,
-                                    size:
-                                        item.status == 'out_of_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(user.uid,
-                                          item.itemId, 'out_of_stock'),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.grey),
-                                  onPressed: () => _menuService.deleteMenuItem(
-                                      user.uid, item.itemId),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-    );
-  }
-}
-````
-
-## File: lib/features/vendor/profile/edit_stall_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../../core/services/storage_service.dart';
-
-class EditStallScreen extends StatefulWidget {
-  const EditStallScreen({super.key});
-
-  @override
-  State<EditStallScreen> createState() => _EditStallScreenState();
-}
-
-class _EditStallScreenState extends State<EditStallScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _vendorService = VendorService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
-
-  final _stallNameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _openingHoursController = TextEditingController();
-
-  String _selectedCategory = 'Beverages';
-  final List<String> _categories = [
-    'Beverages',
-    'Snacks & Desserts',
-    'Malay Food',
-    'Chinese Food',
-    'Indian Food',
-    'Western',
-    'Noodles',
-  ];
-
-  bool _isLoading = true;
-  bool _isSaving = false;
-  bool _isOpen = false;
-
-  // Existing photo URL loaded from Firestore, and a newly picked local
-  // file (not yet uploaded) if the vendor chose a new photo this session.
-  String _existingImageUrl = '';
-  File? _pickedImage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadExistingVendorData();
-  }
-
-  // Fetch vendor info from Firestore to pre-fill the form
-  Future<void> _loadExistingVendorData() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
-      if (vendor != null) {
-        _stallNameController.text = vendor.stallName;
-        _descriptionController.text = vendor.description;
-        _openingHoursController.text = vendor.openingHours;
-        _isOpen = vendor.isOpen;
-        _existingImageUrl = vendor.imageUrl;
-        if (_categories.contains(vendor.category)) {
-          _selectedCategory = vendor.category;
-        }
-      }
-    }
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final file = await _storageService.pickImage();
-    if (file != null) {
-      setState(() {
-        _pickedImage = file;
-      });
-    }
-  }
-
-  // Save updated stall profile to Firestore
-  Future<void> _saveStallProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      // Only upload if the vendor picked a new photo this session.
-      // Otherwise keep whatever URL was already saved.
-      String imageUrl = _existingImageUrl;
-      if (_pickedImage != null) {
-        imageUrl =
-            await _storageService.uploadStallImage(user.uid, _pickedImage!);
-      }
-
-      final vendor = VendorModel(
-        vendorId: user.uid,
-        stallName: _stallNameController.text.trim(),
-        description: _descriptionController.text.trim(),
-        category: _selectedCategory,
-        openingHours: _openingHoursController.text.trim(),
-        isOpen: _isOpen,
-        imageUrl: imageUrl,
-      );
-
-      await _vendorService.saveVendorProfile(vendor);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stall profile saved successfully!')),
-        );
-        Navigator.pop(context); // Return to Dashboard
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save profile: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _stallNameController.dispose();
-    _descriptionController.dispose();
-    _openingHoursController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildImagePicker() {
-    Widget imageContent;
-    if (_pickedImage != null) {
-      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
-    } else if (_existingImageUrl.isNotEmpty) {
-      imageContent = Image.network(
-        _existingImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.storefront, size: 48, color: Colors.grey),
-      );
-    } else {
-      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
-    }
-
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          Container(
-            width: double.infinity,
-            height: 160,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: imageContent,
-          ),
-          Container(
-            margin: const EdgeInsets.all(8),
-            padding: const EdgeInsets.all(6),
-            decoration: const BoxDecoration(
-              color: Colors.black54,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Stall Profile'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  children: [
-                    // Stall Photo
-                    _buildImagePicker(),
-                    const SizedBox(height: 16),
-
-                    // Stall Name
-                    TextFormField(
-                      controller: _stallNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Stall Name',
-                        hintText: 'e.g. Uncle John Drink Stall',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter stall name'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Category Dropdown
-                    DropdownButtonFormField<String>(
-                      value: _selectedCategory,
-                      decoration: const InputDecoration(
-                        labelText: 'Food Category',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _categories.map((cat) {
-                        return DropdownMenuItem(
-                          value: cat,
-                          child: Text(cat),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedCategory = val;
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Description
-                    TextFormField(
-                      controller: _descriptionController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        hintText: 'Describe your food/drinks offered...',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter description'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Operating Hours
-                    TextFormField(
-                      controller: _openingHoursController,
-                      decoration: const InputDecoration(
-                        labelText: 'Opening Hours',
-                        hintText: 'e.g. 8:00 AM - 5:00 PM',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter opening hours'
-                          : null,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Save Button
-                    ElevatedButton(
-                      onPressed: _isSaving ? null : _saveStallProfile,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _isSaving
-                          ? const CircularProgressIndicator()
-                          : const Text(
-                              'Save Changes',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-}
-````
-
-## File: lib/firebase_options.dart
-````dart
-// File generated by FlutterFire CLI.
-// ignore_for_file: type=lint
-import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
-
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
-class DefaultFirebaseOptions {
-  static FirebaseOptions get currentPlatform {
-    if (kIsWeb) {
-      return web;
-    }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return android;
-      case TargetPlatform.iOS:
-        return ios;
-      case TargetPlatform.macOS:
-        return macos;
-      case TargetPlatform.windows:
-        return windows;
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      default:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions are not supported for this platform.',
-        );
-    }
-  }
-
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
-    appId: '1:793011933510:web:e9cb5587fb777961911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    measurementId: 'G-KEBYKY2P8P',
-  );
-
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBzTEscU-ljvVtKgSVFs-KN3J3BtDre2Cs',
-    appId: '1:793011933510:android:7127576788f40c81911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-  );
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
-    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
-    iosBundleId: 'com.example.stallseeker',
-  );
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
-    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
-    iosBundleId: 'com.example.stallseeker',
-  );
-
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
-    appId: '1:793011933510:web:b99eecd2060151e1911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    measurementId: 'G-QFFLHPN0GT',
-  );
-}
-````
-
-## File: lib/core/models/vendor_model.dart
-````dart
-class VendorModel {
-  final String vendorId;
-  final String stallName;
-  final String description;
-  final String category;
-  final String openingHours;
-  final bool isOpen;
-  final double latitude;
-  final double longitude;
-  final String imageUrl;
-
-  VendorModel({
-    required this.vendorId,
-    required this.stallName,
-    required this.description,
-    required this.category,
-    required this.openingHours,
-    this.isOpen = false,
-    this.latitude = 0.0,
-    this.longitude = 0.0,
-    this.imageUrl = '',
-  });
-
-  // Convert VendorModel to Map for Firestore
-  Map<String, dynamic> toMap() {
-    return {
-      'vendorId': vendorId,
-      'stallName': stallName,
-      'description': description,
-      'category': category,
-      'openingHours': openingHours,
-      'isOpen': isOpen,
-      'latitude': latitude,
-      'longitude': longitude,
-      'imageUrl': imageUrl,
-    };
-  }
-
-  // Create VendorModel from Firestore Document Snapshot
-  factory VendorModel.fromMap(Map<String, dynamic> map, String documentId) {
-    return VendorModel(
-      vendorId: documentId,
-      stallName: map['stallName'] ?? '',
-      description: map['description'] ?? '',
-      category: map['category'] ?? '',
-      openingHours: map['openingHours'] ?? '',
-      isOpen: map['isOpen'] ?? false,
-      latitude: (map['latitude'] ?? 0.0).toDouble(),
-      longitude: (map['longitude'] ?? 0.0).toDouble(),
-      imageUrl: map['imageUrl'] ?? '',
-    );
-  }
-
-  // CopyWith method for easy state updates
-  VendorModel copyWith({
-    String? stallName,
-    String? description,
-    String? category,
-    String? openingHours,
-    bool? isOpen,
-    double? latitude,
-    double? longitude,
-    String? imageUrl,
-  }) {
-    return VendorModel(
-      vendorId: vendorId,
-      stallName: stallName ?? this.stallName,
-      description: description ?? this.description,
-      category: category ?? this.category,
-      openingHours: openingHours ?? this.openingHours,
-      isOpen: isOpen ?? this.isOpen,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      imageUrl: imageUrl ?? this.imageUrl,
-    );
-  }
-}
-````
-
-## File: lib/core/services/auth_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/user_model.dart';
-import '../constants/firestore_collections.dart';
-
-class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // Stream of auth state changes (logged in / logged out)
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Get current Firebase user
-  User? get currentUser => _auth.currentUser;
-
-  // Register user with Email, Password, Name & Role
-  Future<String?> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String role,
-  }) async {
-    try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-
-      if (credential.user != null) {
-        UserModel newUser = UserModel(
-          uid: credential.user!.uid,
-          email: email.trim(),
-          fullName: fullName.trim(),
-          role: role,
-          createdAt: DateTime.now(),
-        );
-
-        // Save user details into Firestore 'users' collection
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(credential.user!.uid)
-            .set(newUser.toMap());
-
-        return null; // Success (no error message)
-      }
-      return "User creation failed.";
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Login user with Email & Password
-  Future<String?> login({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-      return null; // Success
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Fetch current user's data from Firestore
-  Future<UserModel?> getUserData(String uid) async {
-    try {
-      DocumentSnapshot doc = await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      }
-      return null;
-    } catch (e) {
-      print("Error fetching user data: $e");
-      return null;
-    }
-  }
-
-  // Sign Out
-  Future<void> signOut() async {
-    // Clear this device's FCM token BEFORE signing out. If we sign out
-    // first, request.auth becomes null and the security rules block the
-    // write -- so this must happen while still authenticated. Without
-    // this, a logged-out device keeps receiving push notifications for
-    // an account no longer using it.
-    final user = _auth.currentUser;
-    if (user != null) {
-      try {
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(user.uid)
-            .update({'fcmToken': FieldValue.delete()});
-      } catch (e) {
-        // Non-fatal -- proceed with sign out even if this fails
-        // (e.g. offline at the moment of logout).
-        print("Error clearing FCM token on sign out: $e");
-      }
-    }
-
-    await _auth.signOut();
-  }
-
-  // Sends Firebase's built-in password reset email. Firebase handles
-  // generating the reset link and the email itself -- this app never
-  // sees or handles the new password directly.
-  Future<String?> resetPassword({required String email}) async {
-    try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
-      return null; // Success
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "Could not send reset email.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Changes the password of the currently logged-in user.
-  // Firebase requires a "recent" login for this -- if the user logged
-  // in a while ago, this will fail with 'requires-recent-login' and
-  // they need to log out and back in first before it will work.
-  Future<String?> changePassword(String newPassword) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return "No user is currently logged in.";
-      await user.updatePassword(newPassword);
-      return null;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        return "For security, please log out and log back in before changing your password.";
-      }
-      return e.message ?? "Could not change password.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Updates just the fullName field on the user's Firestore profile
-  // document. Uses .update() (not .set()) so it only touches this one
-  // field and leaves email/role/createdAt untouched.
-  Future<String?> updateFullName(String uid, String newName) async {
-    try {
-      await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .update({'fullName': newName});
-      return null;
-    } catch (e) {
-      return e.toString();
-    }
   }
 }
 ````
@@ -3470,6 +3391,172 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
               ],
             ),
           );
+  }
+}
+````
+
+## File: lib/core/services/auth_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/user_model.dart';
+import '../constants/firestore_collections.dart';
+
+class AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Stream of auth state changes (logged in / logged out)
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Get current Firebase user
+  User? get currentUser => _auth.currentUser;
+
+  // Register user with Email, Password, Name & Role
+  Future<String?> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+    required String role,
+  }) async {
+    try {
+      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      if (credential.user != null) {
+        UserModel newUser = UserModel(
+          uid: credential.user!.uid,
+          email: email.trim(),
+          fullName: fullName.trim(),
+          role: role,
+          createdAt: DateTime.now(),
+        );
+
+        // Save user details into Firestore 'users' collection
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(credential.user!.uid)
+            .set(newUser.toMap());
+
+        return null; // Success (no error message)
+      }
+      return "User creation failed.";
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Login user with Email & Password
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Fetch current user's data from Firestore
+  Future<UserModel?> getUserData(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching user data: $e");
+      return null;
+    }
+  }
+
+  // Sign Out
+  Future<void> signOut() async {
+    // Clear this device's FCM token BEFORE signing out. If we sign out
+    // first, request.auth becomes null and the security rules block the
+    // write -- so this must happen while still authenticated. Without
+    // this, a logged-out device keeps receiving push notifications for
+    // an account no longer using it.
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .update({'fcmToken': FieldValue.delete()});
+      } catch (e) {
+        // Non-fatal -- proceed with sign out even if this fails
+        // (e.g. offline at the moment of logout).
+        print("Error clearing FCM token on sign out: $e");
+      }
+    }
+
+    await _auth.signOut();
+  }
+
+  // Sends Firebase's built-in password reset email. Firebase handles
+  // generating the reset link and the email itself -- this app never
+  // sees or handles the new password directly.
+  Future<String?> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not send reset email.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Changes the password of the currently logged-in user.
+  // Firebase requires a "recent" login for this -- if the user logged
+  // in a while ago, this will fail with 'requires-recent-login' and
+  // they need to log out and back in first before it will work.
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return "No user is currently logged in.";
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return "For security, please log out and log back in before changing your password.";
+      }
+      return e.message ?? "Could not change password.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Updates just the fullName field on the user's Firestore profile
+  // document. Uses .update() (not .set()) so it only touches this one
+  // field and leaves email/role/createdAt untouched.
+  Future<String?> updateFullName(String uid, String newName) async {
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .update({'fullName': newName});
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 }
 ````

@@ -17,9 +17,14 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
   final _storageService = StorageService();
   final _auth = FirebaseAuth.instance;
 
-  void _showAddDialog() {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
+  // Shared by both Add and Edit -- existingItem is null when adding.
+  void _showItemDialog({MenuItemModel? existingItem}) {
+    final isEditing = existingItem != null;
+    final nameController =
+        TextEditingController(text: existingItem?.name ?? '');
+    final priceController = TextEditingController(
+        text:
+            existingItem != null ? existingItem.price.toStringAsFixed(2) : '');
     File? pickedImage;
     bool isUploading = false;
 
@@ -27,7 +32,7 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Menu Item'),
+          title: Text(isEditing ? 'Edit Menu Item' : 'Add Menu Item'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -50,9 +55,20 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: pickedImage != null
                       ? Image.file(pickedImage!, fit: BoxFit.cover)
-                      : const Center(
-                          child: Icon(Icons.add_a_photo, color: Colors.grey),
-                        ),
+                      : (isEditing && existingItem.imageUrl.isNotEmpty)
+                          ? Image.network(
+                              existingItem.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                child:
+                                    Icon(Icons.add_a_photo, color: Colors.grey),
+                              ),
+                            )
+                          : const Center(
+                              child:
+                                  Icon(Icons.add_a_photo, color: Colors.grey),
+                            ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -83,11 +99,30 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                           double.tryParse(priceController.text.trim()) ?? 0.0;
                       final user = _auth.currentUser;
 
-                      if (name.isNotEmpty && price > 0 && user != null) {
-                        setDialogState(() {
-                          isUploading = true;
-                        });
+                      if (name.isEmpty || price <= 0 || user == null) return;
 
+                      setDialogState(() {
+                        isUploading = true;
+                      });
+
+                      if (isEditing) {
+                        // Only re-upload if the vendor picked a new photo
+                        // this time -- otherwise leave the existing one.
+                        String? newImageUrl;
+                        if (pickedImage != null) {
+                          newImageUrl =
+                              await _storageService.uploadMenuItemImage(
+                                  user.uid, existingItem.itemId, pickedImage!);
+                        }
+
+                        await _menuService.updateMenuItem(
+                          user.uid,
+                          existingItem.itemId,
+                          name,
+                          price,
+                          imageUrl: newImageUrl,
+                        );
+                      } else {
                         // Photo needs the item's ID in its filename, so
                         // generate the ID first if a photo was picked.
                         String? itemId;
@@ -105,8 +140,9 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                           itemId: itemId,
                           imageUrl: imageUrl,
                         );
-                        if (mounted) Navigator.pop(ctx);
                       }
+
+                      if (mounted) Navigator.pop(ctx);
                     },
               child: isUploading
                   ? const SizedBox(
@@ -114,25 +150,12 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Add Item'),
+                  : Text(isEditing ? 'Save' : 'Add Item'),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'available':
-        return Colors.green;
-      case 'low_stock':
-        return Colors.orange;
-      case 'out_of_stock':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 
   @override
@@ -144,7 +167,7 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
         title: const Text('Manage Menu'),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddDialog,
+        onPressed: () => _showItemDialog(),
         icon: const Icon(Icons.add),
         label: const Text('Add Dish'),
       ),
@@ -263,6 +286,12 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                                   onPressed: () =>
                                       _menuService.updateItemStatus(user.uid,
                                           item.itemId, 'out_of_stock'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      color: Colors.blueGrey),
+                                  onPressed: () =>
+                                      _showItemDialog(existingItem: item),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
