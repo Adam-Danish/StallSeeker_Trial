@@ -135,144 +135,6 @@ class FollowService {
 }
 ````
 
-## File: lib/core/services/notification_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import '../models/vendor_model.dart';
-import 'vendor_service.dart';
-import '../../features/customer/vendor_details/vendor_details_screen.dart';
-
-// Runs in its own isolate when a push arrives while the app is backgrounded
-// or fully closed. Android shows the system notification on its own from
-// the message's payload -- this only needs to exist so FCM has something
-// to call.
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
-
-class NotificationService {
-  NotificationService._internal();
-  static final NotificationService instance = NotificationService._internal();
-
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications =
-      FlutterLocalNotificationsPlugin();
-  final VendorService _vendorService = VendorService();
-
-  static const _channel = AndroidNotificationChannel(
-    'stallseeker_channel',
-    'StallSeeker Notifications',
-    description: 'Notifies you when a followed vendor starts selling.',
-    importance: Importance.high,
-  );
-
-  GlobalKey<NavigatorState>? _navigatorKey;
-  bool _initialized = false;
-
-  // One-time setup: creates the notification channel, requests
-  // permission, and wires up listeners for taps in every app state
-  // (foreground, background, terminated). Safe to call more than once.
-  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
-    if (_initialized) return;
-    _initialized = true;
-    _navigatorKey = navigatorKey;
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
-
-    await _localNotifications.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-      onDidReceiveNotificationResponse: (response) {
-        final vendorId = response.payload;
-        if (vendorId != null) _openVendorDetails(vendorId);
-      },
-    );
-
-    await _messaging.requestPermission();
-
-    // FCM does not show a system notification by itself while the app is
-    // in the foreground, so display one manually using the same channel.
-    FirebaseMessaging.onMessage.listen((message) {
-      final notification = message.notification;
-      final vendorId = message.data['vendorId'];
-      if (notification != null) {
-        _localNotifications.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channel.id,
-              _channel.name,
-              channelDescription: _channel.description,
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-          payload: vendorId,
-        );
-      }
-    });
-
-    // App was backgrounded and the user tapped the notification.
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final vendorId = message.data['vendorId'];
-      if (vendorId != null) _openVendorDetails(vendorId);
-    });
-
-    // App was fully closed and got launched by tapping the notification.
-    final initialMessage = await _messaging.getInitialMessage();
-    final vendorId = initialMessage?.data['vendorId'];
-    if (vendorId != null) _openVendorDetails(vendorId);
-  }
-
-  // Fetches this device's FCM token and saves it on the logged-in user's
-  // Firestore record, and keeps it updated if it ever rotates. Call this
-  // once the user is known to be logged in.
-  Future<void> syncTokenForCurrentUser() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final token = await _messaging.getToken();
-    if (token != null) {
-      await _saveToken(user.uid, token);
-    }
-
-    _messaging.onTokenRefresh.listen((newToken) {
-      final current = FirebaseAuth.instance.currentUser;
-      if (current != null) _saveToken(current.uid, newToken);
-    });
-  }
-
-  Future<void> _saveToken(String uid, String token) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .set({'fcmToken': token}, SetOptions(merge: true));
-  }
-
-  Future<void> _openVendorDetails(String vendorId) async {
-    final navState = _navigatorKey?.currentState;
-    if (navState == null) return;
-
-    final VendorModel? vendor =
-        await _vendorService.getVendorProfile(vendorId);
-    if (vendor == null) return;
-
-    navState.push(
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
-    );
-  }
-}
-````
-
 ## File: lib/core/services/storage_service.dart
 ````dart
 import 'dart:io';
@@ -972,7 +834,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(dialogContext);
-              FirebaseAuth.instance.signOut();
+              _authService.signOut();
             },
             child: const Text('Log Out'),
           ),
@@ -1363,6 +1225,143 @@ class MenuService {
 }
 ````
 
+## File: lib/core/services/notification_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../models/vendor_model.dart';
+import 'vendor_service.dart';
+import '../../features/customer/vendor_details/vendor_details_screen.dart';
+
+// Runs in its own isolate when a push arrives while the app is backgrounded
+// or fully closed. Android shows the system notification on its own from
+// the message's payload -- this only needs to exist so FCM has something
+// to call.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
+
+class NotificationService {
+  NotificationService._internal();
+  static final NotificationService instance = NotificationService._internal();
+
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+  final VendorService _vendorService = VendorService();
+
+  static const _channel = AndroidNotificationChannel(
+    'stallseeker_channel',
+    'StallSeeker Notifications',
+    description: 'Notifies you when a followed vendor starts selling.',
+    importance: Importance.high,
+  );
+
+  GlobalKey<NavigatorState>? _navigatorKey;
+  bool _initialized = false;
+
+  // One-time setup: creates the notification channel, requests
+  // permission, and wires up listeners for taps in every app state
+  // (foreground, background, terminated). Safe to call more than once.
+  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
+    if (_initialized) return;
+    _initialized = true;
+    _navigatorKey = navigatorKey;
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
+
+    await _localNotifications.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (response) {
+        final vendorId = response.payload;
+        if (vendorId != null) _openVendorDetails(vendorId);
+      },
+    );
+
+    await _messaging.requestPermission();
+
+    // FCM does not show a system notification by itself while the app is
+    // in the foreground, so display one manually using the same channel.
+    FirebaseMessaging.onMessage.listen((message) {
+      final notification = message.notification;
+      final vendorId = message.data['vendorId'];
+      if (notification != null) {
+        _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              _channel.id,
+              _channel.name,
+              channelDescription: _channel.description,
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          payload: vendorId,
+        );
+      }
+    });
+
+    // App was backgrounded and the user tapped the notification.
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final vendorId = message.data['vendorId'];
+      if (vendorId != null) _openVendorDetails(vendorId);
+    });
+
+    // App was fully closed and got launched by tapping the notification.
+    final initialMessage = await _messaging.getInitialMessage();
+    final vendorId = initialMessage?.data['vendorId'];
+    if (vendorId != null) _openVendorDetails(vendorId);
+  }
+
+  // Fetches this device's FCM token and saves it on the logged-in user's
+  // Firestore record, and keeps it updated if it ever rotates. Call this
+  // once the user is known to be logged in.
+  Future<void> syncTokenForCurrentUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final token = await _messaging.getToken();
+    if (token != null) {
+      await _saveToken(user.uid, token);
+    }
+
+    _messaging.onTokenRefresh.listen((newToken) {
+      final current = FirebaseAuth.instance.currentUser;
+      if (current != null) _saveToken(current.uid, newToken);
+    });
+  }
+
+  Future<void> _saveToken(String uid, String token) async {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set({'fcmToken': token}, SetOptions(merge: true));
+  }
+
+  Future<void> _openVendorDetails(String vendorId) async {
+    final navState = _navigatorKey?.currentState;
+    if (navState == null) return;
+
+    final VendorModel? vendor = await _vendorService.getVendorProfile(vendorId);
+    if (vendor == null) return;
+
+    navState.push(
+      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
+    );
+  }
+}
+````
+
 ## File: lib/features/auth/screens/register_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1591,6 +1590,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
@@ -1605,6 +1605,7 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _vendorService = VendorService();
+  final _authService = AuthService();
   final _searchController = TextEditingController();
 
   int _selectedIndex = 0;
@@ -1680,7 +1681,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+            onPressed: () => _authService.signOut(),
           ),
         ],
       ),
@@ -1938,35 +1939,26 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
 
-class CustomerProfileScreen extends StatefulWidget {
-  const CustomerProfileScreen({super.key});
+class VendorProfileScreen extends StatefulWidget {
+  const VendorProfileScreen({super.key});
 
   @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
+  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
 }
 
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _authService = AuthService();
-  final _nameController = TextEditingController();
-  final _newPasswordController = TextEditingController();
 
   UserModel? _userModel;
   bool _isLoading = true;
-  bool _isSavingName = false;
-  bool _isChangingPassword = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _newPasswordController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -1976,7 +1968,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       if (mounted) {
         setState(() {
           _userModel = userData;
-          _nameController.text = userData?.fullName ?? '';
           _isLoading = false;
         });
       }
@@ -1985,58 +1976,195 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     }
   }
 
-  Future<void> _saveName() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  void _showEditProfileDialog() {
+    final nameController =
+        TextEditingController(text: _userModel?.fullName ?? '');
+    bool isSaving = false;
 
-    final newName = _nameController.text.trim();
-    if (newName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name cannot be empty.')),
-      );
-      return;
-    }
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          final newName = nameController.text.trim();
+                          if (user == null || newName.isEmpty) return;
 
-    setState(() => _isSavingName = true);
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateFullName(
+                              user.uid, newName);
 
-    final error = await _authService.updateFullName(user.uid, newName);
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
 
-    if (mounted) {
-      setState(() => _isSavingName = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Name updated.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
-        ),
-      );
-    }
+                          if (error == null) {
+                            await _loadUserData(); // refresh header card
+                          }
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error ?? 'Profile updated.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
-  Future<void> _changePassword() async {
-    final newPassword = _newPasswordController.text.trim();
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be 6+ characters.')),
-      );
-      return;
-    }
+  void _showChangePasswordDialog() {
+    final passwordController = TextEditingController();
+    bool isSaving = false;
 
-    setState(() => _isChangingPassword = true);
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newPassword = passwordController.text.trim();
+                          if (newPassword.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Password must be 6+ characters.')),
+                            );
+                            return;
+                          }
 
-    final error = await _authService.changePassword(newPassword);
+                          setDialogState(() => isSaving = true);
+                          final error =
+                              await _authService.changePassword(newPassword);
 
-    if (mounted) {
-      setState(() => _isChangingPassword = false);
-      if (error == null) {
-        _newPasswordController.clear();
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Password changed successfully.'),
-          backgroundColor: error != null ? Colors.red : Colors.green,
+                          if (!mounted) return;
+                          Navigator.pop(dialogContext);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  error ?? 'Password changed successfully.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _authService.signOut();
+            },
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 0.5,
         ),
-      );
-    }
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(title, style: TextStyle(color: textColor)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      onTap: onTap,
+    );
   }
 
   @override
@@ -2046,108 +2174,101 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16),
       children: [
-        // Account info (read-only)
+        // Header card: avatar, name, email
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Text('Account Info',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                Text('Email: ${_userModel?.email ?? "N/A"}'),
-                const SizedBox(height: 4),
-                Text('Role: ${_userModel?.role ?? "N/A"}'),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Edit name
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Edit Name',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    border: OutlineInputBorder(),
-                  ),
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.person, size: 32),
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSavingName ? null : _saveName,
-                    child: _isSavingName
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Name'),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _userModel?.fullName.isNotEmpty == true
+                            ? _userModel!.fullName
+                            : 'Name Not Set',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _userModel?.email ?? '',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
 
-        // Change password
+        _sectionHeader('ACCOUNT SETTINGS'),
         Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Change Password',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _newPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isChangingPassword ? null : _changePassword,
-                    child: _isChangingPassword
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Change Password'),
-                  ),
-                ),
-              ],
-            ),
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.person_outline,
+                title: 'Edit Profile',
+                onTap: _showEditProfileDialog,
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.lock_outline,
+                title: 'Change Password',
+                onTap: _showChangePasswordDialog,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
 
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            label: const Text('Log Out', style: TextStyle(color: Colors.red)),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+        _sectionHeader('SUPPORT & INFORMATION'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.help_outline,
+                title: 'FAQ',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FaqScreen()),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.info_outline,
+                title: 'About StallSeeker',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        Card(
+          child: _settingsTile(
+            icon: Icons.logout,
+            title: 'Logout',
+            iconColor: Colors.red,
+            textColor: Colors.red,
+            onTap: _confirmLogout,
           ),
         ),
       ],
@@ -3004,6 +3125,25 @@ class AuthService {
 
   // Sign Out
   Future<void> signOut() async {
+    // Clear this device's FCM token BEFORE signing out. If we sign out
+    // first, request.auth becomes null and the security rules block the
+    // write -- so this must happen while still authenticated. Without
+    // this, a logged-out device keeps receiving push notifications for
+    // an account no longer using it.
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .update({'fcmToken': FieldValue.delete()});
+      } catch (e) {
+        // Non-fatal -- proceed with sign out even if this fails
+        // (e.g. offline at the moment of logout).
+        print("Error clearing FCM token on sign out: $e");
+      }
+    }
+
     await _auth.signOut();
   }
 

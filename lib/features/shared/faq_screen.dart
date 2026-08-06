@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 class FaqScreen extends StatelessWidget {
-  const FaqScreen({super.key});
+  final bool isVendor;
 
-  static const List<Map<String, String>> _faqs = [
+  const FaqScreen({super.key, required this.isVendor});
+
+  static const List<Map<String, String>> _vendorFaqs = [
     {
       'question': 'How do I mark my stall as open?',
       'answer': 'On your Dashboard, flip the "Stall Status" switch to Open. '
@@ -24,11 +26,48 @@ class FaqScreen extends StatelessWidget {
               'Stock -- customers see this update instantly.',
     },
     {
-      'question': 'How do I follow a stall as a customer?',
+      'question': 'How do I add a photo to my stall or a menu item?',
+      'answer': 'Go to Edit Stall Profile to set your stall\'s cover photo, '
+          'or Manage Menu & Stock and tap the photo box when adding a dish '
+          'to attach a picture to that item.',
+    },
+    {
+      'question': 'Will customers be notified when I open my stall?',
+      'answer': 'Yes. Anyone who follows your stall gets a push '
+          'notification the moment you switch your status to Open.',
+    },
+    {
+      'question': 'I forgot my password. What do I do?',
+      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
+          'email. You will receive a link to reset your password.',
+    },
+  ];
+
+  static const List<Map<String, String>> _customerFaqs = [
+    {
+      'question': 'How do I find stalls near me?',
+      'answer': 'The Home tab shows a map centered on your current '
+          'location, with a live list of open stalls sorted by distance. '
+          'Use the search bar to filter by name or food category.',
+    },
+    {
+      'question': 'How do I follow a stall?',
       'answer':
           'Open a stall\'s details page (tap its marker on the map or its '
               'card in the nearby list) and tap the heart icon in the top '
               'right corner.',
+    },
+    {
+      'question': 'How will I know when a stall I follow opens?',
+      'answer': 'You will get a push notification as soon as a followed '
+          'stall switches to Open, and can tap it to jump straight to '
+          'that stall\'s page.',
+    },
+    {
+      'question': 'How do I see what a stall is selling?',
+      'answer': 'Open the stall\'s details page to see its live menu, '
+          'including which items are Available, Low Stock, or Out of '
+          'Stock.',
     },
     {
       'question': 'I forgot my password. What do I do?',
@@ -39,13 +78,15 @@ class FaqScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final faqs = isVendor ? _vendorFaqs : _customerFaqs;
+
     return Scaffold(
       appBar: AppBar(title: const Text('FAQ')),
       body: ListView.builder(
         padding: const EdgeInsets.all(12),
-        itemCount: _faqs.length,
+        itemCount: faqs.length,
         itemBuilder: (context, index) {
-          final faq = _faqs[index];
+          final faq = faqs[index];
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: ExpansionTile(

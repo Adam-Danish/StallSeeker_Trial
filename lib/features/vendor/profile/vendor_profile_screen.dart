@@ -191,7 +191,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(dialogContext);
-              FirebaseAuth.instance.signOut();
+              _authService.signOut();
             },
             child: const Text('Log Out'),
           ),
@@ -305,7 +305,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const FaqScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const FaqScreen(isVendor: true)),
                   );
                 },
               ),

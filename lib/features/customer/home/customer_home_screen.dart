@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
@@ -17,6 +18,7 @@ class CustomerHomeScreen extends StatefulWidget {
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _vendorService = VendorService();
+  final _authService = AuthService();
   final _searchController = TextEditingController();
 
   int _selectedIndex = 0;
@@ -92,7 +94,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(),
+            onPressed: () => _authService.signOut(),
           ),
         ],
       ),

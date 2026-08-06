@@ -89,6 +89,25 @@ class AuthService {
 
   // Sign Out
   Future<void> signOut() async {
+    // Clear this device's FCM token BEFORE signing out. If we sign out
+    // first, request.auth becomes null and the security rules block the
+    // write -- so this must happen while still authenticated. Without
+    // this, a logged-out device keeps receiving push notifications for
+    // an account no longer using it.
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .update({'fcmToken': FieldValue.delete()});
+      } catch (e) {
+        // Non-fatal -- proceed with sign out even if this fails
+        // (e.g. offline at the moment of logout).
+        print("Error clearing FCM token on sign out: $e");
+      }
+    }
+
     await _auth.signOut();
   }
 
