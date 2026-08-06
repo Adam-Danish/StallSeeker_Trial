@@ -47,9 +47,24 @@ class MenuService {
     await docRef.set(newItem.toMap());
   }
 
-  // Quick Traffic Light Status Update
-  Future<void> updateItemStatus(
-      String vendorId, String itemId, String newStatus) async {
+  // Edit an existing item's name, price, and (optionally) photo, without
+  // touching its current status. Pass imageUrl only if a new photo was
+  // uploaded -- omit it to keep whatever photo the item already has.
+  Future<void> updateMenuItem(
+    String vendorId,
+    String itemId,
+    String name,
+    double price, {
+    String? imageUrl,
+  }) async {
+    final data = <String, dynamic>{
+      'name': name,
+      'price': price,
+    };
+    if (imageUrl != null) {
+      data['imageUrl'] = imageUrl;
+    }
+
     await _db
         .collection('vendors')
         .doc(vendorId)
