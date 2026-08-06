@@ -42,7 +42,7 @@ class NotificationService {
     _navigatorKey = navigatorKey;
 
     await _localNotifications
-        .resolvePlatformSpecificImplementation
+        .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_channel);
 
@@ -123,8 +123,7 @@ class NotificationService {
     final navState = _navigatorKey?.currentState;
     if (navState == null) return;
 
-    final VendorModel? vendor =
-        await _vendorService.getVendorProfile(vendorId);
+    final VendorModel? vendor = await _vendorService.getVendorProfile(vendorId);
     if (vendor == null) return;
 
     navState.push(

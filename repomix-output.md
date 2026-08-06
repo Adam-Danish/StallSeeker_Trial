@@ -86,6 +86,55 @@ lib/
 
 # Files
 
+## File: lib/core/services/follow_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class FollowService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  CollectionReference get _followsRef => _firestore.collection('follows');
+
+  // Combining customerId + vendorId into one predictable document ID
+  // means a customer can never accidentally follow the same vendor
+  // twice -- the second "follow" would just overwrite the same document.
+  String _followId(String customerId, String vendorId) =>
+      '${customerId}_$vendorId';
+
+  Future<void> followVendor(String customerId, String vendorId) async {
+    await _followsRef.doc(_followId(customerId, vendorId)).set({
+      'customerId': customerId,
+      'vendorId': vendorId,
+      'followedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> unfollowVendor(String customerId, String vendorId) async {
+    await _followsRef.doc(_followId(customerId, vendorId)).delete();
+  }
+
+  // Live stream of whether this customer currently follows this vendor.
+  // Used to show the correct Follow/Unfollow button state, and keeps it
+  // in sync automatically if changed from another device.
+  Stream<bool> isFollowing(String customerId, String vendorId) {
+    return _followsRef
+        .doc(_followId(customerId, vendorId))
+        .snapshots()
+        .map((doc) => doc.exists);
+  }
+
+  // Live stream of vendor IDs this customer follows -- used by the
+  // Following tab to build its list.
+  Stream<List<String>> getFollowedVendorIds(String customerId) {
+    return _followsRef
+        .where('customerId', isEqualTo: customerId)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
+  }
+}
+````
+
 ## File: lib/core/services/notification_service.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -220,55 +269,6 @@ class NotificationService {
     navState.push(
       MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
     );
-  }
-}
-````
-
-## File: lib/core/services/follow_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-class FollowService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  CollectionReference get _followsRef => _firestore.collection('follows');
-
-  // Combining customerId + vendorId into one predictable document ID
-  // means a customer can never accidentally follow the same vendor
-  // twice -- the second "follow" would just overwrite the same document.
-  String _followId(String customerId, String vendorId) =>
-      '${customerId}_$vendorId';
-
-  Future<void> followVendor(String customerId, String vendorId) async {
-    await _followsRef.doc(_followId(customerId, vendorId)).set({
-      'customerId': customerId,
-      'vendorId': vendorId,
-      'followedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  Future<void> unfollowVendor(String customerId, String vendorId) async {
-    await _followsRef.doc(_followId(customerId, vendorId)).delete();
-  }
-
-  // Live stream of whether this customer currently follows this vendor.
-  // Used to show the correct Follow/Unfollow button state, and keeps it
-  // in sync automatically if changed from another device.
-  Stream<bool> isFollowing(String customerId, String vendorId) {
-    return _followsRef
-        .doc(_followId(customerId, vendorId))
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  // Live stream of vendor IDs this customer follows -- used by the
-  // Following tab to build its list.
-  Stream<List<String>> getFollowedVendorIds(String customerId) {
-    return _followsRef
-        .where('customerId', isEqualTo: customerId)
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
   }
 }
 ````
@@ -3334,53 +3334,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
 }
 ````
 
-## File: lib/main.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
-import 'core/services/notification_service.dart';
-import 'features/auth/auth_wrapper.dart';
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    print('Firebase initialization error ignored: $e');
-  }
-
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await NotificationService.instance.initialize(navigatorKey);
-
-  runApp(const StallSeekerApp());
-}
-
-class StallSeekerApp extends StatelessWidget {
-  const StallSeekerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'StallSeeker',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const AuthWrapper(),
-    );
-  }
-}
-````
-
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -3569,6 +3522,53 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+````
+
+## File: lib/main.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/notification_service.dart';
+import 'features/auth/auth_wrapper.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    print('Firebase initialization error ignored: $e');
+  }
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await NotificationService.instance.initialize(navigatorKey);
+
+  runApp(const StallSeekerApp());
+}
+
+class StallSeekerApp extends StatelessWidget {
+  const StallSeekerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'StallSeeker',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const AuthWrapper(),
     );
   }
 }
