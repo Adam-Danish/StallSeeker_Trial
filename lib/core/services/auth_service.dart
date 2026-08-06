@@ -1,11 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../constants/firestore_collections.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  bool _googleSignInReady = false;
+
+  // google_sign_in v7 requires an explicit initialize() call, exactly
+  // once, before authenticate()/signOut() are used. Cheap to call
+  // repeatedly since it's guarded by the flag below.
+  Future<void> _ensureGoogleSignInReady() async {
+    if (_googleSignInReady) return;
+    await _googleSignIn.initialize();
+    _googleSignInReady = true;
+  }
 
   // Stream of auth state changes (logged in / logged out)
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -35,13 +48,12 @@ class AuthService {
           createdAt: DateTime.now(),
         );
 
-        // Save user details into Firestore 'users' collection
         await _firestore
             .collection(FirestoreCollections.users)
             .doc(credential.user!.uid)
             .set(newUser.toMap());
 
-        return null; // Success (no error message)
+        return null;
       }
       return "User creation failed.";
     } on FirebaseAuthException catch (e) {
@@ -61,9 +73,81 @@ class AuthService {
         email: email.trim(),
         password: password.trim(),
       );
-      return null; // Success
+      return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Google sign-in. Offered as a quick customer entry point -- a
+  // brand-new Google user is created as role 'customer' automatically.
+  // Vendors still register with email/password since a stall account
+  // needs the role picker anyway.
+  //
+  // Updated for google_sign_in v7: GoogleSignIn is now a singleton that
+  // must be initialize()d, signIn() was replaced by authenticate() (which
+  // throws GoogleSignInException instead of returning null on cancel),
+  // and the authentication object is synchronous and only exposes
+  // idToken (accessToken moved to a separate authorization step and
+  // isn't needed for Firebase credential sign-in).
+  Future<String?> signInWithGoogle() async {
+    try {
+      await _ensureGoogleSignInReady();
+
+      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
+
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null &&
+          (userCredential.additionalUserInfo?.isNewUser ?? false)) {
+        final newUser = UserModel(
+          uid: user.uid,
+          email: user.email ?? '',
+          fullName: user.displayName ?? '',
+          role: 'customer',
+          createdAt: DateTime.now(),
+        );
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .set(newUser.toMap());
+      }
+
+      return null;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return "cancelled"; // user closed the picker without choosing
+      }
+      return e.description ?? "Google sign-in failed.";
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        return "An account already exists with this email. Log in with your email and password instead.";
+      }
+      return e.message ?? "Google sign-in failed.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Guest mode: signs in anonymously so a customer can browse without
+  // creating an account. Anonymous users skip the Firestore users/
+  // document entirely (see AuthWrapper) and can't follow vendors --
+  // following requires converting to a real account.
+  Future<String?> signInAsGuest() async {
+    try {
+      await _auth.signInAnonymously();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not start guest session.";
     } catch (e) {
       return e.toString();
     }
@@ -82,18 +166,13 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print("Error fetching user data: $e");
+      debugPrint("Error fetching user data: $e");
       return null;
     }
   }
 
   // Sign Out
   Future<void> signOut() async {
-    // Clear this device's FCM token BEFORE signing out. If we sign out
-    // first, request.auth becomes null and the security rules block the
-    // write -- so this must happen while still authenticated. Without
-    // this, a logged-out device keeps receiving push notifications for
-    // an account no longer using it.
     final user = _auth.currentUser;
     if (user != null) {
       try {
@@ -102,22 +181,23 @@ class AuthService {
             .doc(user.uid)
             .update({'fcmToken': FieldValue.delete()});
       } catch (e) {
-        // Non-fatal -- proceed with sign out even if this fails
-        // (e.g. offline at the moment of logout).
-        print("Error clearing FCM token on sign out: $e");
+        // Non-fatal -- proceed with sign out even if this fails (e.g.
+        // offline at the moment of logout, or a guest with no
+        // Firestore document to update in the first place).
+        debugPrint("Error clearing FCM token on sign out: $e");
       }
     }
 
+    if (_googleSignInReady) {
+      await _googleSignIn.signOut();
+    }
     await _auth.signOut();
   }
 
-  // Sends Firebase's built-in password reset email. Firebase handles
-  // generating the reset link and the email itself -- this app never
-  // sees or handles the new password directly.
   Future<String?> resetPassword({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
-      return null; // Success
+      return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? "Could not send reset email.";
     } catch (e) {
@@ -125,10 +205,6 @@ class AuthService {
     }
   }
 
-  // Changes the password of the currently logged-in user.
-  // Firebase requires a "recent" login for this -- if the user logged
-  // in a while ago, this will fail with 'requires-recent-login' and
-  // they need to log out and back in first before it will work.
   Future<String?> changePassword(String newPassword) async {
     try {
       final user = _auth.currentUser;
@@ -145,9 +221,6 @@ class AuthService {
     }
   }
 
-  // Updates just the fullName field on the user's Firestore profile
-  // document. Uses .update() (not .set()) so it only touches this one
-  // field and leaves email/role/createdAt untouched.
   Future<String?> updateFullName(String uid, String newName) async {
     try {
       await _firestore

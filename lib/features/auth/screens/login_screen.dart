@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stallseeker/core/services/auth_service.dart';
 import 'package:stallseeker/features/auth/screens/register_screen.dart';
 
@@ -17,13 +19,31 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // If this screen was pushed on top of something else -- e.g. a
+    // guest was prompted to log in before following a vendor -- close
+    // it automatically once a real account signs in, so the user
+    // lands back where they were instead of getting stuck here.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null &&
+          !user.isAnonymous &&
+          mounted &&
+          Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    });
+  }
+
   void _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true); // loading spinner
+    setState(() => _isLoading = true);
 
     String? error = await _authService.login(
-      // code pauses here until firebase responds
       email: _emailController.text,
       password: _passwordController.text,
     );
@@ -39,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showForgotPasswordDialog() {
     final resetEmailController = TextEditingController(
-      text: _emailController.text, // pre-fill with whatever they already typed
+      text: _emailController.text,
     );
     bool isSending = false;
 
@@ -122,6 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

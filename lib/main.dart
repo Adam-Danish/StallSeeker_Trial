@@ -4,7 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/notification_service.dart';
-import 'features/auth/auth_wrapper.dart';
+import 'features/splash/splash_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -37,7 +37,7 @@ class StallSeekerApp extends StatelessWidget {
       title: 'StallSeeker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const AuthWrapper(),
+      home: const SplashScreen(),
     );
   }
 }

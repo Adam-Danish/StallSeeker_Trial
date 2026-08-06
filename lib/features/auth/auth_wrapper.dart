@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'screens/login_screen.dart';
+import 'screens/welcome_screen.dart';
 import '../vendor/vendor_main_screen.dart';
 import '../customer/home/customer_home_screen.dart';
 import '../../core/services/notification_service.dart';
@@ -21,15 +21,23 @@ class AuthWrapper extends StatelessWidget {
         }
 
         if (snapshot.hasData && snapshot.data != null) {
-          final String uid = snapshot.data!.uid;
+          final user = snapshot.data!;
 
-          // Save/refresh this device's push token now that we know who
-          // is logged in.
+          // Guests (anonymous sign-in) skip the Firestore role lookup
+          // entirely and go straight to the customer experience --
+          // there's no users/ document for them since they haven't
+          // created a real account.
+          if (user.isAnonymous) {
+            return const CustomerHomeScreen();
+          }
+
           NotificationService.instance.syncTokenForCurrentUser();
 
           return FutureBuilder<DocumentSnapshot>(
-            future:
-                FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get(),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
@@ -49,12 +57,12 @@ class AuthWrapper extends StatelessWidget {
                 }
               }
 
-              return const LoginScreen();
+              return const WelcomeScreen();
             },
           );
         }
 
-        return const LoginScreen();
+        return const WelcomeScreen();
       },
     );
   }

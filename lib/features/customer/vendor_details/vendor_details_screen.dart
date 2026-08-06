@@ -5,18 +5,46 @@ import '../../../core/models/vendor_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/menu_service.dart';
 import '../../../core/services/follow_service.dart';
+import '../../auth/screens/login_screen.dart';
 
 class VendorDetailsScreen extends StatelessWidget {
   final VendorModel vendor;
 
   const VendorDetailsScreen({super.key, required this.vendor});
 
-  // Opens the phone's default maps app with directions to this vendor.
   Future<void> _openNavigation() async {
     final uri = Uri.parse(
       'https://www.google.com/maps/search/?api=1&query=${vendor.latitude},${vendor.longitude}',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  void _showLoginRequiredDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create an Account'),
+        content: const Text(
+          'Following vendors requires an account. Log in or register to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+            child: const Text('Log In'),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _statusColor(String status) {
@@ -49,42 +77,49 @@ class VendorDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final menuService = MenuService();
     final followService = FollowService();
-    final customerId = FirebaseAuth.instance.currentUser?.uid;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final customerId = currentUser?.uid;
+    final isGuest = currentUser?.isAnonymous ?? true;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(vendor.stallName.isNotEmpty ? vendor.stallName : 'Stall'),
         actions: [
-          // Follow/unfollow button -- only shown if someone is logged in.
           if (customerId != null)
-            StreamBuilder<bool>(
-              stream: followService.isFollowing(customerId, vendor.vendorId),
-              builder: (context, snapshot) {
-                final isFollowing = snapshot.data ?? false;
-                return IconButton(
-                  icon: Icon(
-                    isFollowing ? Icons.favorite : Icons.favorite_border,
-                    color: isFollowing ? Colors.red : null,
+            isGuest
+                ? IconButton(
+                    icon: const Icon(Icons.favorite_border),
+                    tooltip: 'Follow',
+                    onPressed: () => _showLoginRequiredDialog(context),
+                  )
+                : StreamBuilder<bool>(
+                    stream:
+                        followService.isFollowing(customerId, vendor.vendorId),
+                    builder: (context, snapshot) {
+                      final isFollowing = snapshot.data ?? false;
+                      return IconButton(
+                        icon: Icon(
+                          isFollowing ? Icons.favorite : Icons.favorite_border,
+                          color: isFollowing ? Colors.red : null,
+                        ),
+                        tooltip: isFollowing ? 'Unfollow' : 'Follow',
+                        onPressed: () async {
+                          if (isFollowing) {
+                            await followService.unfollowVendor(
+                                customerId, vendor.vendorId);
+                          } else {
+                            await followService.followVendor(
+                                customerId, vendor.vendorId);
+                          }
+                        },
+                      );
+                    },
                   ),
-                  tooltip: isFollowing ? 'Unfollow' : 'Follow',
-                  onPressed: () async {
-                    if (isFollowing) {
-                      await followService.unfollowVendor(
-                          customerId, vendor.vendorId);
-                    } else {
-                      await followService.followVendor(
-                          customerId, vendor.vendorId);
-                    }
-                  },
-                );
-              },
-            ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // Stall cover photo -- only shown if the vendor has uploaded one.
           if (vendor.imageUrl.isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -102,8 +137,6 @@ class VendorDetailsScreen extends StatelessWidget {
               ),
             ),
           if (vendor.imageUrl.isNotEmpty) const SizedBox(height: 16),
-
-          // Stall overview card
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -151,17 +184,12 @@ class VendorDetailsScreen extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
           const Text(
             'Menu',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-
-          // Live menu list -- same stream the vendor's own menu screen
-          // uses, so any status change the vendor makes appears here
-          // instantly too.
           StreamBuilder<List<MenuItemModel>>(
             stream: menuService.getMenuItems(vendor.vendorId),
             builder: (context, snapshot) {

@@ -217,7 +217,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
 
                     // Category Dropdown
                     DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      initialValue: _selectedCategory,
                       decoration: const InputDecoration(
                         labelText: 'Food Category',
                         border: OutlineInputBorder(),
