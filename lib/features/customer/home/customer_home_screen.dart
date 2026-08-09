@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
@@ -26,6 +25,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
 
+  // True while we're still trying to get the customer's GPS position.
+  // Drives a small loading indicator on the map so it's clear the app
+  // is actively locating them, not just stuck on the default view.
+  bool _isLocatingCustomer = true;
+
   // Fallback camera position (Kuala Lumpur) used only until the
   // customer's real GPS position is obtained, or if location fails.
   static const CameraPosition _defaultPosition = CameraPosition(
@@ -48,7 +52,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // Gets the customer's current GPS position and, once found, animates
   // the map camera to center on them. Fails silently (falls back to the
   // default position) if permission is denied or GPS is off, since this
-  // is a "nice to have" and shouldn't block the whole screen.
+  // is a "nice to have" and shouldn't block the whole screen. The
+  // `finally` block guarantees the loading indicator always turns off,
+  // whether location succeeded, failed, or was denied.
   Future<void> _getCustomerLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -78,6 +84,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       );
     } catch (_) {
       // Silently keep the default map position if anything goes wrong.
+    } finally {
+      if (mounted) {
+        setState(() => _isLocatingCustomer = false);
+      }
     }
   }
 
@@ -220,6 +230,37 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
             ),
+
+            // Small "locating you" indicator, shown just below the
+            // search bar only while GPS lookup is still in progress.
+            if (_isLocatingCustomer)
+              Positioned(
+                top: 68,
+                left: 12,
+                child: Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.white,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Finding your location...',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
             if (snapshot.connectionState == ConnectionState.waiting)
               const Center(child: CircularProgressIndicator()),

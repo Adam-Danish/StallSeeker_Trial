@@ -151,6 +151,14 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // An AppBar here gives Flutter a place to automatically show a
+      // back arrow (since this screen was pushed via Navigator.push),
+      // letting the customer return to the Google/Guest options on the
+      // welcome screen if they change their mind.
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(

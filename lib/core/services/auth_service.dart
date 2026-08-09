@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -82,21 +83,23 @@ class AuthService {
   }
 
   // Google sign-in. Offered as a quick customer entry point -- a
-  // brand-new Google user is created as role 'customer' automatically.
-  // Vendors still register with email/password since a stall account
-  // needs the role picker anyway.
+  // brand-new Google user is created as role 'customer' automatically,
+  // using their Google account's display name as fullName. Vendors
+  // still register with email/password since a stall account needs the
+  // role picker anyway.
   //
-  // Updated for google_sign_in v7: GoogleSignIn is now a singleton that
-  // must be initialize()d, signIn() was replaced by authenticate() (which
-  // throws GoogleSignInException instead of returning null on cancel),
-  // and the authentication object is synchronous and only exposes
-  // idToken (accessToken moved to a separate authorization step and
-  // isn't needed for Firebase credential sign-in).
+  // A 25-second timeout is applied to the account picker step. Without
+  // this, a misconfigured SHA-1 fingerprint (the most common cause of
+  // this failing) makes the picker hang indefinitely with no error and
+  // no way forward for the user -- the timeout turns that into a clear
+  // message instead of a frozen screen.
   Future<String?> signInWithGoogle() async {
     try {
       await _ensureGoogleSignInReady();
 
-      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
+      final GoogleSignInAccount googleUser = await _googleSignIn
+          .authenticate()
+          .timeout(const Duration(seconds: 25));
 
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
@@ -104,7 +107,9 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      final userCredential = await _auth.signInWithCredential(credential);
+      final userCredential = await _auth
+          .signInWithCredential(credential)
+          .timeout(const Duration(seconds: 25));
       final user = userCredential.user;
 
       if (user != null &&
@@ -123,6 +128,11 @@ class AuthService {
       }
 
       return null;
+    } on TimeoutException {
+      return "Google Sign-In timed out. This usually means the app's "
+          "SHA-1 fingerprint isn't registered in Firebase Console yet "
+          "(Project Settings > Your apps > Android app > Add fingerprint), "
+          "or google-services.json needs to be re-downloaded after adding it.";
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return "cancelled"; // user closed the picker without choosing

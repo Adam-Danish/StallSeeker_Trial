@@ -89,172 +89,6 @@ lib/
 
 # Files
 
-## File: lib/features/auth/screens/welcome_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-
-class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  final _authService = AuthService();
-  bool _isLoading = false;
-
-  Future<void> _continueWithGoogle() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInWithGoogle();
-    if (mounted) setState(() => _isLoading = false);
-
-    // "cancelled" means the user just closed the Google picker --
-    // not a real error, so nothing to show them.
-    if (error != null && error != 'cancelled' && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-    // On success, AuthWrapper's auth-state stream swaps this screen
-    // out automatically -- no manual navigation needed here.
-  }
-
-  Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInAsGuest();
-    if (mounted) setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.storefront, size: 64, color: AppColors.primary),
-              const SizedBox(height: 12),
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Find nearby food stalls, live.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 40),
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _continueWithGoogle,
-                icon: const Icon(Icons.login),
-                label: const Text('Continue with Google'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _isLoading ? null : _continueAsGuest,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('Continue as Guest'),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen()),
-                        );
-                      },
-                child: const Text('Log In with Email'),
-              ),
-              if (_isLoading) ...[
-                const SizedBox(height: 16),
-                const Center(child: CircularProgressIndicator()),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
-## File: lib/features/splash/splash_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../auth/auth_wrapper.dart';
-
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AuthWrapper()),
-        );
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: AppColors.primary,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.storefront, size: 72, color: Colors.white),
-            SizedBox(height: 16),
-            Text(
-              'StallSeeker',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/core/services/follow_service.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -441,262 +275,114 @@ class AppTheme {
 }
 ````
 
-## File: lib/features/customer/vendor_details/vendor_details_screen.dart
+## File: lib/features/auth/screens/welcome_screen.dart
 ````dart
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/services/menu_service.dart';
-import '../../../core/services/follow_service.dart';
-import '../../auth/screens/login_screen.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
 
-class VendorDetailsScreen extends StatelessWidget {
-  final VendorModel vendor;
+class WelcomeScreen extends StatefulWidget {
+  const WelcomeScreen({super.key});
 
-  const VendorDetailsScreen({super.key, required this.vendor});
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
 
-  Future<void> _openNavigation() async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${vendor.latitude},${vendor.longitude}',
-    );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _authService = AuthService();
+  bool _isLoading = false;
 
-  void _showLoginRequiredDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create an Account'),
-        content: const Text(
-          'Following vendors requires an account. Log in or register to continue.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Not Now'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-            },
-            child: const Text('Log In'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _continueWithGoogle() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInWithGoogle();
+    if (mounted) setState(() => _isLoading = false);
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'available':
-        return Colors.green;
-      case 'low_stock':
-        return Colors.orange;
-      case 'out_of_stock':
-        return Colors.red;
-      default:
-        return Colors.grey;
+    // "cancelled" means the user just closed the Google picker --
+    // not a real error, so nothing to show them.
+    if (error != null && error != 'cancelled' && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
     }
+    // On success, AuthWrapper's auth-state stream swaps this screen
+    // out automatically -- no manual navigation needed here.
   }
 
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'available':
-        return 'Available';
-      case 'low_stock':
-        return 'Low Stock';
-      case 'out_of_stock':
-        return 'Out of Stock';
-      default:
-        return status;
+  Future<void> _continueAsGuest() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInAsGuest();
+    if (mounted) setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final menuService = MenuService();
-    final followService = FollowService();
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final customerId = currentUser?.uid;
-    final isGuest = currentUser?.isAnonymous ?? true;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(vendor.stallName.isNotEmpty ? vendor.stallName : 'Stall'),
-        actions: [
-          if (customerId != null)
-            isGuest
-                ? IconButton(
-                    icon: const Icon(Icons.favorite_border),
-                    tooltip: 'Follow',
-                    onPressed: () => _showLoginRequiredDialog(context),
-                  )
-                : StreamBuilder<bool>(
-                    stream:
-                        followService.isFollowing(customerId, vendor.vendorId),
-                    builder: (context, snapshot) {
-                      final isFollowing = snapshot.data ?? false;
-                      return IconButton(
-                        icon: Icon(
-                          isFollowing ? Icons.favorite : Icons.favorite_border,
-                          color: isFollowing ? Colors.red : null,
-                        ),
-                        tooltip: isFollowing ? 'Unfollow' : 'Follow',
-                        onPressed: () async {
-                          if (isFollowing) {
-                            await followService.unfollowVendor(
-                                customerId, vendor.vendorId);
-                          } else {
-                            await followService.followVendor(
-                                customerId, vendor.vendorId);
-                          }
-                        },
-                      );
-                    },
-                  ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          if (vendor.imageUrl.isNotEmpty)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                vendor.imageUrl,
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 160,
-                  color: Colors.grey.shade200,
-                  child: const Icon(Icons.storefront,
-                      size: 48, color: Colors.grey),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.storefront, size: 64, color: AppColors.primary),
+              const SizedBox(height: 12),
+              const Text(
+                'StallSeeker',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Find nearby food stalls, live.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 40),
+              ElevatedButton.icon(
+                onPressed: _isLoading ? null : _continueWithGoogle,
+                icon: const Icon(Icons.login),
+                label: const Text('Continue with Google'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
                 ),
               ),
-            ),
-          if (vendor.imageUrl.isNotEmpty) const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.circle,
-                        size: 12,
-                        color: vendor.isOpen ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        vendor.isOpen ? 'Open now' : 'Closed',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: vendor.isOpen ? Colors.green : Colors.red,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Category: ${vendor.category}'),
-                  const SizedBox(height: 4),
-                  Text('Hours: ${vendor.openingHours}'),
-                  const SizedBox(height: 8),
-                  Text(
-                    vendor.description.isNotEmpty
-                        ? vendor.description
-                        : 'No description provided.',
-                    style: TextStyle(color: Colors.grey.shade700),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.directions),
-                      label: const Text('Navigate'),
-                      onPressed: _openNavigation,
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: _isLoading ? null : _continueAsGuest,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Continue as Guest'),
               ),
-            ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const LoginScreen()),
+                        );
+                      },
+                child: const Text('Log In with Email'),
+              ),
+              if (_isLoading) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Menu',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          StreamBuilder<List<MenuItemModel>>(
-            stream: menuService.getMenuItems(vendor.vendorId),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-
-              final items = snapshot.data ?? [];
-
-              if (items.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: Text('No menu items yet.')),
-                );
-              }
-
-              return Column(
-                children: items.map((item) {
-                  return Card(
-                    child: ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: item.imageUrl.isNotEmpty
-                              ? Image.network(
-                                  item.imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Container(
-                                    color: Colors.grey.shade200,
-                                    child: const Icon(Icons.fastfood,
-                                        color: Colors.grey),
-                                  ),
-                                )
-                              : Container(
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(Icons.fastfood,
-                                      color: Colors.grey),
-                                ),
-                        ),
-                      ),
-                      title: Text(item.name),
-                      subtitle: Text('RM ${item.price.toStringAsFixed(2)}'),
-                      trailing: Chip(
-                        label: Text(
-                          _statusLabel(item.status),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        backgroundColor: _statusColor(item.status),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -756,6 +442,58 @@ class AboutScreen extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/splash/splash_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+import '../auth/auth_wrapper.dart';
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AuthWrapper()),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.primary,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.storefront, size: 72, color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'StallSeeker',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1056,125 +794,6 @@ class NotificationService {
 }
 ````
 
-## File: lib/features/auth/screens/register_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  String _selectedRole = 'customer';
-  bool _isLoading = false;
-
-  void _register() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    String? error = await _authService.signUp(
-      email: _emailController.text,
-      password: _passwordController.text,
-      fullName: _fullNameController.text,
-      role: _selectedRole,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    } else if (mounted) {
-      Navigator.pop(context); // Go back to login after successful registration
-    }
-  }
-
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _fullNameController,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter your name' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (val) => val == null || !val.contains('@')
-                      ? 'Enter a valid email'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  obscureText: true,
-                  validator: (val) => val == null || val.length < 6
-                      ? 'Password must be 6+ chars'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedRole,
-                  decoration: const InputDecoration(labelText: 'I am a...'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'customer', child: Text('Customer')),
-                    DropdownMenuItem(
-                        value: 'vendor', child: Text('Vendor / Stall Owner')),
-                  ],
-                  onChanged: (val) => setState(() => _selectedRole = val!),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
-                  child: _isLoading
-                      ? const CircularProgressIndicator()
-                      : const Text('Register'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/customer/following/customer_following_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1272,6 +891,268 @@ class CustomerFollowingScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+````
+
+## File: lib/features/customer/vendor_details/vendor_details_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/services/menu_service.dart';
+import '../../../core/services/follow_service.dart';
+import '../../auth/screens/login_screen.dart';
+
+class VendorDetailsScreen extends StatelessWidget {
+  final VendorModel vendor;
+
+  const VendorDetailsScreen({super.key, required this.vendor});
+
+  Future<void> _openNavigation() async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${vendor.latitude},${vendor.longitude}',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  void _showLoginRequiredDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create an Account'),
+        content: const Text(
+          'Following vendors requires an account. Log in or register to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+            child: const Text('Log In'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'available':
+        return Colors.green;
+      case 'low_stock':
+        return Colors.orange;
+      case 'out_of_stock':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'available':
+        return 'Available';
+      case 'low_stock':
+        return 'Low Stock';
+      case 'out_of_stock':
+        return 'Out of Stock';
+      default:
+        return status;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final menuService = MenuService();
+    final followService = FollowService();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final customerId = currentUser?.uid;
+    final isGuest = currentUser?.isAnonymous ?? true;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(vendor.stallName.isNotEmpty ? vendor.stallName : 'Stall'),
+        actions: [
+          if (customerId != null)
+            isGuest
+                ? IconButton(
+                    icon: const Icon(Icons.favorite_border),
+                    tooltip: 'Follow',
+                    onPressed: () => _showLoginRequiredDialog(context),
+                  )
+                : StreamBuilder<bool>(
+                    stream:
+                        followService.isFollowing(customerId, vendor.vendorId),
+                    builder: (context, snapshot) {
+                      final isFollowing = snapshot.data ?? false;
+                      return IconButton(
+                        icon: Icon(
+                          isFollowing ? Icons.favorite : Icons.favorite_border,
+                          color: isFollowing ? Colors.red : null,
+                        ),
+                        tooltip: isFollowing ? 'Unfollow' : 'Follow',
+                        onPressed: () async {
+                          if (isFollowing) {
+                            await followService.unfollowVendor(
+                                customerId, vendor.vendorId);
+                          } else {
+                            await followService.followVendor(
+                                customerId, vendor.vendorId);
+                          }
+                        },
+                      );
+                    },
+                  ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          if (vendor.imageUrl.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                vendor.imageUrl,
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  height: 160,
+                  color: Colors.grey.shade200,
+                  child: const Icon(Icons.storefront,
+                      size: 48, color: Colors.grey),
+                ),
+              ),
+            ),
+          if (vendor.imageUrl.isNotEmpty) const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size: 12,
+                        color: vendor.isOpen ? Colors.green : Colors.red,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        vendor.isOpen ? 'Open now' : 'Closed',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: vendor.isOpen ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Category: ${vendor.category}'),
+                  const SizedBox(height: 4),
+                  Text('Hours: ${vendor.openingHours}'),
+                  const SizedBox(height: 8),
+                  Text(
+                    vendor.description.isNotEmpty
+                        ? vendor.description
+                        : 'No description provided.',
+                    style: TextStyle(color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.directions),
+                      label: const Text('Navigate'),
+                      onPressed: _openNavigation,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Menu',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          StreamBuilder<List<MenuItemModel>>(
+            stream: menuService.getMenuItems(vendor.vendorId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              final items = snapshot.data ?? [];
+
+              if (items.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text('No menu items yet.')),
+                );
+              }
+
+              return Column(
+                children: items.map((item) {
+                  return Card(
+                    child: ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: item.imageUrl.isNotEmpty
+                              ? Image.network(
+                                  item.imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.fastfood,
+                                        color: Colors.grey),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(Icons.fastfood,
+                                      color: Colors.grey),
+                                ),
+                        ),
+                      ),
+                      title: Text(item.name),
+                      subtitle: Text('RM ${item.price.toStringAsFixed(2)}'),
+                      trailing: Chip(
+                        label: Text(
+                          _statusLabel(item.status),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: _statusColor(item.status),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1387,299 +1268,6 @@ class FaqScreen extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-````
-
-## File: lib/features/vendor/profile/edit_stall_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../../core/services/storage_service.dart';
-
-class EditStallScreen extends StatefulWidget {
-  const EditStallScreen({super.key});
-
-  @override
-  State<EditStallScreen> createState() => _EditStallScreenState();
-}
-
-class _EditStallScreenState extends State<EditStallScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _vendorService = VendorService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
-
-  final _stallNameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _openingHoursController = TextEditingController();
-
-  String _selectedCategory = 'Beverages';
-  final List<String> _categories = [
-    'Beverages',
-    'Snacks & Desserts',
-    'Malay Food',
-    'Chinese Food',
-    'Indian Food',
-    'Western',
-    'Noodles',
-  ];
-
-  bool _isLoading = true;
-  bool _isSaving = false;
-  bool _isOpen = false;
-
-  // Existing photo URL loaded from Firestore, and a newly picked local
-  // file (not yet uploaded) if the vendor chose a new photo this session.
-  String _existingImageUrl = '';
-  File? _pickedImage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadExistingVendorData();
-  }
-
-  // Fetch vendor info from Firestore to pre-fill the form
-  Future<void> _loadExistingVendorData() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
-      if (vendor != null) {
-        _stallNameController.text = vendor.stallName;
-        _descriptionController.text = vendor.description;
-        _openingHoursController.text = vendor.openingHours;
-        _isOpen = vendor.isOpen;
-        _existingImageUrl = vendor.imageUrl;
-        if (_categories.contains(vendor.category)) {
-          _selectedCategory = vendor.category;
-        }
-      }
-    }
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final file = await _storageService.pickImage();
-    if (file != null) {
-      setState(() {
-        _pickedImage = file;
-      });
-    }
-  }
-
-  // Save updated stall profile to Firestore
-  Future<void> _saveStallProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      // Only upload if the vendor picked a new photo this session.
-      // Otherwise keep whatever URL was already saved.
-      String imageUrl = _existingImageUrl;
-      if (_pickedImage != null) {
-        imageUrl =
-            await _storageService.uploadStallImage(user.uid, _pickedImage!);
-      }
-
-      final vendor = VendorModel(
-        vendorId: user.uid,
-        stallName: _stallNameController.text.trim(),
-        description: _descriptionController.text.trim(),
-        category: _selectedCategory,
-        openingHours: _openingHoursController.text.trim(),
-        isOpen: _isOpen,
-        imageUrl: imageUrl,
-      );
-
-      await _vendorService.saveVendorProfile(vendor);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stall profile saved successfully!')),
-        );
-        Navigator.pop(context); // Return to Dashboard
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save profile: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _stallNameController.dispose();
-    _descriptionController.dispose();
-    _openingHoursController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildImagePicker() {
-    Widget imageContent;
-    if (_pickedImage != null) {
-      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
-    } else if (_existingImageUrl.isNotEmpty) {
-      imageContent = Image.network(
-        _existingImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.storefront, size: 48, color: Colors.grey),
-      );
-    } else {
-      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
-    }
-
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          Container(
-            width: double.infinity,
-            height: 160,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: imageContent,
-          ),
-          Container(
-            margin: const EdgeInsets.all(8),
-            padding: const EdgeInsets.all(6),
-            decoration: const BoxDecoration(
-              color: Colors.black54,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Stall Profile'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  children: [
-                    // Stall Photo
-                    _buildImagePicker(),
-                    const SizedBox(height: 16),
-
-                    // Stall Name
-                    TextFormField(
-                      controller: _stallNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Stall Name',
-                        hintText: 'e.g. Uncle John Drink Stall',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter stall name'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Category Dropdown
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedCategory,
-                      decoration: const InputDecoration(
-                        labelText: 'Food Category',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _categories.map((cat) {
-                        return DropdownMenuItem(
-                          value: cat,
-                          child: Text(cat),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedCategory = val;
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Description
-                    TextFormField(
-                      controller: _descriptionController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        hintText: 'Describe your food/drinks offered...',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter description'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Operating Hours
-                    TextFormField(
-                      controller: _openingHoursController,
-                      decoration: const InputDecoration(
-                        labelText: 'Opening Hours',
-                        hintText: 'e.g. 8:00 AM - 5:00 PM',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter opening hours'
-                          : null,
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Save Button
-                    ElevatedButton(
-                      onPressed: _isSaving ? null : _saveStallProfile,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _isSaving
-                          ? const CircularProgressIndicator()
-                          : const Text(
-                              'Save Changes',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
     );
   }
 }
@@ -2199,6 +1787,836 @@ class VendorModel {
       longitude: longitude ?? this.longitude,
       imageUrl: imageUrl ?? this.imageUrl,
     );
+  }
+}
+````
+
+## File: lib/features/auth/screens/register_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:stallseeker/core/services/auth_service.dart';
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  String _selectedRole = 'customer';
+  bool _isLoading = false;
+
+  void _register() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    String? error = await _authService.signUp(
+      email: _emailController.text,
+      password: _passwordController.text,
+      fullName: _fullNameController.text,
+      role: _selectedRole,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    } else if (mounted) {
+      Navigator.pop(context); // Go back to login after successful registration
+    }
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Create Account')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: _fullNameController,
+                  decoration: const InputDecoration(labelText: 'Full Name'),
+                  validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter your name' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (val) => val == null || !val.contains('@')
+                      ? 'Enter a valid email'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passwordController,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                  validator: (val) => val == null || val.length < 6
+                      ? 'Password must be 6+ chars'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedRole,
+                  decoration: const InputDecoration(labelText: 'I am a...'),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'customer', child: Text('Customer')),
+                    DropdownMenuItem(
+                        value: 'vendor', child: Text('Vendor / Stall Owner')),
+                  ],
+                  onChanged: (val) => setState(() => _selectedRole = val!),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _register,
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text('Register'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/menu/vendor_menu_screen.dart
+````dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/services/menu_service.dart';
+import '../../../core/services/storage_service.dart';
+
+class VendorMenuScreen extends StatefulWidget {
+  const VendorMenuScreen({super.key});
+
+  @override
+  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
+}
+
+class _VendorMenuScreenState extends State<VendorMenuScreen> {
+  final _menuService = MenuService();
+  final _storageService = StorageService();
+  final _auth = FirebaseAuth.instance;
+
+  // Shared by both Add and Edit -- existingItem is null when adding.
+  void _showItemDialog({MenuItemModel? existingItem}) {
+    final isEditing = existingItem != null;
+    final nameController =
+        TextEditingController(text: existingItem?.name ?? '');
+    final priceController = TextEditingController(
+        text:
+            existingItem != null ? existingItem.price.toStringAsFixed(2) : '');
+    File? pickedImage;
+    bool isUploading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isEditing ? 'Edit Menu Item' : 'Add Menu Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final file = await _storageService.pickImage();
+                  if (file != null) {
+                    setDialogState(() {
+                      pickedImage = file;
+                    });
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: pickedImage != null
+                      ? Image.file(pickedImage!, fit: BoxFit.cover)
+                      : (isEditing && existingItem.imageUrl.isNotEmpty)
+                          ? Image.network(
+                              existingItem.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(
+                                child:
+                                    Icon(Icons.add_a_photo, color: Colors.grey),
+                              ),
+                            )
+                          : const Center(
+                              child:
+                                  Icon(Icons.add_a_photo, color: Colors.grey),
+                            ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                    labelText: 'Item Name (e.g. Nasi Lemak)'),
+              ),
+              TextField(
+                controller: priceController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Price (RM)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isUploading
+                  ? null
+                  : () async {
+                      final name = nameController.text.trim();
+                      final price =
+                          double.tryParse(priceController.text.trim()) ?? 0.0;
+                      final user = _auth.currentUser;
+
+                      if (name.isEmpty || price <= 0 || user == null) return;
+
+                      setDialogState(() {
+                        isUploading = true;
+                      });
+
+                      if (isEditing) {
+                        // Only re-upload if the vendor picked a new photo
+                        // this time -- otherwise leave the existing one.
+                        String? newImageUrl;
+                        if (pickedImage != null) {
+                          newImageUrl =
+                              await _storageService.uploadMenuItemImage(
+                                  user.uid, existingItem.itemId, pickedImage!);
+                        }
+
+                        await _menuService.updateMenuItem(
+                          user.uid,
+                          existingItem.itemId,
+                          name,
+                          price,
+                          imageUrl: newImageUrl,
+                        );
+                      } else {
+                        // Photo needs the item's ID in its filename, so
+                        // generate the ID first if a photo was picked.
+                        String? itemId;
+                        String? imageUrl;
+                        if (pickedImage != null) {
+                          itemId = _menuService.newMenuItemId(user.uid);
+                          imageUrl = await _storageService.uploadMenuItemImage(
+                              user.uid, itemId, pickedImage!);
+                        }
+
+                        await _menuService.addMenuItem(
+                          user.uid,
+                          name,
+                          price,
+                          itemId: itemId,
+                          imageUrl: imageUrl,
+                        );
+                      }
+
+                      if (mounted) Navigator.pop(ctx);
+                    },
+              child: isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(isEditing ? 'Save' : 'Add Item'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _auth.currentUser;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Manage Menu'),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showItemDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Dish'),
+      ),
+      body: user == null
+          ? const Center(child: Text('Not logged in.'))
+          : StreamBuilder<List<MenuItemModel>>(
+              stream: _menuService.getMenuItems(user.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final items = snapshot.data ?? [];
+
+                if (items.isEmpty) {
+                  return const Center(
+                    child:
+                        Text('No menu items added yet.\nTap + Add Dish below!'),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: item.imageUrl.isNotEmpty
+                                    ? Image.network(
+                                        item.imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                Container(
+                                          color: Colors.grey.shade200,
+                                          child: const Icon(Icons.fastfood,
+                                              color: Colors.grey),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: Colors.grey.shade200,
+                                        child: const Icon(Icons.fastfood,
+                                            color: Colors.grey),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text('RM ${item.price.toStringAsFixed(2)}'),
+                                ],
+                              ),
+                            ),
+
+                            // Traffic Light Buttons
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Green Button (Available)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'available'
+                                        ? Colors.green
+                                        : Colors.green.shade100,
+                                    size: item.status == 'available' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(
+                                          user.uid, item.itemId, 'available'),
+                                ),
+                                // Yellow Button (Low Stock)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'low_stock'
+                                        ? Colors.orange
+                                        : Colors.orange.shade100,
+                                    size: item.status == 'low_stock' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(
+                                          user.uid, item.itemId, 'low_stock'),
+                                ),
+                                // Red Button (Out of Stock)
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.circle,
+                                    color: item.status == 'out_of_stock'
+                                        ? Colors.red
+                                        : Colors.red.shade100,
+                                    size:
+                                        item.status == 'out_of_stock' ? 28 : 20,
+                                  ),
+                                  onPressed: () =>
+                                      _menuService.updateItemStatus(user.uid,
+                                          item.itemId, 'out_of_stock'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      color: Colors.blueGrey),
+                                  onPressed: () =>
+                                      _showItemDialog(existingItem: item),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.grey),
+                                  onPressed: () => _menuService.deleteMenuItem(
+                                      user.uid, item.itemId),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/profile/edit_stall_screen.dart
+````dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../../core/services/storage_service.dart';
+
+class EditStallScreen extends StatefulWidget {
+  const EditStallScreen({super.key});
+
+  @override
+  State<EditStallScreen> createState() => _EditStallScreenState();
+}
+
+class _EditStallScreenState extends State<EditStallScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _vendorService = VendorService();
+  final _storageService = StorageService();
+  final _auth = FirebaseAuth.instance;
+
+  final _stallNameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _openingHoursController = TextEditingController();
+
+  String _selectedCategory = 'Beverages';
+  final List<String> _categories = [
+    'Beverages',
+    'Snacks & Desserts',
+    'Malay Food',
+    'Chinese Food',
+    'Indian Food',
+    'Western',
+    'Noodles',
+  ];
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isOpen = false;
+
+  // Existing photo URL loaded from Firestore, and a newly picked local
+  // file (not yet uploaded) if the vendor chose a new photo this session.
+  String _existingImageUrl = '';
+  File? _pickedImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingVendorData();
+  }
+
+  // Fetch vendor info from Firestore to pre-fill the form
+  Future<void> _loadExistingVendorData() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+      if (vendor != null) {
+        _stallNameController.text = vendor.stallName;
+        _descriptionController.text = vendor.description;
+        _openingHoursController.text = vendor.openingHours;
+        _isOpen = vendor.isOpen;
+        _existingImageUrl = vendor.imageUrl;
+        if (_categories.contains(vendor.category)) {
+          _selectedCategory = vendor.category;
+        }
+      }
+    }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final file = await _storageService.pickImage();
+    if (file != null) {
+      setState(() {
+        _pickedImage = file;
+      });
+    }
+  }
+
+  // Save updated stall profile to Firestore
+  Future<void> _saveStallProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      // Only upload if the vendor picked a new photo this session.
+      // Otherwise keep whatever URL was already saved.
+      String imageUrl = _existingImageUrl;
+      if (_pickedImage != null) {
+        imageUrl =
+            await _storageService.uploadStallImage(user.uid, _pickedImage!);
+      }
+
+      final vendor = VendorModel(
+        vendorId: user.uid,
+        stallName: _stallNameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        category: _selectedCategory,
+        openingHours: _openingHoursController.text.trim(),
+        isOpen: _isOpen,
+        imageUrl: imageUrl,
+      );
+
+      await _vendorService.saveVendorProfile(vendor);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stall profile saved successfully!')),
+        );
+        Navigator.pop(context); // Return to Dashboard
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _stallNameController.dispose();
+    _descriptionController.dispose();
+    _openingHoursController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildImagePicker() {
+    Widget imageContent;
+    if (_pickedImage != null) {
+      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
+    } else if (_existingImageUrl.isNotEmpty) {
+      imageContent = Image.network(
+        _existingImageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.storefront, size: 48, color: Colors.grey),
+      );
+    } else {
+      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
+    }
+
+    return GestureDetector(
+      onTap: _pickImage,
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 160,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageContent,
+          ),
+          Container(
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Colors.black54,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Edit Stall Profile'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: [
+                    // Stall Photo
+                    _buildImagePicker(),
+                    const SizedBox(height: 16),
+
+                    // Stall Name
+                    TextFormField(
+                      controller: _stallNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Stall Name',
+                        hintText: 'e.g. Uncle John Drink Stall',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter stall name'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Category Dropdown
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Food Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _categories.map((cat) {
+                        return DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedCategory = val;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Description
+                    TextFormField(
+                      controller: _descriptionController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'Describe your food/drinks offered...',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter description'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Operating Hours
+                    TextFormField(
+                      controller: _openingHoursController,
+                      decoration: const InputDecoration(
+                        labelText: 'Opening Hours',
+                        hintText: 'e.g. 8:00 AM - 5:00 PM',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter opening hours'
+                          : null,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Save Button
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _saveStallProfile,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: _isSaving
+                          ? const CircularProgressIndicator()
+                          : const Text(
+                              'Save Changes',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+````
+
+## File: lib/core/services/menu_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/menu_item_model.dart';
+
+class MenuService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // Stream menu items for a specific vendor
+  Stream<List<MenuItemModel>> getMenuItems(String vendorId) {
+    return _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => MenuItemModel.fromMap(doc.data(), doc.id))
+            .toList());
+  }
+
+  // Generates a new, unused document ID for a menu item before it exists.
+  // Needed when a photo has to be uploaded (and named after the item's ID)
+  // before the item document itself is written.
+  String newMenuItemId(String vendorId) {
+    return _db.collection('vendors').doc(vendorId).collection('menu').doc().id;
+  }
+
+  // Add new menu item. Pass itemId (from newMenuItemId) when a photo was
+  // uploaded ahead of time so the item is saved under that same ID.
+  Future<void> addMenuItem(
+    String vendorId,
+    String name,
+    double price, {
+    String? itemId,
+    String? imageUrl,
+  }) async {
+    final docRef = itemId != null
+        ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
+        : _db.collection('vendors').doc(vendorId).collection('menu').doc();
+
+    final newItem = MenuItemModel(
+      itemId: docRef.id,
+      name: name,
+      price: price,
+      status: 'available',
+      imageUrl: imageUrl ?? '',
+    );
+
+    await docRef.set(newItem.toMap());
+  }
+
+  // Edit an existing item's name, price, and (optionally) photo, without
+  // touching its current status. Pass imageUrl only if a new photo was
+  // uploaded -- omit it to keep whatever photo the item already has.
+  Future<void> updateMenuItem(
+    String vendorId,
+    String itemId,
+    String name,
+    double price, {
+    String? imageUrl,
+  }) async {
+    final data = <String, dynamic>{
+      'name': name,
+      'price': price,
+    };
+    if (imageUrl != null) {
+      data['imageUrl'] = imageUrl;
+    }
+
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update(data);
+  }
+
+  // Quick Traffic Light Status Update
+  Future<void> updateItemStatus(
+      String vendorId, String itemId, String newStatus) async {
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update({'status': newStatus});
+  }
+
+  // Delete item
+  Future<void> deleteMenuItem(String vendorId, String itemId) async {
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .delete();
   }
 }
 ````
@@ -3259,328 +3677,11 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
 }
 ````
 
-## File: lib/features/vendor/menu/vendor_menu_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/services/menu_service.dart';
-import '../../../core/services/storage_service.dart';
-
-class VendorMenuScreen extends StatefulWidget {
-  const VendorMenuScreen({super.key});
-
-  @override
-  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
-}
-
-class _VendorMenuScreenState extends State<VendorMenuScreen> {
-  final _menuService = MenuService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
-
-  // Shared by both Add and Edit -- existingItem is null when adding.
-  void _showItemDialog({MenuItemModel? existingItem}) {
-    final isEditing = existingItem != null;
-    final nameController =
-        TextEditingController(text: existingItem?.name ?? '');
-    final priceController = TextEditingController(
-        text:
-            existingItem != null ? existingItem.price.toStringAsFixed(2) : '');
-    File? pickedImage;
-    bool isUploading = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEditing ? 'Edit Menu Item' : 'Add Menu Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  final file = await _storageService.pickImage();
-                  if (file != null) {
-                    setDialogState(() {
-                      pickedImage = file;
-                    });
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: pickedImage != null
-                      ? Image.file(pickedImage!, fit: BoxFit.cover)
-                      : (isEditing && existingItem.imageUrl.isNotEmpty)
-                          ? Image.network(
-                              existingItem.imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Center(
-                                child:
-                                    Icon(Icons.add_a_photo, color: Colors.grey),
-                              ),
-                            )
-                          : const Center(
-                              child:
-                                  Icon(Icons.add_a_photo, color: Colors.grey),
-                            ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                    labelText: 'Item Name (e.g. Nasi Lemak)'),
-              ),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Price (RM)'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isUploading
-                  ? null
-                  : () async {
-                      final name = nameController.text.trim();
-                      final price =
-                          double.tryParse(priceController.text.trim()) ?? 0.0;
-                      final user = _auth.currentUser;
-
-                      if (name.isEmpty || price <= 0 || user == null) return;
-
-                      setDialogState(() {
-                        isUploading = true;
-                      });
-
-                      if (isEditing) {
-                        // Only re-upload if the vendor picked a new photo
-                        // this time -- otherwise leave the existing one.
-                        String? newImageUrl;
-                        if (pickedImage != null) {
-                          newImageUrl =
-                              await _storageService.uploadMenuItemImage(
-                                  user.uid, existingItem.itemId, pickedImage!);
-                        }
-
-                        await _menuService.updateMenuItem(
-                          user.uid,
-                          existingItem.itemId,
-                          name,
-                          price,
-                          imageUrl: newImageUrl,
-                        );
-                      } else {
-                        // Photo needs the item's ID in its filename, so
-                        // generate the ID first if a photo was picked.
-                        String? itemId;
-                        String? imageUrl;
-                        if (pickedImage != null) {
-                          itemId = _menuService.newMenuItemId(user.uid);
-                          imageUrl = await _storageService.uploadMenuItemImage(
-                              user.uid, itemId, pickedImage!);
-                        }
-
-                        await _menuService.addMenuItem(
-                          user.uid,
-                          name,
-                          price,
-                          itemId: itemId,
-                          imageUrl: imageUrl,
-                        );
-                      }
-
-                      if (mounted) Navigator.pop(ctx);
-                    },
-              child: isUploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(isEditing ? 'Save' : 'Add Item'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Menu'),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showItemDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Dish'),
-      ),
-      body: user == null
-          ? const Center(child: Text('Not logged in.'))
-          : StreamBuilder<List<MenuItemModel>>(
-              stream: _menuService.getMenuItems(user.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final items = snapshot.data ?? [];
-
-                if (items.isEmpty) {
-                  return const Center(
-                    child:
-                        Text('No menu items added yet.\nTap + Add Dish below!'),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12.0),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: SizedBox(
-                                width: 48,
-                                height: 48,
-                                child: item.imageUrl.isNotEmpty
-                                    ? Image.network(
-                                        item.imageUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                Container(
-                                          color: Colors.grey.shade200,
-                                          child: const Icon(Icons.fastfood,
-                                              color: Colors.grey),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: Colors.grey.shade200,
-                                        child: const Icon(Icons.fastfood,
-                                            color: Colors.grey),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text('RM ${item.price.toStringAsFixed(2)}'),
-                                ],
-                              ),
-                            ),
-
-                            // Traffic Light Buttons
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Green Button (Available)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'available'
-                                        ? Colors.green
-                                        : Colors.green.shade100,
-                                    size: item.status == 'available' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'available'),
-                                ),
-                                // Yellow Button (Low Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'low_stock'
-                                        ? Colors.orange
-                                        : Colors.orange.shade100,
-                                    size: item.status == 'low_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'low_stock'),
-                                ),
-                                // Red Button (Out of Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'out_of_stock'
-                                        ? Colors.red
-                                        : Colors.red.shade100,
-                                    size:
-                                        item.status == 'out_of_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(user.uid,
-                                          item.itemId, 'out_of_stock'),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined,
-                                      color: Colors.blueGrey),
-                                  onPressed: () =>
-                                      _showItemDialog(existingItem: item),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.grey),
-                                  onPressed: () => _menuService.deleteMenuItem(
-                                      user.uid, item.itemId),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-    );
-  }
-}
-````
-
 ## File: lib/core/services/auth_service.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../constants/firestore_collections.dart';
@@ -3588,7 +3689,17 @@ import '../constants/firestore_collections.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  bool _googleSignInReady = false;
+
+  // google_sign_in v7 requires an explicit initialize() call, exactly
+  // once, before authenticate()/signOut() are used. Cheap to call
+  // repeatedly since it's guarded by the flag below.
+  Future<void> _ensureGoogleSignInReady() async {
+    if (_googleSignInReady) return;
+    await _googleSignIn.initialize();
+    _googleSignInReady = true;
+  }
 
   // Stream of auth state changes (logged in / logged out)
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -3655,18 +3766,22 @@ class AuthService {
   // brand-new Google user is created as role 'customer' automatically.
   // Vendors still register with email/password since a stall account
   // needs the role picker anyway.
+  //
+  // Updated for google_sign_in v7: GoogleSignIn is now a singleton that
+  // must be initialize()d, signIn() was replaced by authenticate() (which
+  // throws GoogleSignInException instead of returning null on cancel),
+  // and the authentication object is synchronous and only exposes
+  // idToken (accessToken moved to a separate authorization step and
+  // isn't needed for Firebase credential sign-in).
   Future<String?> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        return "cancelled"; // user closed the picker without choosing
-      }
+      await _ensureGoogleSignInReady();
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
+
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
@@ -3689,6 +3804,11 @@ class AuthService {
       }
 
       return null;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return "cancelled"; // user closed the picker without choosing
+      }
+      return e.description ?? "Google sign-in failed.";
     } on FirebaseAuthException catch (e) {
       if (e.code == 'account-exists-with-different-credential') {
         return "An account already exists with this email. Log in with your email and password instead.";
@@ -3727,7 +3847,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print("Error fetching user data: $e");
+      debugPrint("Error fetching user data: $e");
       return null;
     }
   }
@@ -3745,11 +3865,13 @@ class AuthService {
         // Non-fatal -- proceed with sign out even if this fails (e.g.
         // offline at the moment of logout, or a guest with no
         // Firestore document to update in the first place).
-        print("Error clearing FCM token on sign out: $e");
+        debugPrint("Error clearing FCM token on sign out: $e");
       }
     }
 
-    await _googleSignIn.signOut();
+    if (_googleSignInReady) {
+      await _googleSignIn.signOut();
+    }
     await _auth.signOut();
   }
 
@@ -3790,106 +3912,6 @@ class AuthService {
     } catch (e) {
       return e.toString();
     }
-  }
-}
-````
-
-## File: lib/core/services/menu_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/menu_item_model.dart';
-
-class MenuService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-  // Stream menu items for a specific vendor
-  Stream<List<MenuItemModel>> getMenuItems(String vendorId) {
-    return _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => MenuItemModel.fromMap(doc.data(), doc.id))
-            .toList());
-  }
-
-  // Generates a new, unused document ID for a menu item before it exists.
-  // Needed when a photo has to be uploaded (and named after the item's ID)
-  // before the item document itself is written.
-  String newMenuItemId(String vendorId) {
-    return _db.collection('vendors').doc(vendorId).collection('menu').doc().id;
-  }
-
-  // Add new menu item. Pass itemId (from newMenuItemId) when a photo was
-  // uploaded ahead of time so the item is saved under that same ID.
-  Future<void> addMenuItem(
-    String vendorId,
-    String name,
-    double price, {
-    String? itemId,
-    String? imageUrl,
-  }) async {
-    final docRef = itemId != null
-        ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
-        : _db.collection('vendors').doc(vendorId).collection('menu').doc();
-
-    final newItem = MenuItemModel(
-      itemId: docRef.id,
-      name: name,
-      price: price,
-      status: 'available',
-      imageUrl: imageUrl ?? '',
-    );
-
-    await docRef.set(newItem.toMap());
-  }
-
-  // Edit an existing item's name, price, and (optionally) photo, without
-  // touching its current status. Pass imageUrl only if a new photo was
-  // uploaded -- omit it to keep whatever photo the item already has.
-  Future<void> updateMenuItem(
-    String vendorId,
-    String itemId,
-    String name,
-    double price, {
-    String? imageUrl,
-  }) async {
-    final data = <String, dynamic>{
-      'name': name,
-      'price': price,
-    };
-    if (imageUrl != null) {
-      data['imageUrl'] = imageUrl;
-    }
-
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .update(data);
-  }
-
-  // Quick Traffic Light Status Update
-  Future<void> updateItemStatus(
-      String vendorId, String itemId, String newStatus) async {
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .update({'status': newStatus});
-  }
-
-  // Delete item
-  Future<void> deleteMenuItem(String vendorId, String itemId) async {
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .delete();
   }
 }
 ````
