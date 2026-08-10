@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -18,7 +19,7 @@ void main() async {
       );
     }
   } catch (e) {
-    print('Firebase initialization error ignored: $e');
+    debugPrint('Firebase initialization error ignored: $e');
   }
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);

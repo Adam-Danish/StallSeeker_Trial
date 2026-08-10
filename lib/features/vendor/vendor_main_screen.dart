@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../core/services/auth_service.dart';
+import '../shared/logout_helper.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
 
@@ -10,6 +12,7 @@ class VendorMainScreen extends StatefulWidget {
 }
 
 class _VendorMainScreenState extends State<VendorMainScreen> {
+  final _authService = AuthService();
   int _selectedIndex = 0;
 
   static const _titles = ['Vendor Dashboard', 'My Profile'];
@@ -17,7 +20,15 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_selectedIndex])),
+      appBar: AppBar(
+        title: Text(_titles[_selectedIndex]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => confirmAndLogout(context, _authService),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: const [

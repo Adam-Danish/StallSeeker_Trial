@@ -4,6 +4,7 @@ import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
 import '../../shared/about_screen.dart';
+import '../../shared/logout_helper.dart';
 
 class VendorProfileScreen extends StatefulWidget {
   const VendorProfileScreen({super.key});
@@ -35,7 +36,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         });
       }
     } else {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -75,12 +78,15 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           final error = await _authService.updateFullName(
                               user.uid, newName);
 
-                          if (!mounted) return;
-                          Navigator.pop(dialogContext);
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
 
                           if (error == null) {
                             await _loadUserData(); // refresh header card
                           }
+
+                          if (!mounted) return;
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -148,8 +154,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                           final error =
                               await _authService.changePassword(newPassword);
 
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
                           if (!mounted) return;
-                          Navigator.pop(dialogContext);
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -173,30 +182,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           },
         );
       },
-    );
-  }
-
-  void _confirmLogout() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Log Out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _authService.signOut();
-            },
-            child: const Text('Log Out'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -239,7 +224,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Header card: avatar, name, email
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -275,7 +259,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ),
           ),
         ),
-
         _sectionHeader('ACCOUNT SETTINGS'),
         Card(
           child: Column(
@@ -294,7 +277,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ],
           ),
         ),
-
         _sectionHeader('SUPPORT & INFORMATION'),
         Card(
           child: Column(
@@ -324,7 +306,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             ],
           ),
         ),
-
         const SizedBox(height: 16),
         Card(
           child: _settingsTile(
@@ -332,7 +313,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             title: 'Logout',
             iconColor: Colors.red,
             textColor: Colors.red,
-            onTap: _confirmLogout,
+            onTap: () => confirmAndLogout(context, _authService),
           ),
         ),
       ],

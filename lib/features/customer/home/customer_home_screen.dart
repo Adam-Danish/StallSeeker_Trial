@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
+import '../../shared/logout_helper.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
@@ -104,7 +105,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => _authService.signOut(),
+            onPressed: () => confirmAndLogout(context, _authService),
           ),
         ],
       ),

@@ -43,14 +43,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
-    String? error = await _authService.login(
-      email: _emailController.text,
+    final error = await _authService.login(
+      email: _emailController.text.trim(),
       password: _passwordController.text,
     );
 
+    if (!mounted) return;
+
     setState(() => _isLoading = false);
 
-    if (error != null && mounted) {
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error), backgroundColor: Colors.red),
       );
@@ -100,7 +102,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (email.isEmpty || !email.contains('@')) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                  content: Text('Enter a valid email first.')),
+                                content: Text('Enter a valid email first.'),
+                              ),
                             );
                             return;
                           }
@@ -110,8 +113,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           final error =
                               await _authService.resetPassword(email: email);
 
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
                           if (!mounted) return;
-                          Navigator.pop(dialogContext);
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -151,10 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // An AppBar here gives Flutter a place to automatically show a
-      // back arrow (since this screen was pushed via Navigator.push),
-      // letting the customer return to the Google/Guest options on the
-      // welcome screen if they change their mind.
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -193,7 +195,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _login,
                 child: _isLoading
-                    ? const CircularProgressIndicator()
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Login'),
               ),
               TextButton(

@@ -142,7 +142,7 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                         );
                       }
 
-                      if (mounted) Navigator.pop(ctx);
+                      if (ctx.mounted) Navigator.pop(ctx);
                     },
               child: isUploading
                   ? const SizedBox(

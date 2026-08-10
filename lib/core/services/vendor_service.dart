@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/vendor_model.dart';
 
 class VendorService {
@@ -17,7 +18,7 @@ class VendorService {
       }
       return null;
     } catch (e) {
-      print('Error fetching vendor profile: $e');
+      debugPrint('Error fetching vendor profile: $e');
       return null;
     }
   }
@@ -29,7 +30,7 @@ class VendorService {
             SetOptions(merge: true),
           );
     } catch (e) {
-      print('Error saving vendor profile: $e');
+      debugPrint('Error saving vendor profile: $e');
       rethrow;
     }
   }
@@ -41,7 +42,7 @@ class VendorService {
         'isOpen': isOpen,
       }, SetOptions(merge: true));
     } catch (e) {
-      print('Error toggling stall status: $e');
+      debugPrint('Error toggling stall status: $e');
       rethrow;
     }
   }
@@ -57,13 +58,11 @@ class VendorService {
         'longitude': longitude,
       });
     } catch (e) {
-      print('Error updating vendor location: $e');
+      debugPrint('Error updating vendor location: $e');
       rethrow;
     }
   }
 
-  // Live stream of vendors currently marked as open — used by the
-  // customer map screen to show markers that update in real time.
   Stream<List<VendorModel>> getOpenVendors() {
     return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
         (snapshot) => snapshot.docs
