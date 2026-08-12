@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "793011933510-t6knfe2j15ei0stv7hqihs72oeh1pri2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.stallseeker",
+            "certificate_hash": "ba095327c02d278719c4394cb87e8c61f8d83f66"
+          }
+        },
+        {
           "client_id": "793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com",
           "client_type": 3
         }

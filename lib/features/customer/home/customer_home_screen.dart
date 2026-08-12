@@ -26,6 +26,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
 
+  // Which vendor is currently highlighted -- set by tapping either a
+  // marker on the map or a card in the horizontal list. Both use the
+  // same selection so tapping either one highlights consistently.
+  String? _selectedVendorId;
+
   // True while we're still trying to get the customer's GPS position.
   // Drives a small loading indicator on the map so it's clear the app
   // is actively locating them, not just stuck on the default view.
@@ -57,6 +62,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // `finally` block guarantees the loading indicator always turns off,
   // whether location succeeded, failed, or was denied.
   Future<void> _getCustomerLocation() async {
+    if (mounted) setState(() => _isLocatingCustomer = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
@@ -90,6 +96,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         setState(() => _isLocatingCustomer = false);
       }
     }
+  }
+
+  // Highlights a vendor (on both the map marker and its card) and pans
+  // the camera to it, without navigating away -- tapping the same
+  // vendor again (already selected) is what actually opens details.
+  void _selectVendor(VendorModel vendor) {
+    setState(() => _selectedVendorId = vendor.vendorId);
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLng(LatLng(vendor.latitude, vendor.longitude)),
+    );
   }
 
   String _formatDistance(double meters) {
@@ -177,8 +193,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               (v) => Marker(
                 markerId: MarkerId(v.vendorId),
                 position: LatLng(v.latitude, v.longitude),
-                infoWindow: InfoWindow(title: v.stallName, snippet: v.category),
-                onTap: () => _openVendorDetails(v),
+                // Selected marker shows in a different color so it's
+                // clearly distinguishable from the rest.
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  v.vendorId == _selectedVendorId
+                      ? BitmapDescriptor.hueOrange
+                      : BitmapDescriptor.hueRed,
+                ),
+                infoWindow: InfoWindow(
+                  title: v.stallName,
+                  snippet: v.category,
+                  // Tapping the info bubble (the label that pops up
+                  // above a selected marker) is what opens details --
+                  // tapping the marker pin itself just selects it.
+                  onTap: () => _openVendorDetails(v),
+                ),
+                onTap: () => _selectVendor(v),
               ),
             )
             .toSet();
@@ -189,13 +219,24 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               initialCameraPosition: _defaultPosition,
               markers: markers,
               myLocationEnabled: true,
-              myLocationButtonEnabled: true,
+              // Replaced by our own recenter button below, so the
+              // built-in one (which can end up hidden behind our
+              // overlays) isn't shown as well.
+              myLocationButtonEnabled: false,
+              compassEnabled: true,
+              padding: const EdgeInsets.only(top: 60),
               onMapCreated: (controller) {
                 _mapController = controller;
                 if (_customerPosition != null) {
                   _mapController!.animateCamera(
                     CameraUpdate.newLatLngZoom(_customerPosition!, 15),
                   );
+                }
+              },
+              onTap: (_) {
+                // Tapping empty map space clears the current selection.
+                if (_selectedVendorId != null) {
+                  setState(() => _selectedVendorId = null);
                 }
               },
             ),
@@ -285,6 +326,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
 
+            // Recenter-to-current-location button. Sits above the
+            // nearby-stalls list when it's showing, otherwise sits
+            // closer to the bottom.
+            Positioned(
+              right: 12,
+              bottom: nearbyVendors.isNotEmpty ? 132 : 24,
+              child: FloatingActionButton.small(
+                heroTag: 'recenter_button',
+                tooltip: 'Go to current location',
+                onPressed: () {
+                  if (_customerPosition != null) {
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLngZoom(_customerPosition!, 15),
+                    );
+                  } else {
+                    // Location wasn't available earlier (denied/off at
+                    // the time) -- try fetching it again now.
+                    _getCustomerLocation();
+                  }
+                },
+                child: _isLocatingCustomer
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+              ),
+            ),
+
             // Floating horizontal list of nearby stalls, sitting above
             // the bottom navigation bar.
             if (nearbyVendors.isNotEmpty)
@@ -300,6 +371,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     itemCount: nearbyVendors.length,
                     itemBuilder: (context, index) {
                       final vendor = nearbyVendors[index];
+                      final isSelected = vendor.vendorId == _selectedVendorId;
                       final distanceLabel = _customerPosition != null
                           ? _formatDistance(
                               Geolocator.distanceBetween(
@@ -312,12 +384,34 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           : null;
 
                       return GestureDetector(
-                        onTap: () => _openVendorDetails(vendor),
+                        onTap: () {
+                          // Tap once to highlight + pan to it on the
+                          // map; tap again while already selected to
+                          // open the full details screen.
+                          if (isSelected) {
+                            _openVendorDetails(vendor);
+                          } else {
+                            _selectVendor(vendor);
+                          }
+                        },
                         child: Container(
                           width: 220,
                           margin: const EdgeInsets.only(right: 10),
                           child: Card(
-                            elevation: 4,
+                            elevation: isSelected ? 8 : 4,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : null,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                              side: isSelected
+                                  ? BorderSide(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      width: 2,
+                                    )
+                                  : BorderSide.none,
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(10),
                               child: Column(
@@ -361,6 +455,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       style: TextStyle(
                                           color: Colors.grey.shade600,
                                           fontSize: 12),
+                                    ),
+                                  ],
+                                  if (isSelected) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Tap again to view',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        fontSize: 11,
+                                        fontStyle: FontStyle.italic,
+                                      ),
                                     ),
                                   ],
                                 ],

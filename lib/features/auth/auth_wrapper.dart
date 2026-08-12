@@ -33,11 +33,20 @@ class AuthWrapper extends StatelessWidget {
 
           NotificationService.instance.syncTokenForCurrentUser();
 
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance
+          // Live listener (.snapshots()), not a one-time .get(). This
+          // matters for brand-new Google sign-ins: Firebase Auth's
+          // state updates immediately, but the user's Firestore profile
+          // document gets created a moment later by signInWithGoogle().
+          // A one-time .get() can run in that gap, find nothing, and
+          // (since it never checks again) get stuck showing
+          // WelcomeScreen forever even after the document exists. A
+          // live stream instead automatically re-fires and routes
+          // correctly the instant the document appears.
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
-                .get(),
+                .snapshots(),
             builder: (context, userSnapshot) {
               if (userSnapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
@@ -57,7 +66,17 @@ class AuthWrapper extends StatelessWidget {
                 }
               }
 
-              return const WelcomeScreen();
+              // Document doesn't exist yet -- show a brief loading
+              // state instead of WelcomeScreen while we wait for it to
+              // be created. If the document genuinely never gets
+              // created (e.g. signup failed), the user is still signed
+              // in at this point, so falling through to WelcomeScreen
+              // (which offers sign-in options again) would be
+              // confusing; a spinner is a more honest "still working
+              // on it" state for the brief moment this normally takes.
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             },
           );
         }

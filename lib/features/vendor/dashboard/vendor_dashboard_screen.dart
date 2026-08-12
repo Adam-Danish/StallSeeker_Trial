@@ -42,6 +42,35 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
   }
 
+  // Asks the vendor to confirm before their location is captured and
+  // shared. Shown every time they open the stall (not just once) since
+  // location sharing is a meaningful thing to confirm each time, not a
+  // one-off permission grant.
+  Future<bool> _confirmShareLocation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share Your Location?'),
+        content: const Text(
+          'Turning your stall Open will capture your current location and '
+          'show it to customers on the map so they can find you. '
+          'Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Share Location'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   // Gets the vendor's current GPS position, handling permission requests
   // and the various ways a phone can refuse to give location.
   // Returns null if location could not be obtained for any reason.
@@ -98,6 +127,18 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
   Future<void> _handleStatusToggle(bool val) async {
     final user = _auth.currentUser;
     if (user == null) return;
+
+    if (val) {
+      // Ask for explicit confirmation every time the vendor opens --
+      // not just a one-off system permission prompt, but a clear
+      // in-app "yes, share my location" decision each time.
+      final agreed = await _confirmShareLocation();
+      if (!agreed) {
+        // Vendor declined -- leave the switch off, don't touch Firestore
+        // or request location at all.
+        return;
+      }
+    }
 
     setState(() {
       _isOpen = val;

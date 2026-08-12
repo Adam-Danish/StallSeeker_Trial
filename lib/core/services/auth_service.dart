@@ -17,7 +17,10 @@ class AuthService {
   // repeatedly since it's guarded by the flag below.
   Future<void> _ensureGoogleSignInReady() async {
     if (_googleSignInReady) return;
-    await _googleSignIn.initialize();
+    await _googleSignIn.initialize(
+      serverClientId:
+          '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
+    );
     _googleSignInReady = true;
   }
 
