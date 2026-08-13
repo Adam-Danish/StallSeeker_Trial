@@ -158,6 +158,37 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
     );
   }
 
+  // Shows a confirmation dialog before permanently deleting a menu
+  // item. Deleting is irreversible (the document is gone from
+  // Firestore immediately), so this prevents an accidental tap from
+  // silently wiping out a dish.
+  Future<void> _confirmDelete(String uid, MenuItemModel item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text(
+          'Are you sure you want to delete "${item.name}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _menuService.deleteMenuItem(uid, item.itemId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
@@ -296,8 +327,8 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
                                       color: Colors.grey),
-                                  onPressed: () => _menuService.deleteMenuItem(
-                                      user.uid, item.itemId),
+                                  onPressed: () =>
+                                      _confirmDelete(user.uid, item),
                                 ),
                               ],
                             ),
