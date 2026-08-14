@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import 'login_screen.dart';
+import 'register_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -77,6 +78,28 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              // Direct Register entry point. Google sign-in above always
+              // creates a customer account -- vendors need to register
+              // with email/password to pick the 'vendor' role, so this
+              // needs to be reachable directly, not buried inside the
+              // Login screen.
+              OutlinedButton.icon(
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const RegisterScreen()),
+                        );
+                      },
+                icon: const Icon(Icons.person_add_alt),
+                label: const Text('Register (Vendor or Customer)'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _isLoading ? null : _continueAsGuest,
                 style: OutlinedButton.styleFrom(
@@ -95,7 +118,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               builder: (_) => const LoginScreen()),
                         );
                       },
-                child: const Text('Log In with Email'),
+                child: const Text('Already have an account? Log In'),
               ),
               if (_isLoading) ...[
                 const SizedBox(height: 16),
