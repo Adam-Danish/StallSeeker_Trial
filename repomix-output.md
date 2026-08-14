@@ -2812,6 +2812,37 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
     );
   }
 
+  // Shows a confirmation dialog before permanently deleting a menu
+  // item. Deleting is irreversible (the document is gone from
+  // Firestore immediately), so this prevents an accidental tap from
+  // silently wiping out a dish.
+  Future<void> _confirmDelete(String uid, MenuItemModel item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text(
+          'Are you sure you want to delete "${item.name}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _menuService.deleteMenuItem(uid, item.itemId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
@@ -2950,8 +2981,8 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline,
                                       color: Colors.grey),
-                                  onPressed: () => _menuService.deleteMenuItem(
-                                      user.uid, item.itemId),
+                                  onPressed: () =>
+                                      _confirmDelete(user.uid, item),
                                 ),
                               ],
                             ),
@@ -2963,6 +2994,380 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                 );
               },
             ),
+    );
+  }
+}
+````
+
+## File: lib/features/customer/profile/customer_profile_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+import '../../shared/logout_helper.dart';
+
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
+
+  @override
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
+}
+
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+  final _authService = AuthService();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showEditProfileDialog() {
+    final nameController =
+        TextEditingController(text: _userModel?.fullName ?? '');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          final newName = nameController.text.trim();
+                          if (user == null || newName.isEmpty) return;
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateFullName(
+                              user.uid, newName);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (error == null) {
+                            await _loadUserData(); // refresh header card
+                          }
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error ?? 'Profile updated.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final passwordController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newPassword = passwordController.text.trim();
+                          if (newPassword.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Password must be 6+ characters.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          final error =
+                              await _authService.changePassword(newPassword);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  error ?? 'Password changed successfully.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(title, style: TextStyle(color: textColor)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      onTap: onTap,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.person, size: 32),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _userModel?.fullName.isNotEmpty == true
+                            ? _userModel!.fullName
+                            : 'Name Not Set',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _userModel?.email ?? '',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _sectionHeader('ACCOUNT SETTINGS'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.person_outline,
+                title: 'Edit Profile',
+                onTap: _showEditProfileDialog,
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.lock_outline,
+                title: 'Change Password',
+                onTap: _showChangePasswordDialog,
+              ),
+            ],
+          ),
+        ),
+        _sectionHeader('SUPPORT & INFORMATION'),
+        Card(
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.help_outline,
+                title: 'FAQ',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const FaqScreen(isVendor: false)),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsTile(
+                icon: Icons.info_outline,
+                title: 'About StallSeeker',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: _settingsTile(
+            icon: Icons.logout,
+            title: 'Logout',
+            iconColor: Colors.red,
+            textColor: Colors.red,
+            onTap: () => confirmAndLogout(context, _authService),
+          ),
+        ),
+      ],
+    );
+  }
+}
+````
+
+## File: lib/main.dart
+````dart
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/notification_service.dart';
+import 'features/splash/splash_screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    debugPrint('Firebase initialization error ignored: $e');
+  }
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await NotificationService.instance.initialize(navigatorKey);
+
+  runApp(const StallSeekerApp());
+}
+
+class StallSeekerApp extends StatelessWidget {
+  const StallSeekerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'StallSeeker',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const SplashScreen(),
     );
   }
 }
@@ -2989,7 +3394,10 @@ class AuthService {
   // repeatedly since it's guarded by the flag below.
   Future<void> _ensureGoogleSignInReady() async {
     if (_googleSignInReady) return;
-    await _googleSignIn.initialize();
+    await _googleSignIn.initialize(
+      serverClientId:
+          '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
+    );
     _googleSignInReady = true;
   }
 
@@ -3213,6 +3621,234 @@ class AuthService {
     } catch (e) {
       return e.toString();
     }
+  }
+}
+````
+
+## File: lib/features/auth/screens/login_screen.dart
+````dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stallseeker/core/services/auth_service.dart';
+import 'package:stallseeker/features/auth/screens/register_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // If this screen was pushed on top of something else -- e.g. a
+    // guest was prompted to log in before following a vendor -- close
+    // it automatically once a real account signs in, so the user
+    // lands back where they were instead of getting stuck here.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null &&
+          !user.isAnonymous &&
+          mounted &&
+          Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    });
+  }
+
+  void _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    final error = await _authService.login(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController(
+      text: _emailController.text,
+    );
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Enter your email address and we will send you a link to reset your password.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: resetEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          final email = resetEmailController.text.trim();
+                          if (email.isEmpty || !email.contains('@')) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Enter a valid email first.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSending = true);
+
+                          final error =
+                              await _authService.resetPassword(email: email);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                error ??
+                                    'Password reset email sent. Check your inbox.',
+                              ),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSending
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send Reset Link'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'StallSeeker',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 32),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: 'Email'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (val) => val == null || !val.contains('@')
+                    ? 'Enter a valid email'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(labelText: 'Password'),
+                obscureText: true,
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Enter your password' : null,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _login,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Login'),
+              ),
+              TextButton(
+                onPressed: _showForgotPasswordDialog,
+                child: const Text('Forgot Password?'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                  );
+                },
+                child: const Text("Don't have an account? Register"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 ````
@@ -3716,608 +4352,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 }
 ````
 
-## File: lib/features/customer/profile/customer_profile_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../shared/faq_screen.dart';
-import '../../shared/about_screen.dart';
-import '../../shared/logout_helper.dart';
-
-class CustomerProfileScreen extends StatefulWidget {
-  const CustomerProfileScreen({super.key});
-
-  @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
-}
-
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
-  final _authService = AuthService();
-
-  UserModel? _userModel;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _isLoading = false;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _showEditProfileDialog() {
-    final nameController =
-        TextEditingController(text: _userModel?.fullName ?? '');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Profile'),
-              content: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final user = FirebaseAuth.instance.currentUser;
-                          final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) return;
-
-                          setDialogState(() => isSaving = true);
-                          final error = await _authService.updateFullName(
-                              user.uid, newName);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (error == null) {
-                            await _loadUserData(); // refresh header card
-                          }
-
-                          if (!mounted) return;
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error ?? 'Profile updated.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final passwordController = TextEditingController();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Change Password'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final newPassword = passwordController.text.trim();
-                          if (newPassword.length < 6) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Password must be 6+ characters.')),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-                          final error =
-                              await _authService.changePassword(newPassword);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) return;
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  error ?? 'Password changed successfully.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _settingsTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    Color? iconColor,
-    Color? textColor,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: onTap,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primaryContainer,
-                  child: const Icon(Icons.person, size: 32),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _userModel?.fullName.isNotEmpty == true
-                            ? _userModel!.fullName
-                            : 'Name Not Set',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _userModel?.email ?? '',
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        _sectionHeader('ACCOUNT SETTINGS'),
-        Card(
-          child: Column(
-            children: [
-              _settingsTile(
-                icon: Icons.person_outline,
-                title: 'Edit Profile',
-                onTap: _showEditProfileDialog,
-              ),
-              const Divider(height: 1),
-              _settingsTile(
-                icon: Icons.lock_outline,
-                title: 'Change Password',
-                onTap: _showChangePasswordDialog,
-              ),
-            ],
-          ),
-        ),
-        _sectionHeader('SUPPORT & INFORMATION'),
-        Card(
-          child: Column(
-            children: [
-              _settingsTile(
-                icon: Icons.help_outline,
-                title: 'FAQ',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const FaqScreen(isVendor: false)),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              _settingsTile(
-                icon: Icons.info_outline,
-                title: 'About StallSeeker',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AboutScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: _settingsTile(
-            icon: Icons.logout,
-            title: 'Logout',
-            iconColor: Colors.red,
-            textColor: Colors.red,
-            onTap: () => confirmAndLogout(context, _authService),
-          ),
-        ),
-      ],
-    );
-  }
-}
-````
-
-## File: lib/main.dart
-````dart
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
-import 'core/services/notification_service.dart';
-import 'features/splash/splash_screen.dart';
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    debugPrint('Firebase initialization error ignored: $e');
-  }
-
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await NotificationService.instance.initialize(navigatorKey);
-
-  runApp(const StallSeekerApp());
-}
-
-class StallSeekerApp extends StatelessWidget {
-  const StallSeekerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'StallSeeker',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const SplashScreen(),
-    );
-  }
-}
-````
-
-## File: lib/features/auth/screens/login_screen.dart
-````dart
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-import 'package:stallseeker/features/auth/screens/register_screen.dart';
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isLoading = false;
-
-  StreamSubscription<User?>? _authSub;
-
-  @override
-  void initState() {
-    super.initState();
-    // If this screen was pushed on top of something else -- e.g. a
-    // guest was prompted to log in before following a vendor -- close
-    // it automatically once a real account signs in, so the user
-    // lands back where they were instead of getting stuck here.
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null &&
-          !user.isAnonymous &&
-          mounted &&
-          Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-    });
-  }
-
-  void _login() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    final error = await _authService.login(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
-
-    if (!mounted) return;
-
-    setState(() => _isLoading = false);
-
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController(
-      text: _emailController.text,
-    );
-    bool isSending = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Reset Password'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Enter your email address and we will send you a link to reset your password.',
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: resetEmailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSending
-                      ? null
-                      : () async {
-                          final email = resetEmailController.text.trim();
-                          if (email.isEmpty || !email.contains('@')) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Enter a valid email first.'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSending = true);
-
-                          final error =
-                              await _authService.resetPassword(email: email);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) return;
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                error ??
-                                    'Password reset email sent. Check your inbox.',
-                              ),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Send Reset Link'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    _authSub?.cancel();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 32),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (val) => val == null || !val.contains('@')
-                    ? 'Enter a valid email'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Enter your password' : null,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _login,
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Login'),
-              ),
-              TextButton(
-                onPressed: _showForgotPasswordDialog,
-                child: const Text('Forgot Password?'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  );
-                },
-                child: const Text("Don't have an account? Register"),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/auth/auth_wrapper.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -4409,4 +4443,3 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 ````
-//hehe

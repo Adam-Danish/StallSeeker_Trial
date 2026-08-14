@@ -129,6 +129,24 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
     if (user == null) return;
 
     if (val) {
+      // A stall with no name would show as "Unnamed Stall" to customers
+      // on the map -- block opening until the vendor sets one, rather
+      // than letting them go live with an unidentifiable stall.
+      final hasName = _vendorModel?.stallName.trim().isNotEmpty == true;
+      if (!hasName) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please set your stall name before opening your stall.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       // Ask for explicit confirmation every time the vendor opens --
       // not just a one-off system permission prompt, but a clear
       // in-app "yes, share my location" decision each time.
