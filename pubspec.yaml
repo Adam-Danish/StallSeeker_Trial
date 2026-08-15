@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  google_fonts: ^6.2.1
+
   google_sign_in: ^7.2.0
 
   # Firebase Core & Services
@@ -38,3 +40,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/google_logo.png
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600

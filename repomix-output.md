@@ -198,120 +198,6 @@ class AppTheme {
 }
 ````
 
-## File: lib/features/auth/screens/welcome_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-
-class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  final _authService = AuthService();
-  bool _isLoading = false;
-
-  Future<void> _continueWithGoogle() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInWithGoogle();
-    if (mounted) setState(() => _isLoading = false);
-
-    // "cancelled" means the user just closed the Google picker --
-    // not a real error, so nothing to show them.
-    if (error != null && error != 'cancelled' && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-    // On success, AuthWrapper's auth-state stream swaps this screen
-    // out automatically -- no manual navigation needed here.
-  }
-
-  Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInAsGuest();
-    if (mounted) setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.storefront, size: 64, color: AppColors.primary),
-              const SizedBox(height: 12),
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Find nearby food stalls, live.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 40),
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _continueWithGoogle,
-                icon: const Icon(Icons.login),
-                label: const Text('Continue with Google'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _isLoading ? null : _continueAsGuest,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('Continue as Guest'),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen()),
-                        );
-                      },
-                child: const Text('Log In with Email'),
-              ),
-              if (_isLoading) ...[
-                const SizedBox(height: 16),
-                const Center(child: CircularProgressIndicator()),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/shared/about_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -784,6 +670,202 @@ class VendorService {
             .map((doc) =>
                 VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
             .toList());
+  }
+}
+````
+
+## File: lib/features/auth/screens/welcome_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
+import 'register_screen.dart';
+
+class WelcomeScreen extends StatefulWidget {
+  const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _authService = AuthService();
+  bool _isLoading = false;
+
+  Future<void> _continueWithGoogle() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInWithGoogle();
+    if (mounted) setState(() => _isLoading = false);
+
+    if (error != null && error != 'cancelled' && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _continueAsGuest() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInAsGuest();
+    if (mounted) setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _goToRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
+
+  void _goToLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // App icon and title
+              const Icon(
+                Icons.storefront,
+                size: 64,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'StallSeeker',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Find nearby food stalls, live.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // ---- Updated: Google button (Light Gray) ----
+              _buildActionButton(
+                icon: Image.asset('assets/google_logo.png', height: 20),
+                label: 'Continue with Google',
+                backgroundColor: const Color(0xFFF1F3F4), // Light gray
+                foregroundColor: Colors.black, // Dark text
+                onPressed: _isLoading ? null : _continueWithGoogle,
+              ),
+              const SizedBox(height: 14),
+
+              // ---- Updated: Email button (Coral/Orange) ----
+              _buildActionButton(
+                icon: const Icon(Icons.email_outlined, size: 24),
+                label: 'Continue with Email',
+                backgroundColor: const Color(0xFFFF6B56), // Vibrant coral
+                foregroundColor: Colors.white, // White text
+                onPressed: _isLoading ? null : _goToRegister,
+              ),
+              const SizedBox(height: 14),
+
+              // ---- Updated: Guest button (Dark Black) ----
+              _buildActionButton(
+                icon: const Icon(Icons.person_outline, size: 24),
+                label: 'Continue as Guest',
+                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
+                foregroundColor: Colors.white, // White text
+                onPressed: _isLoading ? null : _continueAsGuest,
+              ),
+
+              const SizedBox(height: 24),
+
+              // "Already have an account? Sign In"
+              Center(
+                child: TextButton(
+                  onPressed: _isLoading ? null : _goToLogin,
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                      children: const [
+                        TextSpan(text: 'Already have an account? '),
+                        TextSpan(
+                          text: 'Sign In',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              if (_isLoading) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Reusable button – UPDATED to accept background and foreground colors
+  Widget _buildActionButton({
+    required Widget icon,
+    required String label,
+    required Color backgroundColor, // New argument
+    required Color foregroundColor, // New argument
+    VoidCallback? onPressed,
+  }) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: backgroundColor, // The solid background color
+        foregroundColor: foregroundColor, // Text & icon color
+        side: BorderSide.none, // Removed the gray border entirely
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(50), // Kept your max roundness
+        ),
+        textStyle: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          icon,
+          const SizedBox(width: 12),
+          Text(label),
+        ],
+      ),
+    );
   }
 }
 ````
@@ -2333,323 +2415,6 @@ class MenuService {
 }
 ````
 
-## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../profile/edit_stall_screen.dart';
-import '../menu/vendor_menu_screen.dart';
-import 'package:geolocator/geolocator.dart';
-
-class VendorDashboardScreen extends StatefulWidget {
-  const VendorDashboardScreen({super.key});
-
-  @override
-  State<VendorDashboardScreen> createState() => _VendorDashboardScreenState();
-}
-
-class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
-  final _vendorService = VendorService();
-  final _auth = FirebaseAuth.instance;
-
-  VendorModel? _vendorModel;
-  bool _isLoading = true;
-  bool _isOpen = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchVendorDetails();
-  }
-
-  // Fetch Vendor Profile from Firestore
-  Future<void> _fetchVendorDetails() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
-      if (mounted) {
-        setState(() {
-          _vendorModel = vendor;
-          _isOpen = vendor?.isOpen ?? false;
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  // Asks the vendor to confirm before their location is captured and
-  // shared. Shown every time they open the stall (not just once) since
-  // location sharing is a meaningful thing to confirm each time, not a
-  // one-off permission grant.
-  Future<bool> _confirmShareLocation() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Share Your Location?'),
-        content: const Text(
-          'Turning your stall Open will capture your current location and '
-          'show it to customers on the map so they can find you. '
-          'Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Share Location'),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
-  }
-
-  // Gets the vendor's current GPS position, handling permission requests
-  // and the various ways a phone can refuse to give location.
-  // Returns null if location could not be obtained for any reason.
-  Future<Position?> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please turn on location services on your phone.'),
-          ),
-        );
-      }
-      return null;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      // First time asking, or the vendor said "no" before but can still
-      // be asked again (as opposed to "denied forever" below).
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied.')),
-          );
-        }
-        return null;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      // The vendor permanently blocked location for this app. The app
-      // cannot ask again -- they must go into phone Settings manually.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Location permission is permanently denied. '
-              'Please enable it in your phone Settings > Apps > StallSeeker.',
-            ),
-          ),
-        );
-      }
-      return null;
-    }
-
-    return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    );
-  }
-
-  // Fast toggle for Open/Closed status
-  Future<void> _handleStatusToggle(bool val) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    if (val) {
-      // Ask for explicit confirmation every time the vendor opens --
-      // not just a one-off system permission prompt, but a clear
-      // in-app "yes, share my location" decision each time.
-      final agreed = await _confirmShareLocation();
-      if (!agreed) {
-        // Vendor declined -- leave the switch off, don't touch Firestore
-        // or request location at all.
-        return;
-      }
-    }
-
-    setState(() {
-      _isOpen = val;
-    });
-
-    try {
-      if (val) {
-        // Opening the stall: capture the vendor's current GPS location
-        // first, so customers can actually find this stall on the map.
-        final position = await _determinePosition();
-
-        if (position == null) {
-          // Couldn't get a location (permission denied, GPS off, etc).
-          // Revert the switch instead of marking the stall "open" with
-          // no location -- that would show nothing on the customer map
-          // anyway, so it's misleading to leave it toggled on.
-          setState(() {
-            _isOpen = false;
-          });
-          return;
-        }
-
-        await _vendorService.updateVendorLocation(
-          user.uid,
-          position.latitude,
-          position.longitude,
-        );
-      }
-
-      await _vendorService.toggleStallStatus(user.uid, val);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(val ? 'Stall is now OPEN!' : 'Stall is now CLOSED.'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      // Revert switch state on failure
-      setState(() {
-        _isOpen = !val;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: $e')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // No Scaffold/AppBar here -- VendorMainScreen (the bottom-nav shell)
-    // now provides those, so this widget is just the tab's content.
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
-            onRefresh: _fetchVendorDetails,
-            child: ListView(
-              padding: const EdgeInsets.all(16.0),
-              children: [
-                // Live Status Switch Card
-                Card(
-                  color: _isOpen ? Colors.green.shade50 : Colors.red.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Stall Status',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            Text(
-                              _isOpen ? 'Currently Open' : 'Currently Closed',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _isOpen ? Colors.green : Colors.red,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Switch(
-                          value: _isOpen,
-                          onChanged: _handleStatusToggle,
-                          activeTrackColor: Colors.green,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Stall Information Overview Card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _vendorModel?.stallName.isNotEmpty == true
-                                    ? _vendorModel!.stallName
-                                    : 'Stall Name Not Set',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const EditStallScreen(),
-                                  ),
-                                );
-                                // Refresh details upon returning
-                                _fetchVendorDetails();
-                              },
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        Text('Category: ${_vendorModel?.category ?? "N/A"}'),
-                        const SizedBox(height: 4),
-                        Text('Hours: ${_vendorModel?.openingHours ?? "N/A"}'),
-                        const SizedBox(height: 8),
-                        Text(
-                          _vendorModel?.description ??
-                              'No description provided.',
-                          style: TextStyle(color: Colors.grey.shade700),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Manage Menu Button
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.restaurant_menu),
-                            label: const Text('Manage Menu & Stock'),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const VendorMenuScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-  }
-}
-````
-
 ## File: lib/features/vendor/menu/vendor_menu_screen.dart
 ````dart
 import 'dart:io';
@@ -3321,6 +3086,341 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         ),
       ],
     );
+  }
+}
+````
+
+## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/vendor_service.dart';
+import '../profile/edit_stall_screen.dart';
+import '../menu/vendor_menu_screen.dart';
+import 'package:geolocator/geolocator.dart';
+
+class VendorDashboardScreen extends StatefulWidget {
+  const VendorDashboardScreen({super.key});
+
+  @override
+  State<VendorDashboardScreen> createState() => _VendorDashboardScreenState();
+}
+
+class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
+  final _vendorService = VendorService();
+  final _auth = FirebaseAuth.instance;
+
+  VendorModel? _vendorModel;
+  bool _isLoading = true;
+  bool _isOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchVendorDetails();
+  }
+
+  // Fetch Vendor Profile from Firestore
+  Future<void> _fetchVendorDetails() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+      if (mounted) {
+        setState(() {
+          _vendorModel = vendor;
+          _isOpen = vendor?.isOpen ?? false;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Asks the vendor to confirm before their location is captured and
+  // shared. Shown every time they open the stall (not just once) since
+  // location sharing is a meaningful thing to confirm each time, not a
+  // one-off permission grant.
+  Future<bool> _confirmShareLocation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share Your Location?'),
+        content: const Text(
+          'Turning your stall Open will capture your current location and '
+          'show it to customers on the map so they can find you. '
+          'Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Share Location'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  // Gets the vendor's current GPS position, handling permission requests
+  // and the various ways a phone can refuse to give location.
+  // Returns null if location could not be obtained for any reason.
+  Future<Position?> _determinePosition() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please turn on location services on your phone.'),
+          ),
+        );
+      }
+      return null;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      // First time asking, or the vendor said "no" before but can still
+      // be asked again (as opposed to "denied forever" below).
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied.')),
+          );
+        }
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // The vendor permanently blocked location for this app. The app
+      // cannot ask again -- they must go into phone Settings manually.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Location permission is permanently denied. '
+              'Please enable it in your phone Settings > Apps > StallSeeker.',
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  // Fast toggle for Open/Closed status
+  Future<void> _handleStatusToggle(bool val) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    if (val) {
+      // A stall with no name would show as "Unnamed Stall" to customers
+      // on the map -- block opening until the vendor sets one, rather
+      // than letting them go live with an unidentifiable stall.
+      final hasName = _vendorModel?.stallName.trim().isNotEmpty == true;
+      if (!hasName) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please set your stall name before opening your stall.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Ask for explicit confirmation every time the vendor opens --
+      // not just a one-off system permission prompt, but a clear
+      // in-app "yes, share my location" decision each time.
+      final agreed = await _confirmShareLocation();
+      if (!agreed) {
+        // Vendor declined -- leave the switch off, don't touch Firestore
+        // or request location at all.
+        return;
+      }
+    }
+
+    setState(() {
+      _isOpen = val;
+    });
+
+    try {
+      if (val) {
+        // Opening the stall: capture the vendor's current GPS location
+        // first, so customers can actually find this stall on the map.
+        final position = await _determinePosition();
+
+        if (position == null) {
+          // Couldn't get a location (permission denied, GPS off, etc).
+          // Revert the switch instead of marking the stall "open" with
+          // no location -- that would show nothing on the customer map
+          // anyway, so it's misleading to leave it toggled on.
+          setState(() {
+            _isOpen = false;
+          });
+          return;
+        }
+
+        await _vendorService.updateVendorLocation(
+          user.uid,
+          position.latitude,
+          position.longitude,
+        );
+      }
+
+      await _vendorService.toggleStallStatus(user.uid, val);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(val ? 'Stall is now OPEN!' : 'Stall is now CLOSED.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert switch state on failure
+      setState(() {
+        _isOpen = !val;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No Scaffold/AppBar here -- VendorMainScreen (the bottom-nav shell)
+    // now provides those, so this widget is just the tab's content.
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _fetchVendorDetails,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                // Live Status Switch Card
+                Card(
+                  color: _isOpen ? Colors.green.shade50 : Colors.red.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Stall Status',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              _isOpen ? 'Currently Open' : 'Currently Closed',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _isOpen ? Colors.green : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Switch(
+                          value: _isOpen,
+                          onChanged: _handleStatusToggle,
+                          activeTrackColor: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Stall Information Overview Card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _vendorModel?.stallName.isNotEmpty == true
+                                    ? _vendorModel!.stallName
+                                    : 'Stall Name Not Set',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const EditStallScreen(),
+                                  ),
+                                );
+                                // Refresh details upon returning
+                                _fetchVendorDetails();
+                              },
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Text('Category: ${_vendorModel?.category ?? "N/A"}'),
+                        const SizedBox(height: 4),
+                        Text('Hours: ${_vendorModel?.openingHours ?? "N/A"}'),
+                        const SizedBox(height: 8),
+                        Text(
+                          _vendorModel?.description ??
+                              'No description provided.',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Manage Menu Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.restaurant_menu),
+                            label: const Text('Manage Menu & Stock'),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const VendorMenuScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
   }
 }
 ````

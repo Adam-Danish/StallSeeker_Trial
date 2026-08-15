@@ -20,15 +20,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final error = await _authService.signInWithGoogle();
     if (mounted) setState(() => _isLoading = false);
 
-    // "cancelled" means the user just closed the Google picker --
-    // not a real error, so nothing to show them.
     if (error != null && error != 'cancelled' && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text(error), backgroundColor: const Color(0xFFFF6B56)),
       );
     }
-    // On success, AuthWrapper's auth-state stream swaps this screen
-    // out automatically -- no manual navigation needed here.
   }
 
   Future<void> _continueAsGuest() async {
@@ -43,83 +40,117 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     }
   }
 
+  void _goToRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
+
+  void _goToLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.storefront, size: 64, color: AppColors.primary),
-              const SizedBox(height: 12),
+              // App icon and title
+              const Icon(
+                Icons.storefront,
+                size: 64,
+                color: const Color(0xFFFF6E41),
+              ),
+              const SizedBox(height: 16),
               const Text(
                 'StallSeeker',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                  fontFamily: 'Poppins',
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
                 'Find nearby food stalls, live.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                  fontFamily: 'Poppins',
+                ),
               ),
               const SizedBox(height: 40),
-              ElevatedButton.icon(
+
+              // ---- Updated: Google button (Light Gray) ----
+              _buildActionButton(
+                icon: Image.asset('assets/google_logo.png', height: 20),
+                label: 'Continue with Google',
+                backgroundColor: const Color(0xFFF1F3F4), // Light gray
+                foregroundColor: Colors.black, // Dark text
                 onPressed: _isLoading ? null : _continueWithGoogle,
-                icon: const Icon(Icons.login),
-                label: const Text('Continue with Google'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
               ),
-              const SizedBox(height: 12),
-              // Direct Register entry point. Google sign-in above always
-              // creates a customer account -- vendors need to register
-              // with email/password to pick the 'vendor' role, so this
-              // needs to be reachable directly, not buried inside the
-              // Login screen.
-              OutlinedButton.icon(
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const RegisterScreen()),
-                        );
-                      },
-                icon: const Icon(Icons.person_add_alt),
-                label: const Text('Register (Vendor or Customer)'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+              const SizedBox(height: 10), // SPACING ANTARA BUTTON
+
+              // ---- Updated: Email button (Coral/Orange) ----
+              _buildActionButton(
+                icon: const Icon(Icons.email_outlined, size: 24),
+                label: 'Continue with Email',
+                backgroundColor: const Color(0xFFFF6E41), // Vibrant coral
+                foregroundColor: Colors.white, // White text
+                onPressed: _isLoading ? null : _goToRegister,
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
+              const SizedBox(height: 10),
+
+              // ---- Updated: Guest button (Dark Black) ----
+              _buildActionButton(
+                icon: const Icon(Icons.person_outline, size: 24),
+                label: 'Continue as Guest',
+                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
+                foregroundColor: Colors.white, // White text
                 onPressed: _isLoading ? null : _continueAsGuest,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+
+              const SizedBox(height: 24),
+
+              // "Already have an account? Sign In"
+              Center(
+                child: TextButton(
+                  onPressed: _isLoading ? null : _goToLogin,
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                      children: const [
+                        TextSpan(text: 'Already have an account? '),
+                        TextSpan(
+                          text: 'Sign In',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: const Text('Continue as Guest'),
               ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _isLoading
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen()),
-                        );
-                      },
-                child: const Text('Already have an account? Log In'),
-              ),
+
               if (_isLoading) ...[
                 const SizedBox(height: 16),
                 const Center(child: CircularProgressIndicator()),
@@ -127,6 +158,38 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Reusable button – UPDATED to accept background and foreground colors
+  Widget _buildActionButton({
+    required Widget icon,
+    required String label,
+    required Color backgroundColor, // New argument
+    required Color foregroundColor, // New argument
+    VoidCallback? onPressed,
+  }) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: backgroundColor, // The solid background color
+        foregroundColor: foregroundColor, // Text & icon color
+        side: BorderSide.none, // Removed the gray border entirely
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(50), // Kept your max roundness
+        ),
+        textStyle: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          icon,
+          const SizedBox(width: 12),
+          Text(label),
+        ],
       ),
     );
   }
