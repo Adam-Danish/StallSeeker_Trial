@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
@@ -26,6 +28,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
 
+  // Shown in the AppBar in place of a static "Search" title. Starts as
+  // a neutral greeting while the user's name is being fetched.
+  String _greeting = 'Welcome!';
+
   // Which vendor is currently highlighted -- set by tapping either a
   // marker on the map or a card in the horizontal list. Both use the
   // same selection so tapping either one highlights consistently.
@@ -47,12 +53,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _getCustomerLocation();
+    _loadGreeting();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Builds the "Welcome, [Name]" greeting. Guests (anonymous sign-in)
+  // have no Firestore profile document to read a name from, so they
+  // get a suitable generic greeting instead.
+  Future<void> _loadGreeting() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (user.isAnonymous) {
+      if (mounted) setState(() => _greeting = 'Welcome!');
+      return;
+    }
+
+    final userData = await _authService.getUserData(user.uid);
+    final name = userData?.fullName;
+    if (mounted) {
+      setState(() {
+        _greeting =
+            (name != null && name.isNotEmpty) ? 'Welcome, $name' : 'Welcome!';
+      });
+    }
   }
 
   // Gets the customer's current GPS position and, once found, animates
@@ -117,10 +146,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('StallSeeker'),
+        title: Text(
+          _greeting,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            fontFamily: 'Poppins',
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        centerTitle: false, // Aligns the title to the left (iOS style)
+        backgroundColor: Colors.transparent, // Makes the bar invisible
+        elevation: 0, // Removes the shadow
+        // This screen overrides backgroundColor directly (bypassing the
+        // app-wide AppBarTheme), so the status bar style needs setting
+        // explicitly here too -- dark icons so time/battery/signal stay
+        // visible against the light background behind this bar.
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.black),
             onPressed: () => confirmAndLogout(context, _authService),
           ),
         ],
@@ -242,25 +288,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
 
             // Search bar
+            // Search bar
             Positioned(
               top: 12,
               left: 12,
               right: 12,
               child: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(12),
+                elevation: 2, // <--- 1. Removed the shadow
+                color: const Color(
+                    0xFFF4F6F8), // <--- 2. Added the light grey background (matches your login inputs)
+                borderRadius: BorderRadius.circular(
+                    50), // <--- 3. Made it fully pill-shaped
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (val) => setState(() => _searchQuery = val),
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 16,
+                      color: Color(0xFF212121),
+                    ),
                     decoration: InputDecoration(
-                      hintText: 'Search vendors...',
+                      hintText:
+                          'Search your fav vendors here...', // <--- 5. Changed the text to match the vibe
+                      hintStyle: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 16,
+                        color: Colors.grey
+                            .shade400, // <--- 6. Made the hint text softer grey
+                      ),
                       border: InputBorder.none,
-                      icon: const Icon(Icons.search),
+                      icon: const Icon(Icons.search,
+                          color: Colors.grey), // Adjust icon color here
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon: const Icon(Icons.clear, color: Colors.grey),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchQuery = '');
@@ -277,7 +341,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             // search bar only while GPS lookup is still in progress.
             if (_isLocatingCustomer)
               Positioned(
-                top: 68,
+                top: 70,
                 left: 12,
                 child: Material(
                   elevation: 4,
@@ -295,8 +359,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          'Finding your location...',
-                          style: TextStyle(fontSize: 12),
+                          ' Finding your location...',
+                          style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12),
                         ),
                       ],
                     ),

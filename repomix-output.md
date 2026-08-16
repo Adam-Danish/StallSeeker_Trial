@@ -193,6 +193,11 @@ class AppTheme {
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       useMaterial3: true,
+      scaffoldBackgroundColor: Colors.white,
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+      ),
     );
   }
 }
@@ -670,202 +675,6 @@ class VendorService {
             .map((doc) =>
                 VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
             .toList());
-  }
-}
-````
-
-## File: lib/features/auth/screens/welcome_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-import 'register_screen.dart';
-
-class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  final _authService = AuthService();
-  bool _isLoading = false;
-
-  Future<void> _continueWithGoogle() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInWithGoogle();
-    if (mounted) setState(() => _isLoading = false);
-
-    if (error != null && error != 'cancelled' && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInAsGuest();
-    if (mounted) setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  void _goToRegister() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
-  }
-
-  void _goToLogin() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // App icon and title
-              const Icon(
-                Icons.storefront,
-                size: 64,
-                color: AppColors.primary,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Find nearby food stalls, live.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // ---- Updated: Google button (Light Gray) ----
-              _buildActionButton(
-                icon: Image.asset('assets/google_logo.png', height: 20),
-                label: 'Continue with Google',
-                backgroundColor: const Color(0xFFF1F3F4), // Light gray
-                foregroundColor: Colors.black, // Dark text
-                onPressed: _isLoading ? null : _continueWithGoogle,
-              ),
-              const SizedBox(height: 14),
-
-              // ---- Updated: Email button (Coral/Orange) ----
-              _buildActionButton(
-                icon: const Icon(Icons.email_outlined, size: 24),
-                label: 'Continue with Email',
-                backgroundColor: const Color(0xFFFF6B56), // Vibrant coral
-                foregroundColor: Colors.white, // White text
-                onPressed: _isLoading ? null : _goToRegister,
-              ),
-              const SizedBox(height: 14),
-
-              // ---- Updated: Guest button (Dark Black) ----
-              _buildActionButton(
-                icon: const Icon(Icons.person_outline, size: 24),
-                label: 'Continue as Guest',
-                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
-                foregroundColor: Colors.white, // White text
-                onPressed: _isLoading ? null : _continueAsGuest,
-              ),
-
-              const SizedBox(height: 24),
-
-              // "Already have an account? Sign In"
-              Center(
-                child: TextButton(
-                  onPressed: _isLoading ? null : _goToLogin,
-                  child: RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                      children: const [
-                        TextSpan(text: 'Already have an account? '),
-                        TextSpan(
-                          text: 'Sign In',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              if (_isLoading) ...[
-                const SizedBox(height: 16),
-                const Center(child: CircularProgressIndicator()),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Reusable button – UPDATED to accept background and foreground colors
-  Widget _buildActionButton({
-    required Widget icon,
-    required String label,
-    required Color backgroundColor, // New argument
-    required Color foregroundColor, // New argument
-    VoidCallback? onPressed,
-  }) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: backgroundColor, // The solid background color
-        foregroundColor: foregroundColor, // Text & icon color
-        side: BorderSide.none, // Removed the gray border entirely
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50), // Kept your max roundness
-        ),
-        textStyle: const TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          icon,
-          const SizedBox(width: 12),
-          Text(label),
-        ],
-      ),
-    );
   }
 }
 ````
@@ -1580,7 +1389,8 @@ class VendorModel {
 ## File: lib/features/auth/screens/register_screen.dart
 ````dart
 import 'package:flutter/material.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -1596,19 +1406,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   String _selectedRole = 'customer';
   bool _isLoading = false;
 
-  void _register() async {
+  Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     String? error = await _authService.signUp(
-      email: _emailController.text,
-      password: _passwordController.text,
-      fullName: _fullNameController.text,
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+      fullName: _fullNameController.text.trim(),
       role: _selectedRole,
     );
 
@@ -1619,8 +1430,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
         SnackBar(content: Text(error), backgroundColor: Colors.red),
       );
     } else if (mounted) {
-      Navigator.pop(context); // Go back to login after successful registration
+      Navigator.pop(context); // Go back after successful registration
     }
+  }
+
+  void _goToLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
   }
 
   @override
@@ -1628,68 +1446,449 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _fullNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  // Reusable pill-shaped text field to match your image perfectly
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hintText,
+    bool obscureText = false,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      style: const TextStyle(
+        fontFamily: 'Poppins',
+        fontSize: 16,
+        color: Color(0xFF212121),
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 16,
+          color: Colors.grey.shade500,
+        ),
+        filled: true,
+        fillColor: Color(0xFFF1F3F4), // Bbackground text box tempat taip
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
+      backgroundColor: const Color.fromARGB(
+          255, 250, 250, 250), // Light grey screen background
+      appBar: AppBar(
+        title: const Text(
+          'Sign Up',
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
           child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextFormField(
-                  controller: _fullNameController,
-                  decoration: const InputDecoration(labelText: 'Full Name'),
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter your name' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (val) => val == null || !val.contains('@')
-                      ? 'Enter a valid email'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  obscureText: true,
-                  validator: (val) => val == null || val.length < 6
-                      ? 'Password must be 6+ chars'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedRole,
-                  decoration: const InputDecoration(labelText: 'I am a...'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'customer', child: Text('Customer')),
-                    DropdownMenuItem(
-                        value: 'vendor', child: Text('Vendor / Stall Owner')),
-                  ],
-                  onChanged: (val) => setState(() => _selectedRole = val!),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
-                  child: _isLoading
-                      ? const CircularProgressIndicator()
-                      : const Text('Register'),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Full Name
+                  _buildTextField(
+                    controller: _fullNameController,
+                    hintText: 'Full Name',
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Enter your name' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. Email Address
+                  _buildTextField(
+                    controller: _emailController,
+                    hintText: 'Email Address',
+                    validator: (val) => val == null || !val.contains('@')
+                        ? 'Enter a valid email'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Password
+                  _buildTextField(
+                    controller: _passwordController,
+                    hintText: 'Password',
+                    obscureText: true,
+                    validator: (val) => val == null || val.length < 6
+                        ? 'Password must be 6+ chars'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 5. Choose Role
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+                    child: Text(
+                      'I am a...', // Removed the weird extra spaces
+                      textAlign: TextAlign.start, // Fixes left alignment
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+
+                  // 6. Role Selection Box (Pill-shaped Container + Dropdown)
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F3F4),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 10),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        isDense: true,
+                        value: _selectedRole,
+                        dropdownColor: Colors
+                            .white, // Added this back for a clean popup background
+                        icon: const Icon(Icons.arrow_drop_down,
+                            color: Colors.grey),
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 16,
+                          color: Color(0xFF212121),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'customer', child: Text('Customer')),
+                          DropdownMenuItem(
+                              value: 'vendor',
+                              child: Text('Vendor / Stall Owner')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedRole = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // "Sign Up" Coral Button (Pill-shaped)
+                  SizedBox(
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _register,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFFF6E41), // Matches your coral color
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        elevation: 0,
+                        textStyle: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text('Sign Up'),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Footer: Already have an account? Sign In
+                  Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Already have an account? ',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: _isLoading ? null : _goToLogin,
+                          child: Text(
+                            'Sign In',
+                            style: TextStyle(
+                              color: const Color(0xFFFF6E41),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/auth/screens/welcome_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
+import 'register_screen.dart';
+
+class WelcomeScreen extends StatefulWidget {
+  const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _authService = AuthService();
+  bool _isLoading = false;
+
+  Future<void> _continueWithGoogle() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInWithGoogle();
+    if (mounted) setState(() => _isLoading = false);
+
+    if (error != null && error != 'cancelled' && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(error), backgroundColor: const Color(0xFFFF6B56)),
+      );
+    }
+  }
+
+  Future<void> _continueAsGuest() async {
+    setState(() => _isLoading = true);
+    final error = await _authService.signInAsGuest();
+    if (mounted) setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _goToRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
+
+  void _goToLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // App icon and title
+              const Icon(
+                Icons.storefront,
+                size: 64,
+                color: const Color(0xFFFF6E41),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'StallSeeker',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Find nearby food stalls, live.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // ---- Updated: Google button (Light Gray) ----
+              _buildActionButton(
+                icon: Image.asset('assets/google_logo.png', height: 20),
+                label: 'Continue with Google',
+                backgroundColor: const Color(0xFFF1F3F4), // Light gray
+                foregroundColor: Colors.black, // Dark text
+                onPressed: _isLoading ? null : _continueWithGoogle,
+              ),
+              const SizedBox(height: 10), // SPACING ANTARA BUTTON
+
+              // ---- Updated: Email button (Coral/Orange) ----
+              _buildActionButton(
+                icon: const Icon(Icons.email_outlined, size: 24),
+                label: 'Continue with Email',
+                backgroundColor: const Color(0xFFFF6E41), // Vibrant coral
+                foregroundColor: Colors.white, // White text
+                onPressed: _isLoading ? null : _goToRegister,
+              ),
+              const SizedBox(height: 10),
+
+              // ---- Updated: Guest button (Dark Black) ----
+              _buildActionButton(
+                icon: const Icon(Icons.person_outline, size: 24),
+                label: 'Continue as Guest',
+                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
+                foregroundColor: Colors.white, // White text
+                onPressed: _isLoading ? null : _continueAsGuest,
+              ),
+
+              const SizedBox(height: 24),
+
+              // "Already have an account? Sign In"
+              Center(
+                child: TextButton(
+                  onPressed: _isLoading ? null : _goToLogin,
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                      children: const [
+                        TextSpan(text: 'Already have an account? '),
+                        TextSpan(
+                          text: 'Sign In',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              if (_isLoading) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Reusable button – UPDATED to accept background and foreground colors
+  Widget _buildActionButton({
+    required Widget icon,
+    required String label,
+    required Color backgroundColor, // New argument
+    required Color foregroundColor, // New argument
+    VoidCallback? onPressed,
+  }) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: backgroundColor, // The solid background color
+        foregroundColor: foregroundColor, // Text & icon color
+        side: BorderSide.none, // Removed the gray border entirely
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(50), // Kept your max roundness
+        ),
+        textStyle: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          icon,
+          const SizedBox(width: 12),
+          Text(label),
+        ],
       ),
     );
   }
@@ -3429,6 +3628,7 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
 ````dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
@@ -3440,6 +3640,19 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The app's background is light (white/cream), so the status bar's
+  // time/battery/signal icons need to render dark to stay visible --
+  // otherwise they default to light and blend into the light
+  // background, becoming nearly invisible. Set globally here so it
+  // applies even on screens that override AppBar styling directly.
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
 
   try {
     if (Firebase.apps.isEmpty) {
@@ -3730,8 +3943,8 @@ class AuthService {
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-import 'package:stallseeker/features/auth/screens/register_screen.dart';
+import '../../../core/services/auth_service.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -3875,6 +4088,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _goToRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
+
   @override
   void dispose() {
     _authSub?.cancel();
@@ -3883,68 +4103,194 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // Reusable pill-shaped text field to match the image
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hintText,
+    bool obscureText = false,
+    String? Function(String?)? validator,
+    Widget? suffixIcon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      style: const TextStyle(
+        fontFamily: 'Poppins',
+        fontSize: 16,
+        color: Color(0xFF212121),
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 16,
+          color: Colors.grey.shade500,
+        ),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: const Color(0xFFE5E5E5), // BOX  BUTTON EMAIL A
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5), // Light grey screen background
+
+      // iOS-style AppBar with centered title and back button
       appBar: AppBar(
+        title: const Text(
+          'Sign In',
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+        centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
+          onPressed: () => Navigator.pop(context), // Adds the Back button
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 32),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (val) => val == null || !val.contains('@')
-                    ? 'Enter a valid email'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Enter your password' : null,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _login,
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Login'),
-              ),
-              TextButton(
-                onPressed: _showForgotPasswordDialog,
-                child: const Text('Forgot Password?'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  );
-                },
-                child: const Text("Don't have an account? Register"),
-              ),
-            ],
+
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Email Address Field
+                _buildTextField(
+                  controller: _emailController,
+                  hintText: 'Email Address',
+                  validator: (val) => val == null || !val.contains('@')
+                      ? 'Enter a valid email'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+
+                // Password Field
+                _buildTextField(
+                  controller: _passwordController,
+                  hintText: 'Password',
+                  obscureText: true,
+                  validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter your password' : null,
+                ),
+
+                const SizedBox(height: 32),
+
+                // "Sign In" Coral Button (Pill-shaped)
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6E41), // Coral color
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 0,
+                      textStyle: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('Sign In'),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Forgot Password? Button
+                Center(
+                  child: TextButton(
+                    onPressed: _isLoading ? null : _showForgotPasswordDialog,
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        color: Color(0xFFFF6E41), // Coral color
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Footer: Don't have an account? Sign Up
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Don\'t have an account? ',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _isLoading ? null : _goToRegister,
+                        child: Text(
+                          'Sign Up',
+                          style: TextStyle(
+                            color: const Color(0xFFFF6E41),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -3956,6 +4302,8 @@ class _LoginScreenState extends State<LoginScreen> {
 ## File: lib/features/customer/home/customer_home_screen.dart
 ````dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/vendor_model.dart';
@@ -3983,6 +4331,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
 
+  // Shown in the AppBar in place of a static "Search" title. Starts as
+  // a neutral greeting while the user's name is being fetched.
+  String _greeting = 'Welcome!';
+
   // Which vendor is currently highlighted -- set by tapping either a
   // marker on the map or a card in the horizontal list. Both use the
   // same selection so tapping either one highlights consistently.
@@ -4004,12 +4356,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _getCustomerLocation();
+    _loadGreeting();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Builds the "Welcome, [Name]" greeting. Guests (anonymous sign-in)
+  // have no Firestore profile document to read a name from, so they
+  // get a suitable generic greeting instead.
+  Future<void> _loadGreeting() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (user.isAnonymous) {
+      if (mounted) setState(() => _greeting = 'Welcome!');
+      return;
+    }
+
+    final userData = await _authService.getUserData(user.uid);
+    final name = userData?.fullName;
+    if (mounted) {
+      setState(() {
+        _greeting =
+            (name != null && name.isNotEmpty) ? 'Welcome, $name' : 'Welcome!';
+      });
+    }
   }
 
   // Gets the customer's current GPS position and, once found, animates
@@ -4074,10 +4449,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('StallSeeker'),
+        title: Text(
+          _greeting,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            fontFamily: 'Poppins',
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        centerTitle: false, // Aligns the title to the left (iOS style)
+        backgroundColor: Colors.transparent, // Makes the bar invisible
+        elevation: 0, // Removes the shadow
+        // This screen overrides backgroundColor directly (bypassing the
+        // app-wide AppBarTheme), so the status bar style needs setting
+        // explicitly here too -- dark icons so time/battery/signal stay
+        // visible against the light background behind this bar.
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.black),
             onPressed: () => confirmAndLogout(context, _authService),
           ),
         ],
@@ -4199,25 +4591,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
 
             // Search bar
+            // Search bar
             Positioned(
               top: 12,
               left: 12,
               right: 12,
               child: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(12),
+                elevation: 2, // <--- 1. Removed the shadow
+                color: const Color(
+                    0xFFF4F6F8), // <--- 2. Added the light grey background (matches your login inputs)
+                borderRadius: BorderRadius.circular(
+                    50), // <--- 3. Made it fully pill-shaped
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (val) => setState(() => _searchQuery = val),
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 16,
+                      color: Color(0xFF212121),
+                    ),
                     decoration: InputDecoration(
-                      hintText: 'Search vendors...',
+                      hintText:
+                          'Search your fav vendors here...', // <--- 5. Changed the text to match the vibe
+                      hintStyle: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 16,
+                        color: Colors.grey
+                            .shade400, // <--- 6. Made the hint text softer grey
+                      ),
                       border: InputBorder.none,
-                      icon: const Icon(Icons.search),
+                      icon: const Icon(Icons.search,
+                          color: Colors.grey), // Adjust icon color here
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon: const Icon(Icons.clear, color: Colors.grey),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchQuery = '');
@@ -4234,7 +4644,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             // search bar only while GPS lookup is still in progress.
             if (_isLocatingCustomer)
               Positioned(
-                top: 68,
+                top: 70,
                 left: 12,
                 child: Material(
                   elevation: 4,
@@ -4252,8 +4662,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          'Finding your location...',
-                          style: TextStyle(fontSize: 12),
+                          ' Finding your location...',
+                          style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w400,
+                              fontSize: 12),
                         ),
                       ],
                     ),

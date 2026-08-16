@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   static const Color primary =
-      Color(0xFFE65100); // Deep Orange / Food Stall theme
+      Color(0xFFFF6E41); // Deep Orange / Food Stall theme
   static const Color primaryLight = Color(0xFFFF8142);
   static const Color background = Color(0xFFF8F9FA);
   static const Color cardColor = Colors.white;
