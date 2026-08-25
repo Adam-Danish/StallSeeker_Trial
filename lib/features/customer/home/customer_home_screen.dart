@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
@@ -28,22 +29,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
 
-  // Shown in the AppBar in place of a static "Search" title. Starts as
-  // a neutral greeting while the user's name is being fetched.
+  final List<String> _tabTitles = ['Home', 'Following', 'Profile'];
   String _greeting = 'Welcome!';
 
-  // Which vendor is currently highlighted -- set by tapping either a
-  // marker on the map or a card in the horizontal list. Both use the
-  // same selection so tapping either one highlights consistently.
   String? _selectedVendorId;
-
-  // True while we're still trying to get the customer's GPS position.
-  // Drives a small loading indicator on the map so it's clear the app
-  // is actively locating them, not just stuck on the default view.
   bool _isLocatingCustomer = true;
+  bool _locationPermissionGranted = false;
 
-  // Fallback camera position (Kuala Lumpur) used only until the
-  // customer's real GPS position is obtained, or if location fails.
   static const CameraPosition _defaultPosition = CameraPosition(
     target: LatLng(3.1390, 101.6869),
     zoom: 14,
@@ -62,15 +54,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.dispose();
   }
 
-  // Builds the "Welcome, [Name]" greeting. Guests (anonymous sign-in)
-  // have no Firestore profile document to read a name from, so they
-  // get a suitable generic greeting instead.
   Future<void> _loadGreeting() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     if (user.isAnonymous) {
-      if (mounted) setState(() => _greeting = 'Welcome!');
+      if (mounted) setState(() => _greeting = 'Welcome, Guest');
       return;
     }
 
@@ -84,12 +73,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  // Gets the customer's current GPS position and, once found, animates
-  // the map camera to center on them. Fails silently (falls back to the
-  // default position) if permission is denied or GPS is off, since this
-  // is a "nice to have" and shouldn't block the whole screen. The
-  // `finally` block guarantees the loading indicator always turns off,
-  // whether location succeeded, failed, or was denied.
   Future<void> _getCustomerLocation() async {
     if (mounted) setState(() => _isLocatingCustomer = true);
     try {
@@ -105,6 +88,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
 
+      if (mounted) setState(() => _locationPermissionGranted = true);
+
       final position = await Geolocator.getCurrentPosition(
         locationSettings:
             const LocationSettings(accuracy: LocationAccuracy.high),
@@ -119,7 +104,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         CameraUpdate.newLatLngZoom(_customerPosition!, 15),
       );
     } catch (_) {
-      // Silently keep the default map position if anything goes wrong.
+      // silent fallback
     } finally {
       if (mounted) {
         setState(() => _isLocatingCustomer = false);
@@ -127,9 +112,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  // Highlights a vendor (on both the map marker and its card) and pans
-  // the camera to it, without navigating away -- tapping the same
-  // vendor again (already selected) is what actually opens details.
   void _selectVendor(VendorModel vendor) {
     setState(() => _selectedVendorId = vendor.vendorId);
     _mapController?.animateCamera(
@@ -147,7 +129,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _greeting,
+          _selectedIndex == 0 ? _greeting : _tabTitles[_selectedIndex],
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -156,15 +138,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
           overflow: TextOverflow.ellipsis,
         ),
-        centerTitle: false, // Aligns the title to the left (iOS style)
-        backgroundColor: Colors.transparent, // Makes the bar invisible
-        elevation: 0, // Removes the shadow
-        // This screen overrides backgroundColor directly (bypassing the
-        // app-wide AppBarTheme), so the status bar style needs setting
-        // explicitly here too -- dark icons so time/battery/signal stay
-        // visible against the light background behind this bar.
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
+          if (_selectedIndex == 0)
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.black),
+              tooltip: 'Refresh',
+              onPressed: _getCustomerLocation,
+            ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black),
             onPressed: () => confirmAndLogout(context, _authService),
@@ -183,24 +167,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),
+        backgroundColor: Colors.white,
+        indicatorColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.map), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.favorite), label: 'Following'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map, color: Color(0xFFFF6E41)),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.favorite_border),
+            selectedIcon: Icon(Icons.favorite, color: Color(0xFFFF6E41)),
+            label: 'Following',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
+            label: 'Profile',
+          ),
         ],
       ),
     );
   }
 
   Widget _buildMapTab() {
-    // Live Firebase stream: any vendor that opens/closes updates this map
-    // instantly, without the customer needing to refresh.
     return StreamBuilder<List<VendorModel>>(
       stream: _vendorService.getOpenVendors(),
       builder: (context, snapshot) {
         final allVendors = snapshot.data ?? [];
 
-        // Filter by search text (matches stall name or category).
         final query = _searchQuery.trim().toLowerCase();
         final filteredVendors = query.isEmpty
             ? allVendors
@@ -210,8 +206,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     v.category.toLowerCase().contains(query))
                 .toList();
 
-        // For the floating card list: sort by distance from the customer
-        // when we know their position, closest first.
         final nearbyVendors = List<VendorModel>.from(filteredVendors)
             .where((v) => v.latitude != 0.0 && v.longitude != 0.0)
             .toList();
@@ -239,8 +233,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               (v) => Marker(
                 markerId: MarkerId(v.vendorId),
                 position: LatLng(v.latitude, v.longitude),
-                // Selected marker shows in a different color so it's
-                // clearly distinguishable from the rest.
                 icon: BitmapDescriptor.defaultMarkerWithHue(
                   v.vendorId == _selectedVendorId
                       ? BitmapDescriptor.hueOrange
@@ -249,9 +241,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 infoWindow: InfoWindow(
                   title: v.stallName,
                   snippet: v.category,
-                  // Tapping the info bubble (the label that pops up
-                  // above a selected marker) is what opens details --
-                  // tapping the marker pin itself just selects it.
                   onTap: () => _openVendorDetails(v),
                 ),
                 onTap: () => _selectVendor(v),
@@ -264,10 +253,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             GoogleMap(
               initialCameraPosition: _defaultPosition,
               markers: markers,
-              myLocationEnabled: true,
-              // Replaced by our own recenter button below, so the
-              // built-in one (which can end up hidden behind our
-              // overlays) isn't shown as well.
+              myLocationEnabled: _locationPermissionGranted,
               myLocationButtonEnabled: false,
               compassEnabled: true,
               padding: const EdgeInsets.only(top: 60),
@@ -280,7 +266,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 }
               },
               onTap: (_) {
-                // Tapping empty map space clears the current selection.
                 if (_selectedVendorId != null) {
                   setState(() => _selectedVendorId = null);
                 }
@@ -288,43 +273,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
 
             // Search bar
-            // Search bar
             Positioned(
               top: 12,
               left: 12,
               right: 12,
               child: Material(
-                elevation: 2, // <--- 1. Removed the shadow
-                color: const Color(
-                    0xFFF4F6F8), // <--- 2. Added the light grey background (matches your login inputs)
-                borderRadius: BorderRadius.circular(
-                    50), // <--- 3. Made it fully pill-shaped
+                elevation: 4,
+                color: AppColors.cardColor,
+                borderRadius: BorderRadius.circular(12),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (val) => setState(() => _searchQuery = val),
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 16,
-                      color: Color(0xFF212121),
-                    ),
                     decoration: InputDecoration(
-                      hintText:
-                          'Search your fav vendors here...', // <--- 5. Changed the text to match the vibe
-                      hintStyle: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 16,
-                        color: Colors.grey
-                            .shade400, // <--- 6. Made the hint text softer grey
-                      ),
+                      hintText: 'Search vendors...',
                       border: InputBorder.none,
-                      icon: const Icon(Icons.search,
-                          color: Colors.grey), // Adjust icon color here
+                      icon: const Icon(Icons.search),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
+                              icon: const Icon(Icons.clear),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchQuery = '');
@@ -337,11 +305,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
 
-            // Small "locating you" indicator, shown just below the
-            // search bar only while GPS lookup is still in progress.
             if (_isLocatingCustomer)
               Positioned(
-                top: 70,
+                top: 68,
                 left: 12,
                 child: Material(
                   elevation: 4,
@@ -359,11 +325,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          ' Finding your location...',
-                          style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w400,
-                              fontSize: 12),
+                          'Finding your location...',
+                          style: TextStyle(fontSize: 12),
                         ),
                       ],
                     ),
@@ -393,9 +356,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
 
-            // Recenter-to-current-location button. Sits above the
-            // nearby-stalls list when it's showing, otherwise sits
-            // closer to the bottom.
             Positioned(
               right: 12,
               bottom: nearbyVendors.isNotEmpty ? 132 : 24,
@@ -408,8 +368,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       CameraUpdate.newLatLngZoom(_customerPosition!, 15),
                     );
                   } else {
-                    // Location wasn't available earlier (denied/off at
-                    // the time) -- try fetching it again now.
                     _getCustomerLocation();
                   }
                 },
@@ -423,8 +381,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
 
-            // Floating horizontal list of nearby stalls, sitting above
-            // the bottom navigation bar.
             if (nearbyVendors.isNotEmpty)
               Positioned(
                 bottom: 12,
@@ -452,9 +408,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
                       return GestureDetector(
                         onTap: () {
-                          // Tap once to highlight + pan to it on the
-                          // map; tap again while already selected to
-                          // open the full details screen.
                           if (isSelected) {
                             _openVendorDetails(vendor);
                           } else {
@@ -466,9 +419,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           margin: const EdgeInsets.only(right: 10),
                           child: Card(
                             elevation: isSelected ? 8 : 4,
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : null,
+                            color: AppColors.cardColor,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                               side: isSelected

@@ -36,8 +36,9 @@ class _SplashScreenState extends State<SplashScreen> {
               'StallSeeker',
               style: TextStyle(
                 fontSize: 28,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w500,
                 color: Colors.white,
+                fontFamily: 'Poppins', // Added Poppins font
               ),
             ),
           ],

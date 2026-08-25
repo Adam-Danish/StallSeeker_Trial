@@ -184,25 +184,6 @@ class StorageService {
 }
 ````
 
-## File: lib/core/theme/app_theme.dart
-````dart
-import 'package:flutter/material.dart';
-
-class AppTheme {
-  static ThemeData get lightTheme {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      useMaterial3: true,
-      scaffoldBackgroundColor: Colors.white,
-      navigationBarTheme: const NavigationBarThemeData(
-        backgroundColor: Colors.white,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/shared/about_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -349,26 +330,6 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-}
-````
-
-## File: lib/core/constants/app_colors.dart
-````dart
-import 'package:flutter/material.dart';
-
-class AppColors {
-  static const Color primary =
-      Color(0xFFE65100); // Deep Orange / Food Stall theme
-  static const Color primaryLight = Color(0xFFFF8142);
-  static const Color background = Color(0xFFF8F9FA);
-  static const Color cardColor = Colors.white;
-  static const Color textDark = Color(0xFF212121);
-  static const Color textMuted = Color(0xFF757575);
-
-  // Status Colors
-  static const Color openGreen = Color(0xFF2E7D32);
-  static const Color closedRed = Color(0xFFC62828);
-  static const Color limitedYellow = Color(0xFFF57F17);
 }
 ````
 
@@ -679,6 +640,40 @@ class VendorService {
 }
 ````
 
+## File: lib/core/theme/app_theme.dart
+````dart
+import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
+
+class AppTheme {
+  static ThemeData get lightTheme {
+    return ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+      useMaterial3: true,
+      scaffoldBackgroundColor: AppColors.background,
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+        height: 65.0,
+      ),
+      // Root-cause fix for cards looking peach/tinted instead of pure
+      // white: Material 3 automatically tints elevated surfaces with a
+      // primary-colored overlay (surfaceTintColor) the higher their
+      // elevation is -- since every Card in the app uses elevation,
+      // they were all picking up a warm/orange cast from the primary
+      // color even though color: null was meant to just mean "white".
+      // Setting surfaceTintColor: Colors.transparent here disables
+      // that overlay app-wide, so every Card renders true
+      // AppColors.cardColor regardless of elevation.
+      cardTheme: const CardThemeData(
+        color: AppColors.cardColor,
+        surfaceTintColor: Colors.transparent,
+      ),
+    );
+  }
+}
+````
+
 ## File: lib/features/customer/following/customer_following_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -688,22 +683,26 @@ import '../../../core/services/vendor_service.dart';
 import '../../../core/services/follow_service.dart';
 import '../vendor_details/vendor_details_screen.dart';
 
-class CustomerFollowingScreen extends StatelessWidget {
+class CustomerFollowingScreen extends StatefulWidget {
   const CustomerFollowingScreen({super.key});
+
+  @override
+  State<CustomerFollowingScreen> createState() =>
+      _CustomerFollowingScreenState();
+}
+
+class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
+  final followService = FollowService();
+  final vendorService = VendorService();
 
   @override
   Widget build(BuildContext context) {
     final customerId = FirebaseAuth.instance.currentUser?.uid;
-    final followService = FollowService();
-    final vendorService = VendorService();
 
     if (customerId == null) {
       return const Center(child: Text('Please log in to see followed stalls.'));
     }
 
-    // Live stream of vendor IDs this customer follows. If they follow/
-    // unfollow anywhere (including from the details screen), this list
-    // updates automatically without needing to refresh.
     return StreamBuilder<List<String>>(
       stream: followService.getFollowedVendorIds(customerId),
       builder: (context, idSnapshot) {
@@ -726,54 +725,57 @@ class CustomerFollowingScreen extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: vendorIds.length,
-          itemBuilder: (context, index) {
-            final vendorId = vendorIds[index];
-
-            // Each followed ID needs its own one-time fetch to get the
-            // vendor's current name/category/status for display.
-            return FutureBuilder<VendorModel?>(
-              future: vendorService.getVendorProfile(vendorId),
-              builder: (context, vendorSnapshot) {
-                if (!vendorSnapshot.hasData || vendorSnapshot.data == null) {
-                  // Still loading, or the vendor profile no longer exists.
-                  return const SizedBox.shrink();
-                }
-
-                final vendor = vendorSnapshot.data!;
-
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: vendor.isOpen
-                          ? Colors.green.shade100
-                          : Colors.red.shade100,
-                      child: Icon(
-                        Icons.storefront,
-                        color: vendor.isOpen ? Colors.green : Colors.red,
-                      ),
-                    ),
-                    title: Text(vendor.stallName.isNotEmpty
-                        ? vendor.stallName
-                        : 'Unnamed Stall'),
-                    subtitle: Text(
-                        '${vendor.category} • ${vendor.isOpen ? "Open" : "Closed"}'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => VendorDetailsScreen(vendor: vendor),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            );
+        return RefreshIndicator(
+          onRefresh: () async {
+            // Trigger a rebuild to re‑fetch vendor profiles.
+            setState(() {});
           },
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: vendorIds.length,
+            itemBuilder: (context, index) {
+              final vendorId = vendorIds[index];
+
+              return FutureBuilder<VendorModel?>(
+                future: vendorService.getVendorProfile(vendorId),
+                builder: (context, vendorSnapshot) {
+                  if (!vendorSnapshot.hasData || vendorSnapshot.data == null) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final vendor = vendorSnapshot.data!;
+
+                  return Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: vendor.isOpen
+                            ? Colors.green.shade100
+                            : Colors.red.shade100,
+                        child: Icon(
+                          Icons.storefront,
+                          color: vendor.isOpen ? Colors.green : Colors.red,
+                        ),
+                      ),
+                      title: Text(vendor.stallName.isNotEmpty
+                          ? vendor.stallName
+                          : 'Unnamed Stall'),
+                      subtitle: Text(
+                          '${vendor.category} • ${vendor.isOpen ? "Open" : "Closed"}'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => VendorDetailsScreen(vendor: vendor),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -783,6 +785,7 @@ class CustomerFollowingScreen extends StatelessWidget {
 
 ## File: lib/features/customer/vendor_details/vendor_details_screen.dart
 ````dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -790,16 +793,90 @@ import '../../../core/models/vendor_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/menu_service.dart';
 import '../../../core/services/follow_service.dart';
+import '../../../core/services/vendor_service.dart';
 import '../../auth/screens/login_screen.dart';
 
-class VendorDetailsScreen extends StatelessWidget {
+class VendorDetailsScreen extends StatefulWidget {
   final VendorModel vendor;
 
   const VendorDetailsScreen({super.key, required this.vendor});
 
+  @override
+  State<VendorDetailsScreen> createState() => _VendorDetailsScreenState();
+}
+
+class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
+  final _menuService = MenuService();
+  final _followService = FollowService();
+  final _vendorService = VendorService();
+
+  // Local copy of the vendor, refreshable independently of the
+  // instance passed in -- the one passed in is a snapshot from
+  // whenever the customer tapped the marker/card, and doesn't update
+  // on its own if the vendor changes their status while this screen
+  // is open.
+  late VendorModel _vendor;
+  bool _isRefreshing = false;
+
+  // Local follow state, kept in sync with Firestore via a listener but
+  // updated OPTIMISTICALLY (immediately, before the write completes)
+  // when the user taps the heart -- this is what makes the icon flip
+  // instantly instead of waiting on a round-trip.
+  bool _isFollowing = false;
+  StreamSubscription<bool>? _followSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _vendor = widget.vendor;
+
+    final customerId = FirebaseAuth.instance.currentUser?.uid;
+    if (customerId != null) {
+      _followSub = _followService
+          .isFollowing(customerId, _vendor.vendorId)
+          .listen((value) {
+        if (mounted) setState(() => _isFollowing = value);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _followSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshVendor() async {
+    setState(() => _isRefreshing = true);
+    final updated = await _vendorService.getVendorProfile(_vendor.vendorId);
+    if (mounted) {
+      setState(() {
+        if (updated != null) _vendor = updated;
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _toggleFollow(String customerId) async {
+    final wasFollowing = _isFollowing;
+    // Flip immediately -- don't wait for Firestore to confirm. If the
+    // write fails for some reason, it gets reverted in the catch below.
+    setState(() => _isFollowing = !wasFollowing);
+
+    try {
+      if (wasFollowing) {
+        await _followService.unfollowVendor(customerId, _vendor.vendorId);
+      } else {
+        await _followService.followVendor(customerId, _vendor.vendorId);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isFollowing = wasFollowing);
+    }
+  }
+
   Future<void> _openNavigation() async {
     final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${vendor.latitude},${vendor.longitude}',
+      'https://www.google.com/maps/search/?api=1&query=${_vendor.latitude},${_vendor.longitude}',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -860,16 +937,25 @@ class VendorDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final menuService = MenuService();
-    final followService = FollowService();
     final currentUser = FirebaseAuth.instance.currentUser;
     final customerId = currentUser?.uid;
     final isGuest = currentUser?.isAnonymous ?? true;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(vendor.stallName.isNotEmpty ? vendor.stallName : 'Stall'),
+        title: Text(_vendor.stallName.isNotEmpty ? _vendor.stallName : 'Stall'),
         actions: [
+          IconButton(
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh stall status',
+            onPressed: _isRefreshing ? null : _refreshVendor,
+          ),
           if (customerId != null)
             isGuest
                 ? IconButton(
@@ -877,39 +963,24 @@ class VendorDetailsScreen extends StatelessWidget {
                     tooltip: 'Follow',
                     onPressed: () => _showLoginRequiredDialog(context),
                   )
-                : StreamBuilder<bool>(
-                    stream:
-                        followService.isFollowing(customerId, vendor.vendorId),
-                    builder: (context, snapshot) {
-                      final isFollowing = snapshot.data ?? false;
-                      return IconButton(
-                        icon: Icon(
-                          isFollowing ? Icons.favorite : Icons.favorite_border,
-                          color: isFollowing ? Colors.red : null,
-                        ),
-                        tooltip: isFollowing ? 'Unfollow' : 'Follow',
-                        onPressed: () async {
-                          if (isFollowing) {
-                            await followService.unfollowVendor(
-                                customerId, vendor.vendorId);
-                          } else {
-                            await followService.followVendor(
-                                customerId, vendor.vendorId);
-                          }
-                        },
-                      );
-                    },
+                : IconButton(
+                    icon: Icon(
+                      _isFollowing ? Icons.favorite : Icons.favorite_border,
+                      color: _isFollowing ? Colors.red : null,
+                    ),
+                    tooltip: _isFollowing ? 'Unfollow' : 'Follow',
+                    onPressed: () => _toggleFollow(customerId),
                   ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          if (vendor.imageUrl.isNotEmpty)
+          if (_vendor.imageUrl.isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                vendor.imageUrl,
+                _vendor.imageUrl,
                 height: 160,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -921,7 +992,7 @@ class VendorDetailsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          if (vendor.imageUrl.isNotEmpty) const SizedBox(height: 16),
+          if (_vendor.imageUrl.isNotEmpty) const SizedBox(height: 16),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -933,26 +1004,26 @@ class VendorDetailsScreen extends StatelessWidget {
                       Icon(
                         Icons.circle,
                         size: 12,
-                        color: vendor.isOpen ? Colors.green : Colors.red,
+                        color: _vendor.isOpen ? Colors.green : Colors.red,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        vendor.isOpen ? 'Open now' : 'Closed',
+                        _vendor.isOpen ? 'Open now' : 'Closed',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: vendor.isOpen ? Colors.green : Colors.red,
+                          color: _vendor.isOpen ? Colors.green : Colors.red,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('Category: ${vendor.category}'),
+                  Text('Category: ${_vendor.category}'),
                   const SizedBox(height: 4),
-                  Text('Hours: ${vendor.openingHours}'),
+                  Text('Hours: ${_vendor.openingHours}'),
                   const SizedBox(height: 8),
                   Text(
-                    vendor.description.isNotEmpty
-                        ? vendor.description
+                    _vendor.description.isNotEmpty
+                        ? _vendor.description
                         : 'No description provided.',
                     style: TextStyle(color: Colors.grey.shade700),
                   ),
@@ -976,7 +1047,7 @@ class VendorDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           StreamBuilder<List<MenuItemModel>>(
-            stream: menuService.getMenuItems(vendor.vendorId),
+            stream: _menuService.getMenuItems(_vendor.vendorId),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Padding(
@@ -1202,10 +1273,23 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),
+        backgroundColor: Colors.white,
+        indicatorColor: Colors.transparent, // Removes the pill background
+        labelBehavior:
+            NavigationDestinationLabelBehavior.alwaysHide, // Hides labels
         destinations: const [
+          // 1. Dashboard Tab
           NavigationDestination(
-              icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Color(0xFFFF6E41)),
+            label: 'Dashboard',
+          ),
+          // 2. Profile Tab
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
+            label: 'Profile',
+          ),
         ],
       ),
     );
@@ -1305,6 +1389,28 @@ class DefaultFirebaseOptions {
 }
 ````
 
+## File: lib/core/constants/app_colors.dart
+````dart
+import 'package:flutter/material.dart';
+
+class AppColors {
+  static const Color primary =
+      Color(0xFFFF6E41); // Deep Orange / Food Stall theme
+  static const Color primaryLight = Color(0xFFFF8142);
+
+  // New design system
+  static const Color background = Color(0xFFF2EFF5); // Soft Lavender-Gray
+  static const Color cardColor = Color(0xFFFFFFFF); // Pure White
+  static const Color textDark = Color(0xFF222222); // Dark Charcoal
+  static const Color textMuted = Color(0xFF9A9A9E); // Muted Gray
+
+  // Status Colors
+  static const Color openGreen = Color(0xFF2E7D32);
+  static const Color closedRed = Color(0xFFC62828);
+  static const Color limitedYellow = Color(0xFFF57F17);
+}
+````
+
 ## File: lib/core/models/vendor_model.dart
 ````dart
 class VendorModel {
@@ -1386,315 +1492,6 @@ class VendorModel {
 }
 ````
 
-## File: lib/features/auth/screens/register_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  String _selectedRole = 'customer';
-  bool _isLoading = false;
-
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    String? error = await _authService.signUp(
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-      fullName: _fullNameController.text.trim(),
-      role: _selectedRole,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    } else if (mounted) {
-      Navigator.pop(context); // Go back after successful registration
-    }
-  }
-
-  void _goToLogin() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
-  }
-
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  // Reusable pill-shaped text field to match your image perfectly
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
-    bool obscureText = false,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      validator: validator,
-      style: const TextStyle(
-        fontFamily: 'Poppins',
-        fontSize: 16,
-        color: Color(0xFF212121),
-      ),
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 16,
-          color: Colors.grey.shade500,
-        ),
-        filled: true,
-        fillColor: Color(0xFFF1F3F4), // Bbackground text box tempat taip
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(
-          255, 250, 250, 250), // Light grey screen background
-      appBar: AppBar(
-        title: const Text(
-          'Sign Up',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Full Name
-                  _buildTextField(
-                    controller: _fullNameController,
-                    hintText: 'Full Name',
-                    validator: (val) =>
-                        val == null || val.isEmpty ? 'Enter your name' : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 2. Email Address
-                  _buildTextField(
-                    controller: _emailController,
-                    hintText: 'Email Address',
-                    validator: (val) => val == null || !val.contains('@')
-                        ? 'Enter a valid email'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 3. Password
-                  _buildTextField(
-                    controller: _passwordController,
-                    hintText: 'Password',
-                    obscureText: true,
-                    validator: (val) => val == null || val.length < 6
-                        ? 'Password must be 6+ chars'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 5. Choose Role
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
-                    child: Text(
-                      'I am a...', // Removed the weird extra spaces
-                      textAlign: TextAlign.start, // Fixes left alignment
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-
-                  // 6. Role Selection Box (Pill-shaped Container + Dropdown)
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F3F4),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 10),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        isDense: true,
-                        value: _selectedRole,
-                        dropdownColor: Colors
-                            .white, // Added this back for a clean popup background
-                        icon: const Icon(Icons.arrow_drop_down,
-                            color: Colors.grey),
-                        style: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 16,
-                          color: Color(0xFF212121),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'customer', child: Text('Customer')),
-                          DropdownMenuItem(
-                              value: 'vendor',
-                              child: Text('Vendor / Stall Owner')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              _selectedRole = val;
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // "Sign Up" Coral Button (Pill-shaped)
-                  SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _register,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFFF6E41), // Matches your coral color
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 0,
-                        textStyle: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('Sign Up'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Footer: Already have an account? Sign In
-                  Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Already have an account? ',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 14,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: _isLoading ? null : _goToLogin,
-                          child: Text(
-                            'Sign In',
-                            style: TextStyle(
-                              color: const Color(0xFFFF6E41),
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/auth/screens/welcome_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -1764,11 +1561,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // App icon and title
               const Icon(
                 Icons.storefront,
                 size: 64,
-                color: const Color(0xFFFF6E41),
+                color: Color(0xFFFF6E41), // removed unnecessary const
               ),
               const SizedBox(height: 16),
               const Text(
@@ -1792,39 +1588,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-
-              // ---- Updated: Google button (Light Gray) ----
               _buildActionButton(
                 icon: Image.asset('assets/google_logo.png', height: 20),
                 label: 'Continue with Google',
-                backgroundColor: const Color(0xFFF1F3F4), // Light gray
-                foregroundColor: Colors.black, // Dark text
+                backgroundColor: const Color(0xFFF1F3F4),
+                foregroundColor: Colors.black,
                 onPressed: _isLoading ? null : _continueWithGoogle,
               ),
-              const SizedBox(height: 10), // SPACING ANTARA BUTTON
-
-              // ---- Updated: Email button (Coral/Orange) ----
+              const SizedBox(height: 10),
               _buildActionButton(
                 icon: const Icon(Icons.email_outlined, size: 24),
                 label: 'Continue with Email',
-                backgroundColor: const Color(0xFFFF6E41), // Vibrant coral
-                foregroundColor: Colors.white, // White text
+                backgroundColor: const Color(0xFFFF6E41),
+                foregroundColor: Colors.white,
                 onPressed: _isLoading ? null : _goToRegister,
               ),
               const SizedBox(height: 10),
-
-              // ---- Updated: Guest button (Dark Black) ----
               _buildActionButton(
                 icon: const Icon(Icons.person_outline, size: 24),
                 label: 'Continue as Guest',
-                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
-                foregroundColor: Colors.white, // White text
+                backgroundColor: const Color(0xFF1C1C1E),
+                foregroundColor: Colors.white,
                 onPressed: _isLoading ? null : _continueAsGuest,
               ),
-
               const SizedBox(height: 24),
-
-              // "Already have an account? Sign In"
               Center(
                 child: TextButton(
                   onPressed: _isLoading ? null : _goToLogin,
@@ -1849,7 +1636,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
               ),
-
               if (_isLoading) ...[
                 const SizedBox(height: 16),
                 const Center(child: CircularProgressIndicator()),
@@ -1861,23 +1647,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  // Reusable button – UPDATED to accept background and foreground colors
   Widget _buildActionButton({
     required Widget icon,
     required String label,
-    required Color backgroundColor, // New argument
-    required Color foregroundColor, // New argument
+    required Color backgroundColor,
+    required Color foregroundColor,
     VoidCallback? onPressed,
   }) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        backgroundColor: backgroundColor, // The solid background color
-        foregroundColor: foregroundColor, // Text & icon color
-        side: BorderSide.none, // Removed the gray border entirely
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        side: BorderSide.none,
         padding: const EdgeInsets.symmetric(vertical: 22),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50), // Kept your max roundness
+          borderRadius: BorderRadius.circular(50),
         ),
         textStyle: const TextStyle(
             fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
@@ -2192,6 +1977,9 @@ class _EditStallScreenState extends State<EditStallScreen> {
 ````dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
@@ -2207,14 +1995,22 @@ class VendorProfileScreen extends StatefulWidget {
 
 class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _authService = AuthService();
+  final _geocoding = Geocoding();
 
   UserModel? _userModel;
   bool _isLoading = true;
+
+  // Current Location section state -- shows the vendor's live GPS
+  // position (turned into a readable address via reverse geocoding),
+  // same pattern as the customer profile screen.
+  String _locationText = 'Loading location...';
+  bool _isLoadingLocation = true;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadLocation();
   }
 
   Future<void> _loadUserData() async {
@@ -2232,6 +2028,68 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _loadLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) return 'Location unavailable';
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
   }
 
   void _showEditProfileDialog() {
@@ -2382,10 +2240,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
+          color: AppColors.textMuted,
           letterSpacing: 0.5,
         ),
       ),
@@ -2400,9 +2258,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     Color? textColor,
   }) {
     return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      leading: Icon(icon, color: iconColor ?? AppColors.textDark),
+      title:
+          Text(title, style: TextStyle(color: textColor ?? AppColors.textDark)),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
       onTap: onTap,
     );
   }
@@ -2425,7 +2284,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   radius: 32,
                   backgroundColor:
                       Theme.of(context).colorScheme.primaryContainer,
-                  child: const Icon(Icons.person, size: 32),
+                  child: const Icon(Icons.storefront, size: 32),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -2437,18 +2296,45 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                             ? _userModel!.fullName
                             : 'Name Not Set',
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _userModel?.email ?? '',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: const TextStyle(color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+        _sectionHeader('CURRENT LOCATION'),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.location_on_outlined,
+                color: AppColors.textDark),
+            title: const Text('Stall Location',
+                style: TextStyle(color: AppColors.textDark)),
+            subtitle: Text(
+              _locationText,
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            trailing: _isLoadingLocation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.refresh, color: AppColors.textMuted),
+                    tooltip: 'Refresh location',
+                    onPressed: _loadLocation,
+                  ),
           ),
         ),
         _sectionHeader('ACCOUNT SETTINGS'),
@@ -2610,6 +2496,315 @@ class MenuService {
         .collection('menu')
         .doc(itemId)
         .delete();
+  }
+}
+````
+
+## File: lib/features/auth/screens/register_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  String _selectedRole = 'customer';
+  bool _isLoading = false;
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    String? error = await _authService.signUp(
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+      fullName: _fullNameController.text.trim(),
+      role: _selectedRole,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    } else if (mounted) {
+      Navigator.pop(context); // Go back after successful registration
+    }
+  }
+
+  void _goToLogin() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  // Reusable pill-shaped text field to match your image perfectly
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hintText,
+    bool obscureText = false,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      style: const TextStyle(
+        fontFamily: 'Poppins',
+        fontSize: 16,
+        color: Color(0xFF212121),
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 16,
+          color: Colors.grey.shade500,
+        ),
+        filled: true,
+        fillColor: Color(0xFFF1F3F4), // Bbackground text box tempat taip
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: const BorderSide(color: Colors.red, width: 1),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color.fromARGB(
+          255, 250, 250, 250), // Light grey screen background
+      appBar: AppBar(
+        title: const Text(
+          'Sign Up',
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Full Name
+                  _buildTextField(
+                    controller: _fullNameController,
+                    hintText: 'Full Name',
+                    validator: (val) =>
+                        val == null || val.isEmpty ? 'Enter your name' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. Email Address
+                  _buildTextField(
+                    controller: _emailController,
+                    hintText: 'Email Address',
+                    validator: (val) => val == null || !val.contains('@')
+                        ? 'Enter a valid email'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Password
+                  _buildTextField(
+                    controller: _passwordController,
+                    hintText: 'Password',
+                    obscureText: true,
+                    validator: (val) => val == null || val.length < 6
+                        ? 'Password must be 6+ chars'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 5. Choose Role
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+                    child: Text(
+                      'I am a...', // Removed the weird extra spaces
+                      textAlign: TextAlign.start, // Fixes left alignment
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+
+                  // 6. Role Selection Box (Pill-shaped Container + Dropdown)
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F3F4),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 10),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        isDense: true,
+                        value: _selectedRole,
+                        dropdownColor: Colors
+                            .white, // Added this back for a clean popup background
+                        icon: const Icon(Icons.arrow_drop_down,
+                            color: Colors.grey),
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 16,
+                          color: Color(0xFF212121),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'customer', child: Text('Customer')),
+                          DropdownMenuItem(
+                              value: 'vendor',
+                              child: Text('Vendor / Stall Owner')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedRole = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // "Sign Up" Coral Button (Pill-shaped)
+                  SizedBox(
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _register,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFFF6E41), // Matches your coral color
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        elevation: 0,
+                        textStyle: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text('Sign Up'),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Footer: Already have an account? Sign In
+                  Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Already have an account? ',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                            fontFamily: 'Poppins',
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: _isLoading ? null : _goToLogin,
+                          child: Text(
+                            'Sign In',
+                            style: TextStyle(
+                              color: const Color(0xFFFF6E41),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 ````
@@ -2967,6 +3162,9 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
 ````dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
@@ -2986,10 +3184,18 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   UserModel? _userModel;
   bool _isLoading = true;
 
+  // Current Location section state. Unlike the vendor's version (which
+  // shows their saved stall coordinates), this fetches the customer's
+  // live GPS position, then turns it into a readable address via
+  // reverse geocoding.
+  String _locationText = 'Loading location...';
+  bool _isLoadingLocation = true;
+
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadLocation();
   }
 
   Future<void> _loadUserData() async {
@@ -3007,6 +3213,68 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _loadLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) return 'Location unavailable';
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
   }
 
   void _showEditProfileDialog() {
@@ -3157,10 +3425,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
+          color: AppColors.textMuted,
           letterSpacing: 0.5,
         ),
       ),
@@ -3175,9 +3443,10 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     Color? textColor,
   }) {
     return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      leading: Icon(icon, color: iconColor ?? AppColors.textDark),
+      title:
+          Text(title, style: TextStyle(color: textColor ?? AppColors.textDark)),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
       onTap: onTap,
     );
   }
@@ -3212,18 +3481,45 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                             ? _userModel!.fullName
                             : 'Name Not Set',
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _userModel?.email ?? '',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: const TextStyle(color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+        _sectionHeader('CURRENT LOCATION'),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.location_on_outlined,
+                color: AppColors.textDark),
+            title: const Text('Your Location',
+                style: TextStyle(color: AppColors.textDark)),
+            subtitle: Text(
+              _locationText,
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            trailing: _isLoadingLocation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.refresh, color: AppColors.textMuted),
+                    tooltip: 'Refresh location',
+                    onPressed: _loadLocation,
+                  ),
           ),
         ),
         _sectionHeader('ACCOUNT SETTINGS'),
@@ -3624,68 +3920,6 @@ class _VendorDashboardScreenState extends State<VendorDashboardScreen> {
 }
 ````
 
-## File: lib/main.dart
-````dart
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
-import 'core/services/notification_service.dart';
-import 'features/splash/splash_screen.dart';
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // The app's background is light (white/cream), so the status bar's
-  // time/battery/signal icons need to render dark to stay visible --
-  // otherwise they default to light and blend into the light
-  // background, becoming nearly invisible. Set globally here so it
-  // applies even on screens that override AppBar styling directly.
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-    ),
-  );
-
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    debugPrint('Firebase initialization error ignored: $e');
-  }
-
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await NotificationService.instance.initialize(navigatorKey);
-
-  runApp(const StallSeekerApp());
-}
-
-class StallSeekerApp extends StatelessWidget {
-  const StallSeekerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'StallSeeker',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const SplashScreen(),
-    );
-  }
-}
-````
-
 ## File: lib/core/services/auth_service.dart
 ````dart
 import 'dart:async';
@@ -3934,6 +4168,68 @@ class AuthService {
     } catch (e) {
       return e.toString();
     }
+  }
+}
+````
+
+## File: lib/main.dart
+````dart
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/notification_service.dart';
+import 'features/splash/splash_screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // The app's background is light (white/cream), so the status bar's
+  // time/battery/signal icons need to render dark to stay visible --
+  // otherwise they default to light and blend into the light
+  // background, becoming nearly invisible. Set globally here so it
+  // applies even on screens that override AppBar styling directly.
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    debugPrint('Firebase initialization error ignored: $e');
+  }
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await NotificationService.instance.initialize(navigatorKey);
+
+  runApp(const StallSeekerApp());
+}
+
+class StallSeekerApp extends StatelessWidget {
+  const StallSeekerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'StallSeeker',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const SplashScreen(),
+    );
   }
 }
 ````
@@ -4299,581 +4595,15 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 ````
 
-## File: lib/features/customer/home/customer_home_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../shared/logout_helper.dart';
-import '../following/customer_following_screen.dart';
-import '../profile/customer_profile_screen.dart';
-import '../vendor_details/vendor_details_screen.dart';
-
-class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({super.key});
-
-  @override
-  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
-}
-
-class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
-  final _vendorService = VendorService();
-  final _authService = AuthService();
-  final _searchController = TextEditingController();
-
-  int _selectedIndex = 0;
-  String _searchQuery = '';
-  GoogleMapController? _mapController;
-  LatLng? _customerPosition;
-
-  // Shown in the AppBar in place of a static "Search" title. Starts as
-  // a neutral greeting while the user's name is being fetched.
-  String _greeting = 'Welcome!';
-
-  // Which vendor is currently highlighted -- set by tapping either a
-  // marker on the map or a card in the horizontal list. Both use the
-  // same selection so tapping either one highlights consistently.
-  String? _selectedVendorId;
-
-  // True while we're still trying to get the customer's GPS position.
-  // Drives a small loading indicator on the map so it's clear the app
-  // is actively locating them, not just stuck on the default view.
-  bool _isLocatingCustomer = true;
-
-  // Fallback camera position (Kuala Lumpur) used only until the
-  // customer's real GPS position is obtained, or if location fails.
-  static const CameraPosition _defaultPosition = CameraPosition(
-    target: LatLng(3.1390, 101.6869),
-    zoom: 14,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _getCustomerLocation();
-    _loadGreeting();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  // Builds the "Welcome, [Name]" greeting. Guests (anonymous sign-in)
-  // have no Firestore profile document to read a name from, so they
-  // get a suitable generic greeting instead.
-  Future<void> _loadGreeting() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    if (user.isAnonymous) {
-      if (mounted) setState(() => _greeting = 'Welcome!');
-      return;
-    }
-
-    final userData = await _authService.getUserData(user.uid);
-    final name = userData?.fullName;
-    if (mounted) {
-      setState(() {
-        _greeting =
-            (name != null && name.isNotEmpty) ? 'Welcome, $name' : 'Welcome!';
-      });
-    }
-  }
-
-  // Gets the customer's current GPS position and, once found, animates
-  // the map camera to center on them. Fails silently (falls back to the
-  // default position) if permission is denied or GPS is off, since this
-  // is a "nice to have" and shouldn't block the whole screen. The
-  // `finally` block guarantees the loading indicator always turns off,
-  // whether location succeeded, failed, or was denied.
-  Future<void> _getCustomerLocation() async {
-    if (mounted) setState(() => _isLocatingCustomer = true);
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      if (!mounted) return;
-
-      setState(() {
-        _customerPosition = LatLng(position.latitude, position.longitude);
-      });
-
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(_customerPosition!, 15),
-      );
-    } catch (_) {
-      // Silently keep the default map position if anything goes wrong.
-    } finally {
-      if (mounted) {
-        setState(() => _isLocatingCustomer = false);
-      }
-    }
-  }
-
-  // Highlights a vendor (on both the map marker and its card) and pans
-  // the camera to it, without navigating away -- tapping the same
-  // vendor again (already selected) is what actually opens details.
-  void _selectVendor(VendorModel vendor) {
-    setState(() => _selectedVendorId = vendor.vendorId);
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLng(LatLng(vendor.latitude, vendor.longitude)),
-    );
-  }
-
-  String _formatDistance(double meters) {
-    if (meters < 1000) return '${meters.toStringAsFixed(0)} m away';
-    return '${(meters / 1000).toStringAsFixed(1)} km away';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _greeting,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            fontFamily: 'Poppins',
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-        centerTitle: false, // Aligns the title to the left (iOS style)
-        backgroundColor: Colors.transparent, // Makes the bar invisible
-        elevation: 0, // Removes the shadow
-        // This screen overrides backgroundColor directly (bypassing the
-        // app-wide AppBarTheme), so the status bar style needs setting
-        // explicitly here too -- dark icons so time/battery/signal stay
-        // visible against the light background behind this bar.
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.black),
-            onPressed: () => confirmAndLogout(context, _authService),
-          ),
-        ],
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          _buildMapTab(),
-          const CustomerFollowingScreen(),
-          const CustomerProfileScreen(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.map), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.favorite), label: 'Following'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapTab() {
-    // Live Firebase stream: any vendor that opens/closes updates this map
-    // instantly, without the customer needing to refresh.
-    return StreamBuilder<List<VendorModel>>(
-      stream: _vendorService.getOpenVendors(),
-      builder: (context, snapshot) {
-        final allVendors = snapshot.data ?? [];
-
-        // Filter by search text (matches stall name or category).
-        final query = _searchQuery.trim().toLowerCase();
-        final filteredVendors = query.isEmpty
-            ? allVendors
-            : allVendors
-                .where((v) =>
-                    v.stallName.toLowerCase().contains(query) ||
-                    v.category.toLowerCase().contains(query))
-                .toList();
-
-        // For the floating card list: sort by distance from the customer
-        // when we know their position, closest first.
-        final nearbyVendors = List<VendorModel>.from(filteredVendors)
-            .where((v) => v.latitude != 0.0 && v.longitude != 0.0)
-            .toList();
-
-        if (_customerPosition != null) {
-          nearbyVendors.sort((a, b) {
-            final distA = Geolocator.distanceBetween(
-              _customerPosition!.latitude,
-              _customerPosition!.longitude,
-              a.latitude,
-              a.longitude,
-            );
-            final distB = Geolocator.distanceBetween(
-              _customerPosition!.latitude,
-              _customerPosition!.longitude,
-              b.latitude,
-              b.longitude,
-            );
-            return distA.compareTo(distB);
-          });
-        }
-
-        final markers = nearbyVendors
-            .map(
-              (v) => Marker(
-                markerId: MarkerId(v.vendorId),
-                position: LatLng(v.latitude, v.longitude),
-                // Selected marker shows in a different color so it's
-                // clearly distinguishable from the rest.
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                  v.vendorId == _selectedVendorId
-                      ? BitmapDescriptor.hueOrange
-                      : BitmapDescriptor.hueRed,
-                ),
-                infoWindow: InfoWindow(
-                  title: v.stallName,
-                  snippet: v.category,
-                  // Tapping the info bubble (the label that pops up
-                  // above a selected marker) is what opens details --
-                  // tapping the marker pin itself just selects it.
-                  onTap: () => _openVendorDetails(v),
-                ),
-                onTap: () => _selectVendor(v),
-              ),
-            )
-            .toSet();
-
-        return Stack(
-          children: [
-            GoogleMap(
-              initialCameraPosition: _defaultPosition,
-              markers: markers,
-              myLocationEnabled: true,
-              // Replaced by our own recenter button below, so the
-              // built-in one (which can end up hidden behind our
-              // overlays) isn't shown as well.
-              myLocationButtonEnabled: false,
-              compassEnabled: true,
-              padding: const EdgeInsets.only(top: 60),
-              onMapCreated: (controller) {
-                _mapController = controller;
-                if (_customerPosition != null) {
-                  _mapController!.animateCamera(
-                    CameraUpdate.newLatLngZoom(_customerPosition!, 15),
-                  );
-                }
-              },
-              onTap: (_) {
-                // Tapping empty map space clears the current selection.
-                if (_selectedVendorId != null) {
-                  setState(() => _selectedVendorId = null);
-                }
-              },
-            ),
-
-            // Search bar
-            // Search bar
-            Positioned(
-              top: 12,
-              left: 12,
-              right: 12,
-              child: Material(
-                elevation: 2, // <--- 1. Removed the shadow
-                color: const Color(
-                    0xFFF4F6F8), // <--- 2. Added the light grey background (matches your login inputs)
-                borderRadius: BorderRadius.circular(
-                    50), // <--- 3. Made it fully pill-shaped
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 16,
-                      color: Color(0xFF212121),
-                    ),
-                    decoration: InputDecoration(
-                      hintText:
-                          'Search your fav vendors here...', // <--- 5. Changed the text to match the vibe
-                      hintStyle: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 16,
-                        color: Colors.grey
-                            .shade400, // <--- 6. Made the hint text softer grey
-                      ),
-                      border: InputBorder.none,
-                      icon: const Icon(Icons.search,
-                          color: Colors.grey), // Adjust icon color here
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Small "locating you" indicator, shown just below the
-            // search bar only while GPS lookup is still in progress.
-            if (_isLocatingCustomer)
-              Positioned(
-                top: 70,
-                left: 12,
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.white,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          ' Finding your location...',
-                          style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w400,
-                              fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            if (snapshot.connectionState == ConnectionState.waiting)
-              const Center(child: CircularProgressIndicator()),
-
-            if (filteredVendors.isEmpty &&
-                snapshot.connectionState != ConnectionState.waiting)
-              Positioned(
-                bottom: 130,
-                left: 24,
-                right: 24,
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      query.isEmpty
-                          ? 'No vendors are open nearby right now.'
-                          : 'No vendors match "$_searchQuery".',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-
-            // Recenter-to-current-location button. Sits above the
-            // nearby-stalls list when it's showing, otherwise sits
-            // closer to the bottom.
-            Positioned(
-              right: 12,
-              bottom: nearbyVendors.isNotEmpty ? 132 : 24,
-              child: FloatingActionButton.small(
-                heroTag: 'recenter_button',
-                tooltip: 'Go to current location',
-                onPressed: () {
-                  if (_customerPosition != null) {
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLngZoom(_customerPosition!, 15),
-                    );
-                  } else {
-                    // Location wasn't available earlier (denied/off at
-                    // the time) -- try fetching it again now.
-                    _getCustomerLocation();
-                  }
-                },
-                child: _isLocatingCustomer
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.my_location),
-              ),
-            ),
-
-            // Floating horizontal list of nearby stalls, sitting above
-            // the bottom navigation bar.
-            if (nearbyVendors.isNotEmpty)
-              Positioned(
-                bottom: 12,
-                left: 0,
-                right: 0,
-                child: SizedBox(
-                  height: 112,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: nearbyVendors.length,
-                    itemBuilder: (context, index) {
-                      final vendor = nearbyVendors[index];
-                      final isSelected = vendor.vendorId == _selectedVendorId;
-                      final distanceLabel = _customerPosition != null
-                          ? _formatDistance(
-                              Geolocator.distanceBetween(
-                                _customerPosition!.latitude,
-                                _customerPosition!.longitude,
-                                vendor.latitude,
-                                vendor.longitude,
-                              ),
-                            )
-                          : null;
-
-                      return GestureDetector(
-                        onTap: () {
-                          // Tap once to highlight + pan to it on the
-                          // map; tap again while already selected to
-                          // open the full details screen.
-                          if (isSelected) {
-                            _openVendorDetails(vendor);
-                          } else {
-                            _selectVendor(vendor);
-                          }
-                        },
-                        child: Container(
-                          width: 220,
-                          margin: const EdgeInsets.only(right: 10),
-                          child: Card(
-                            elevation: isSelected ? 8 : 4,
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : null,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                              side: isSelected
-                                  ? BorderSide(
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      width: 2,
-                                    )
-                                  : BorderSide.none,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.circle,
-                                        size: 10,
-                                        color: vendor.isOpen
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          vendor.stallName.isNotEmpty
-                                              ? vendor.stallName
-                                              : 'Unnamed Stall',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    vendor.category,
-                                    style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontSize: 12),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (distanceLabel != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      distanceLabel,
-                                      style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 12),
-                                    ),
-                                  ],
-                                  if (isSelected) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Tap again to view',
-                                      style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        fontSize: 11,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _openVendorDetails(VendorModel vendor) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
-    );
-  }
-}
-````
-
 ## File: lib/features/auth/auth_wrapper.dart
 ````dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'screens/welcome_screen.dart';
-import '../vendor/vendor_main_screen.dart';
-import '../customer/home/customer_home_screen.dart';
-import '../../core/services/notification_service.dart';
+import 'package:stallseeker/features/auth/screens/welcome_screen.dart';
+import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
+import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
+import 'package:stallseeker/core/services/notification_service.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -4892,25 +4622,12 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.hasData && snapshot.data != null) {
           final user = snapshot.data!;
 
-          // Guests (anonymous sign-in) skip the Firestore role lookup
-          // entirely and go straight to the customer experience --
-          // there's no users/ document for them since they haven't
-          // created a real account.
           if (user.isAnonymous) {
             return const CustomerHomeScreen();
           }
 
           NotificationService.instance.syncTokenForCurrentUser();
 
-          // Live listener (.snapshots()), not a one-time .get(). This
-          // matters for brand-new Google sign-ins: Firebase Auth's
-          // state updates immediately, but the user's Firestore profile
-          // document gets created a moment later by signInWithGoogle().
-          // A one-time .get() can run in that gap, find nothing, and
-          // (since it never checks again) get stuck showing
-          // WelcomeScreen forever even after the document exists. A
-          // live stream instead automatically re-fires and routes
-          // correctly the instant the document appears.
           return StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
@@ -4935,14 +4652,6 @@ class AuthWrapper extends StatelessWidget {
                 }
               }
 
-              // Document doesn't exist yet -- show a brief loading
-              // state instead of WelcomeScreen while we wait for it to
-              // be created. If the document genuinely never gets
-              // created (e.g. signup failed), the user is still signed
-              // in at this point, so falling through to WelcomeScreen
-              // (which offers sign-in options again) would be
-              // confusing; a spinner is a more honest "still working
-              // on it" state for the brief moment this normally takes.
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
               );
@@ -4952,6 +4661,437 @@ class AuthWrapper extends StatelessWidget {
 
         return const WelcomeScreen();
       },
+    );
+  }
+}
+````
+
+## File: lib/features/customer/home/customer_home_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+import '../../shared/logout_helper.dart';
+
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
+
+  @override
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
+}
+
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+  final _authService = AuthService();
+  final _geocoding = Geocoding();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  String _locationText = 'Loading location...';
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _loadLocation();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) return 'Location unavailable';
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
+  }
+
+  void _showEditProfileDialog() {
+    final nameController =
+        TextEditingController(text: _userModel?.fullName ?? '');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profile'),
+              content: TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          final newName = nameController.text.trim();
+                          if (user == null || newName.isEmpty) return;
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateFullName(
+                              user.uid, newName);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (error == null) {
+                            await _loadUserData(); // refresh header card
+                          }
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error ?? 'Profile updated.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final passwordController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newPassword = passwordController.text.trim();
+                          if (newPassword.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Password must be 6+ characters.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          final error =
+                              await _authService.changePassword(newPassword);
+
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  error ?? 'Password changed successfully.'),
+                              backgroundColor:
+                                  error != null ? Colors.red : Colors.green,
+                            ),
+                          );
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textMuted,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor ?? AppColors.textDark),
+      title:
+          Text(title, style: TextStyle(color: textColor ?? AppColors.textDark)),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+      onTap: onTap,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadLocation();
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: const Icon(Icons.person, size: 32),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _userModel?.fullName.isNotEmpty == true
+                              ? _userModel!.fullName
+                              : 'Name Not Set',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _userModel?.email ?? '',
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _sectionHeader('CURRENT LOCATION'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.location_on_outlined,
+                  color: AppColors.textDark),
+              title: const Text('Your Location',
+                  style: TextStyle(color: AppColors.textDark)),
+              subtitle: Text(
+                _locationText,
+                style: const TextStyle(color: AppColors.textMuted),
+              ),
+              trailing: _isLoadingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : IconButton(
+                      icon:
+                          const Icon(Icons.refresh, color: AppColors.textMuted),
+                      tooltip: 'Refresh location',
+                      onPressed: _loadLocation,
+                    ),
+            ),
+          ),
+          _sectionHeader('ACCOUNT SETTINGS'),
+          Card(
+            child: Column(
+              children: [
+                _settingsTile(
+                  icon: Icons.person_outline,
+                  title: 'Edit Profile',
+                  onTap: _showEditProfileDialog,
+                ),
+                const Divider(height: 1),
+                _settingsTile(
+                  icon: Icons.lock_outline,
+                  title: 'Change Password',
+                  onTap: _showChangePasswordDialog,
+                ),
+              ],
+            ),
+          ),
+          _sectionHeader('SUPPORT & INFORMATION'),
+          Card(
+            child: Column(
+              children: [
+                _settingsTile(
+                  icon: Icons.help_outline,
+                  title: 'FAQ',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FaqScreen(isVendor: false)),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                _settingsTile(
+                  icon: Icons.info_outline,
+                  title: 'About StallSeeker',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AboutScreen()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: _settingsTile(
+              icon: Icons.logout,
+              title: 'Logout',
+              iconColor: Colors.red,
+              textColor: Colors.red,
+              onTap: () => confirmAndLogout(context, _authService),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
@@ -15,14 +18,22 @@ class VendorProfileScreen extends StatefulWidget {
 
 class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _authService = AuthService();
+  final _geocoding = Geocoding();
 
   UserModel? _userModel;
   bool _isLoading = true;
+
+  // Current Location section state -- shows the vendor's live GPS
+  // position (turned into a readable address via reverse geocoding),
+  // same pattern as the customer profile screen.
+  String _locationText = 'Loading location...';
+  bool _isLoadingLocation = true;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadLocation();
   }
 
   Future<void> _loadUserData() async {
@@ -40,6 +51,68 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _loadLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) return 'Location unavailable';
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
   }
 
   void _showEditProfileDialog() {
@@ -190,10 +263,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
+          color: AppColors.textMuted,
           letterSpacing: 0.5,
         ),
       ),
@@ -208,9 +281,10 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     Color? textColor,
   }) {
     return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: TextStyle(color: textColor)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      leading: Icon(icon, color: iconColor ?? AppColors.textDark),
+      title:
+          Text(title, style: TextStyle(color: textColor ?? AppColors.textDark)),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
       onTap: onTap,
     );
   }
@@ -233,7 +307,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                   radius: 32,
                   backgroundColor:
                       Theme.of(context).colorScheme.primaryContainer,
-                  child: const Icon(Icons.person, size: 32),
+                  child: const Icon(Icons.storefront, size: 32),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -245,18 +319,45 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
                             ? _userModel!.fullName
                             : 'Name Not Set',
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _userModel?.email ?? '',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: const TextStyle(color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+        _sectionHeader('CURRENT LOCATION'),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.location_on_outlined,
+                color: AppColors.textDark),
+            title: const Text('Stall Location',
+                style: TextStyle(color: AppColors.textDark)),
+            subtitle: Text(
+              _locationText,
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            trailing: _isLoadingLocation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.refresh, color: AppColors.textMuted),
+                    tooltip: 'Refresh location',
+                    onPressed: _loadLocation,
+                  ),
           ),
         ),
         _sectionHeader('ACCOUNT SETTINGS'),

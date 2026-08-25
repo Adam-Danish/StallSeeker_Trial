@@ -65,11 +65,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // App icon and title
               const Icon(
                 Icons.storefront,
                 size: 64,
-                color: const Color(0xFFFF6E41),
+                color: Color(0xFFFF6E41), // removed const (was unnecessary)
               ),
               const SizedBox(height: 16),
               const Text(
@@ -93,39 +92,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-
-              // ---- Updated: Google button (Light Gray) ----
               _buildActionButton(
                 icon: Image.asset('assets/google_logo.png', height: 20),
                 label: 'Continue with Google',
-                backgroundColor: const Color(0xFFF1F3F4), // Light gray
-                foregroundColor: Colors.black, // Dark text
+                backgroundColor: const Color(0xFFF1F3F4),
+                foregroundColor: Colors.black,
                 onPressed: _isLoading ? null : _continueWithGoogle,
               ),
-              const SizedBox(height: 10), // SPACING ANTARA BUTTON
-
-              // ---- Updated: Email button (Coral/Orange) ----
+              const SizedBox(height: 10),
               _buildActionButton(
                 icon: const Icon(Icons.email_outlined, size: 24),
                 label: 'Continue with Email',
-                backgroundColor: const Color(0xFFFF6E41), // Vibrant coral
-                foregroundColor: Colors.white, // White text
+                backgroundColor: const Color(0xFFFF6E41),
+                foregroundColor: Colors.white,
                 onPressed: _isLoading ? null : _goToRegister,
               ),
               const SizedBox(height: 10),
-
-              // ---- Updated: Guest button (Dark Black) ----
               _buildActionButton(
                 icon: const Icon(Icons.person_outline, size: 24),
                 label: 'Continue as Guest',
-                backgroundColor: const Color(0xFF1C1C1E), // Dark gray/black
-                foregroundColor: Colors.white, // White text
+                backgroundColor: const Color(0xFF1C1C1E),
+                foregroundColor: Colors.white,
                 onPressed: _isLoading ? null : _continueAsGuest,
               ),
-
               const SizedBox(height: 24),
-
-              // "Already have an account? Sign In"
               Center(
                 child: TextButton(
                   onPressed: _isLoading ? null : _goToLogin,
@@ -150,7 +140,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
               ),
-
               if (_isLoading) ...[
                 const SizedBox(height: 16),
                 const Center(child: CircularProgressIndicator()),
@@ -162,23 +151,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  // Reusable button – UPDATED to accept background and foreground colors
   Widget _buildActionButton({
     required Widget icon,
     required String label,
-    required Color backgroundColor, // New argument
-    required Color foregroundColor, // New argument
+    required Color backgroundColor,
+    required Color foregroundColor,
     VoidCallback? onPressed,
   }) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        backgroundColor: backgroundColor, // The solid background color
-        foregroundColor: foregroundColor, // Text & icon color
-        side: BorderSide.none, // Removed the gray border entirely
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        side: BorderSide.none,
         padding: const EdgeInsets.symmetric(vertical: 22),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50), // Kept your max roundness
+          borderRadius: BorderRadius.circular(50),
         ),
         textStyle: const TextStyle(
             fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
