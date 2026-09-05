@@ -1,8 +1,9 @@
+import '../../shared/profile_page.dart';
+import '../../auth/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../shared/faq_screen.dart';
@@ -23,14 +24,13 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   UserModel? _userModel;
   bool _isLoading = true;
 
-  String _locationText = 'Loading location...';
-  bool _isLoadingLocation = true;
+  String _locationText = 'Tap to find your current area';
+  bool _isLoadingLocation = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
-    _loadLocation();
   }
 
   Future<void> _loadUserData() async {
@@ -51,10 +51,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   }
 
   Future<void> _loadLocation() async {
+    if (!mounted || _isLoadingLocation) { return; }
     setState(() => _isLoadingLocation = true);
 
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) { return; }
       if (!serviceEnabled) {
         setState(() {
           _locationText = 'Location services are turned off.';
@@ -67,6 +69,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+      if (!mounted) { return; }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         setState(() {
@@ -79,13 +82,13 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       final position = await Geolocator.getCurrentPosition(
         locationSettings:
             const LocationSettings(accuracy: LocationAccuracy.high),
-      );
+      ).timeout(const Duration(seconds: 12));
 
       // FIXED: use _geocoding.placemarkFromCoordinates
       final placemarks = await _geocoding.placemarkFromCoordinates(
         position.latitude,
         position.longitude,
-      );
+      ).timeout(const Duration(seconds: 8));
       final address =
           _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
 
@@ -106,7 +109,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
   }
 
   String _formatPlacemark(Placemark? p) {
-    if (p == null) return 'Location unavailable';
+    if (p == null) { return 'Location unavailable'; }
     final parts = [p.subLocality, p.locality, p.administrativeArea]
         .where((s) => s != null && s.isNotEmpty)
         .toList();
@@ -143,7 +146,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                       : () async {
                           final user = FirebaseAuth.instance.currentUser;
                           final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) return;
+                          if (user == null || newName.isEmpty) { return; }
 
                           setDialogState(() => isSaving = true);
                           final error = await _authService.updateFullName(
@@ -157,7 +160,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                             await _loadUserData(); // refresh header card
                           }
 
-                          if (!mounted) return;
+                          if (!mounted) { return; }
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -229,7 +232,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                             Navigator.pop(dialogContext);
                           }
 
-                          if (!mounted) return;
+                          if (!mounted) { return; }
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -256,173 +259,28 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     );
   }
 
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: AppColors.textMuted,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _settingsTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-    Color? iconColor,
-    Color? textColor,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor ?? AppColors.textDark),
-      title:
-          Text(title, style: TextStyle(color: textColor ?? AppColors.textDark)),
-      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-      onTap: onTap,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadUserData();
-        await _loadLocation();
-      },
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: const Icon(Icons.person, size: 32),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _userModel?.fullName.isNotEmpty == true
-                              ? _userModel!.fullName
-                              : 'Name Not Set',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _userModel?.email ?? '',
-                          style: const TextStyle(color: AppColors.textMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _sectionHeader('CURRENT LOCATION'),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.location_on_outlined,
-                  color: AppColors.textDark),
-              title: const Text('Your Location',
-                  style: TextStyle(color: AppColors.textDark)),
-              subtitle: Text(
-                _locationText,
-                style: const TextStyle(color: AppColors.textMuted),
-              ),
-              trailing: _isLoadingLocation
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : IconButton(
-                      icon:
-                          const Icon(Icons.refresh, color: AppColors.textMuted),
-                      tooltip: 'Refresh location',
-                      onPressed: _loadLocation,
-                    ),
-            ),
-          ),
-          _sectionHeader('ACCOUNT SETTINGS'),
-          Card(
-            child: Column(
-              children: [
-                _settingsTile(
-                  icon: Icons.person_outline,
-                  title: 'Edit Profile',
-                  onTap: _showEditProfileDialog,
-                ),
-                const Divider(height: 1),
-                _settingsTile(
-                  icon: Icons.lock_outline,
-                  title: 'Change Password',
-                  onTap: _showChangePasswordDialog,
-                ),
-              ],
-            ),
-          ),
-          _sectionHeader('SUPPORT & INFORMATION'),
-          Card(
-            child: Column(
-              children: [
-                _settingsTile(
-                  icon: Icons.help_outline,
-                  title: 'FAQ',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const FaqScreen(isVendor: false)),
-                    );
-                  },
-                ),
-                const Divider(height: 1),
-                _settingsTile(
-                  icon: Icons.info_outline,
-                  title: 'About StallSeeker',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AboutScreen()),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: _settingsTile(
-              icon: Icons.logout,
-              title: 'Logout',
-              iconColor: Colors.red,
-              textColor: Colors.red,
-              onTap: () => confirmAndLogout(context, _authService),
-            ),
-          ),
-        ],
-      ),
+    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
+    final user = FirebaseAuth.instance.currentUser;
+    final guest = user?.isAnonymous ?? true;
+    final name = guest ? 'Welcome, explorer' : _userModel?.fullName.isNotEmpty == true
+        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
+    return ProfilePage(
+      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
+      isVendor: false, isGuest: guest,
+      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
+      location: _locationText, isLoadingLocation: _isLoadingLocation,
+      onRefresh: _loadUserData,
+      onLocation: _loadLocation,
+      onEdit: _showEditProfileDialog,
+      onPassword: _showChangePasswordDialog,
+      onFaq: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),
+      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+      onLogout: () => confirmAndLogout(context, _authService),
+      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+      
     );
   }
 }

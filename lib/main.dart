@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -32,13 +33,21 @@ void main() async {
       );
     }
   } catch (e) {
-    debugPrint('Firebase initialization error ignored: $e');
+    runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('StallSeeker could not start. Check your connection and retry.'),
+        TextButton(onPressed: main, child: const Text('Retry')),
+      ]),
+    )))));
+    return;
   }
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await NotificationService.instance.initialize(navigatorKey);
-
   runApp(const StallSeekerApp());
+  unawaited(NotificationService.instance.initialize(navigatorKey).catchError((Object error) {
+    debugPrint('Notifications are currently unavailable.');
+  }));
 }
 
 class StallSeekerApp extends StatelessWidget {

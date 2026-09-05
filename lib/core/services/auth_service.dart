@@ -1,3 +1,5 @@
+import 'notification_service.dart';
+import 'vendor_location_service.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,7 +18,7 @@ class AuthService {
   // once, before authenticate()/signOut() are used. Cheap to call
   // repeatedly since it's guarded by the flag below.
   Future<void> _ensureGoogleSignInReady() async {
-    if (_googleSignInReady) return;
+    if (_googleSignInReady) { return; }
     await _googleSignIn.initialize(
       serverClientId:
           '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
@@ -132,10 +134,8 @@ class AuthService {
 
       return null;
     } on TimeoutException {
-      return "Google Sign-In timed out. This usually means the app's "
-          "SHA-1 fingerprint isn't registered in Firebase Console yet "
-          "(Project Settings > Your apps > Android app > Add fingerprint), "
-          "or google-services.json needs to be re-downloaded after adding it.";
+      return "Google sign-in timed out. Check your connection and try again, "
+          "or sign in with email.";
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return "cancelled"; // user closed the picker without choosing
@@ -186,25 +186,17 @@ class AuthService {
 
   // Sign Out
   Future<void> signOut() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      try {
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(user.uid)
-            .update({'fcmToken': FieldValue.delete()});
-      } catch (e) {
-        // Non-fatal -- proceed with sign out even if this fails (e.g.
-        // offline at the moment of logout, or a guest with no
-        // Firestore document to update in the first place).
-        debugPrint("Error clearing FCM token on sign out: $e");
-      }
+    await VendorLocationService.instance.pause();
+    try {
+      await NotificationService.instance.clearCurrentDevice();
+    } catch (_) {
+      debugPrint('Notification cleanup could not finish.');
     }
-
-    if (_googleSignInReady) {
-      await _googleSignIn.signOut();
+    try {
+      if (_googleSignInReady) { await _googleSignIn.signOut(); }
+    } finally {
+      await _auth.signOut();
     }
-    await _auth.signOut();
   }
 
   Future<String?> resetPassword({required String email}) async {
@@ -221,7 +213,7 @@ class AuthService {
   Future<String?> changePassword(String newPassword) async {
     try {
       final user = _auth.currentUser;
-      if (user == null) return "No user is currently logged in.";
+      if (user == null) { return "No user is currently logged in."; }
       await user.updatePassword(newPassword);
       return null;
     } on FirebaseAuthException catch (e) {

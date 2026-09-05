@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) { return; }
 
     setState(() => _isLoading = true);
 
@@ -48,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
       password: _passwordController.text,
     );
 
-    if (!mounted) return;
+    if (!mounted) { return; }
 
     setState(() => _isLoading = false);
 
@@ -117,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.pop(dialogContext);
                           }
 
-                          if (!mounted) return;
+                          if (!mounted) { return; }
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(

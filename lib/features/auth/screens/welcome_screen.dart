@@ -18,7 +18,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _continueWithGoogle() async {
     setState(() => _isLoading = true);
     final error = await _authService.signInWithGoogle();
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) { setState(() => _isLoading = false); }
 
     if (error != null && error != 'cancelled' && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -31,7 +31,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _continueAsGuest() async {
     setState(() => _isLoading = true);
     final error = await _authService.signInAsGuest();
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) { setState(() => _isLoading = false); }
 
     if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

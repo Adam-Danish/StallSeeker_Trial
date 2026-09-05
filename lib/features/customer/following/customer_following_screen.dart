@@ -21,7 +21,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
   Widget build(BuildContext context) {
     final customerId = FirebaseAuth.instance.currentUser?.uid;
 
-    if (customerId == null) {
+    if (customerId == null || FirebaseAuth.instance.currentUser!.isAnonymous) {
       return const Center(child: Text('Please log in to see followed stalls.'));
     }
 
@@ -32,6 +32,9 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
+        if (idSnapshot.hasError) {
+          return const Center(child: Text('Could not load followed stalls. Please reopen this screen.'));
+        }
         final vendorIds = idSnapshot.data ?? [];
 
         if (vendorIds.isEmpty) {
@@ -58,9 +61,12 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
             itemBuilder: (context, index) {
               final vendorId = vendorIds[index];
 
-              return FutureBuilder<VendorModel?>(
-                future: vendorService.getVendorProfile(vendorId),
+              return StreamBuilder<VendorModel?>(
+                stream: vendorService.watchVendorProfile(vendorId),
                 builder: (context, vendorSnapshot) {
+                  if (vendorSnapshot.hasError) {
+                    return const ListTile(title: Text('Could not update this stall.'));
+                  }
                   if (!vendorSnapshot.hasData || vendorSnapshot.data == null) {
                     return const SizedBox.shrink();
                   }

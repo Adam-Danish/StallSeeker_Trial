@@ -32,6 +32,7 @@ class MenuService {
     String? itemId,
     String? imageUrl,
   }) async {
+    if (name.trim().isEmpty || !price.isFinite || price <= 0) { throw ArgumentError('Invalid dish'); }
     final docRef = itemId != null
         ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
         : _db.collection('vendors').doc(vendorId).collection('menu').doc();
@@ -44,7 +45,7 @@ class MenuService {
       imageUrl: imageUrl ?? '',
     );
 
-    await docRef.set(newItem.toMap());
+    await docRef.set(newItem.toMap()).timeout(const Duration(seconds: 15));
   }
 
   // Edit an existing item's name, price, and (optionally) photo, without
@@ -57,6 +58,7 @@ class MenuService {
     double price, {
     String? imageUrl,
   }) async {
+    if (name.trim().isEmpty || !price.isFinite || price <= 0) { throw ArgumentError('Invalid dish'); }
     final data = <String, dynamic>{
       'name': name,
       'price': price,
@@ -70,18 +72,19 @@ class MenuService {
         .doc(vendorId)
         .collection('menu')
         .doc(itemId)
-        .update(data);
+        .update(data).timeout(const Duration(seconds: 15));
   }
 
   // Quick Traffic Light Status Update
   Future<void> updateItemStatus(
       String vendorId, String itemId, String newStatus) async {
+    if (!{'available', 'low_stock', 'out_of_stock'}.contains(newStatus)) { throw ArgumentError('Invalid status'); }
     await _db
         .collection('vendors')
         .doc(vendorId)
         .collection('menu')
         .doc(itemId)
-        .update({'status': newStatus});
+        .update({'status': newStatus, 'statusUpdatedAt': FieldValue.serverTimestamp()}).timeout(const Duration(seconds: 15));
   }
 
   // Delete item
@@ -91,6 +94,6 @@ class MenuService {
         .doc(vendorId)
         .collection('menu')
         .doc(itemId)
-        .delete();
+        .delete().timeout(const Duration(seconds: 15));
   }
 }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../core/services/auth_service.dart';
-import '../shared/logout_helper.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
 
@@ -13,7 +11,6 @@ class VendorMainScreen extends StatefulWidget {
 }
 
 class _VendorMainScreenState extends State<VendorMainScreen> {
-  final _authService = AuthService();
   int _selectedIndex = 0;
 
   static const _titles = ['Vendor Dashboard', 'My Profile'];
@@ -50,10 +47,7 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
               tooltip: 'Refresh',
               onPressed: _refreshDashboard,
             ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.black),
-            onPressed: () => confirmAndLogout(context, _authService),
-          ),
+
         ],
       ),
       body: IndexedStack(
@@ -69,7 +63,7 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
             setState(() => _selectedIndex = index),
         backgroundColor: Colors.white,
         indicatorColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),

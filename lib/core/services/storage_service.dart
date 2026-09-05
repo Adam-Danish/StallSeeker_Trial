@@ -14,7 +14,7 @@ class StorageService {
       maxWidth: 1080,
       imageQuality: 80,
     );
-    if (picked == null) return null;
+    if (picked == null) { return null; }
     return File(picked.path);
   }
 

@@ -7,339 +7,219 @@ import '../../../core/services/storage_service.dart';
 
 class VendorMenuScreen extends StatefulWidget {
   const VendorMenuScreen({super.key});
-
   @override
   State<VendorMenuScreen> createState() => _VendorMenuScreenState();
 }
 
 class _VendorMenuScreenState extends State<VendorMenuScreen> {
-  final _menuService = MenuService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
+  final _menu = MenuService();
+  final _storage = StorageService();
+  final _busyItems = <String>{};
+  late Stream<List<MenuItemModel>> _items;
+  final _uid = FirebaseAuth.instance.currentUser?.uid;
+  static const _statuses = {
+    'available': ('Available', Colors.green),
+    'low_stock': ('Low stock', Colors.orange),
+    'out_of_stock': ('Sold out', Colors.red),
+  };
 
-  // Shared by both Add and Edit -- existingItem is null when adding.
-  void _showItemDialog({MenuItemModel? existingItem}) {
-    final isEditing = existingItem != null;
-    final nameController =
-        TextEditingController(text: existingItem?.name ?? '');
-    final priceController = TextEditingController(
-        text:
-            existingItem != null ? existingItem.price.toStringAsFixed(2) : '');
-    File? pickedImage;
-    bool isUploading = false;
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEditing ? 'Edit Menu Item' : 'Add Menu Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  final file = await _storageService.pickImage();
-                  if (file != null) {
-                    setDialogState(() {
-                      pickedImage = file;
-                    });
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: pickedImage != null
-                      ? Image.file(pickedImage!, fit: BoxFit.cover)
-                      : (isEditing && existingItem.imageUrl.isNotEmpty)
-                          ? Image.network(
-                              existingItem.imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Center(
-                                child:
-                                    Icon(Icons.add_a_photo, color: Colors.grey),
-                              ),
-                            )
-                          : const Center(
-                              child:
-                                  Icon(Icons.add_a_photo, color: Colors.grey),
-                            ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                    labelText: 'Item Name (e.g. Nasi Lemak)'),
-              ),
-              TextField(
-                controller: priceController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Price (RM)'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isUploading
-                  ? null
-                  : () async {
-                      final name = nameController.text.trim();
-                      final price =
-                          double.tryParse(priceController.text.trim()) ?? 0.0;
-                      final user = _auth.currentUser;
+  void _reload() {
+    _items = _uid == null ? Stream.value(<MenuItemModel>[]) : _menu.getMenuItems(_uid);
+  }
 
-                      if (name.isEmpty || price <= 0 || user == null) return;
+  void _error(String message) {
+    if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message))); }
+  }
 
-                      setDialogState(() {
-                        isUploading = true;
-                      });
+  Future<void> _status(MenuItemModel item, String status) async {
+    if (_uid == null || _busyItems.contains(item.itemId) || item.status == status) { return; }
+    setState(() => _busyItems.add(item.itemId));
+    try {
+      await _menu.updateItemStatus(_uid, item.itemId, status);
+    } catch (_) {
+      _error('Could not update stock. Please retry.');
+    } finally {
+      if (mounted) { setState(() => _busyItems.remove(item.itemId)); }
+    }
+  }
 
-                      if (isEditing) {
-                        // Only re-upload if the vendor picked a new photo
-                        // this time -- otherwise leave the existing one.
-                        String? newImageUrl;
-                        if (pickedImage != null) {
-                          newImageUrl =
-                              await _storageService.uploadMenuItemImage(
-                                  user.uid, existingItem.itemId, pickedImage!);
-                        }
+  Future<void> _delete(MenuItemModel item) async {
+    if (_uid == null || _busyItems.contains(item.itemId)) { return; }
+    final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Delete dish?'),
+      content: Text('Delete ${item.name} from your menu? This cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed != true || !mounted) { return; }
+    setState(() => _busyItems.add(item.itemId));
+    try { await _menu.deleteMenuItem(_uid, item.itemId); }
+    catch (_) { _error('Could not delete this dish. Please retry.'); }
+    finally { if (mounted) { setState(() => _busyItems.remove(item.itemId)); } }
+  }
 
-                        await _menuService.updateMenuItem(
-                          user.uid,
-                          existingItem.itemId,
-                          name,
-                          price,
-                          imageUrl: newImageUrl,
-                        );
-                      } else {
-                        // Photo needs the item's ID in its filename, so
-                        // generate the ID first if a photo was picked.
-                        String? itemId;
-                        String? imageUrl;
-                        if (pickedImage != null) {
-                          itemId = _menuService.newMenuItemId(user.uid);
-                          imageUrl = await _storageService.uploadMenuItemImage(
-                              user.uid, itemId, pickedImage!);
-                        }
-
-                        await _menuService.addMenuItem(
-                          user.uid,
-                          name,
-                          price,
-                          itemId: itemId,
-                          imageUrl: imageUrl,
-                        );
-                      }
-
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    },
-              child: isUploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(isEditing ? 'Save' : 'Add Item'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _edit([MenuItemModel? item]) async {
+    if (_uid == null) { return; }
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      isDismissible: false, enableDrag: false,
+      builder: (_) => _MenuEditor(uid: _uid, item: item, menu: _menu, storage: _storage),
     );
   }
 
-  // Shows a confirmation dialog before permanently deleting a menu
-  // item. Deleting is irreversible (the document is gone from
-  // Firestore immediately), so this prevents an accidental tap from
-  // silently wiping out a dish.
-  Future<void> _confirmDelete(String uid, MenuItemModel item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text(
-          'Are you sure you want to delete "${item.name}"? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Menu & stock')),
+    floatingActionButton: _uid == null ? null : FloatingActionButton.extended(
+      onPressed: _edit, icon: const Icon(Icons.add), label: const Text('Add dish')),
+    body: StreamBuilder<List<MenuItemModel>>(stream: _items, builder: (context, snapshot) {
+      if (snapshot.hasError) { return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Could not load your menu.'),
+        TextButton(onPressed: () => setState(_reload), child: const Text('Retry')),
+      ])); }
+      if (snapshot.connectionState == ConnectionState.waiting) { return const Center(child: CircularProgressIndicator()); }
+      final items = snapshot.data ?? [];
+      if (items.isEmpty) { return const Center(child: Text('Your menu is empty.\nTap Add dish to get started.', textAlign: TextAlign.center)); }
+      return ListView.builder(padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final busy = _busyItems.contains(item.itemId);
+          return Card(margin: const EdgeInsets.only(bottom: 12), child: Padding(
+            padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 56, height: 56,
+                  child: item.imageUrl.isEmpty ? const Icon(Icons.restaurant, size: 32)
+                      : Image.network(item.imageUrl, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.restaurant, size: 32)))),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(item.name, style: Theme.of(context).textTheme.titleMedium),
+                  Text('RM ${item.price.toStringAsFixed(2)}'),
+                ])),
+                PopupMenuButton<String>(enabled: !busy, tooltip: 'Dish options', onSelected: (value) {
+                  if (value == 'edit') { _edit(item); } else { _delete(item); }
+                }, itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit dish')),
+                  PopupMenuItem(value: 'delete', child: Text('Delete dish')),
+                ]),
+              ]),
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 4, children: _statuses.entries.map((entry) => ChoiceChip(
+                label: Text(entry.value.$1),
+                avatar: Icon(Icons.circle, size: 12, color: entry.value.$2),
+                selected: item.status == entry.key,
+                onSelected: busy ? null : (_) => _status(item, entry.key),
+              )).toList()),
+              if (busy) const LinearProgressIndicator(),
+            ]),
+          ));
+        });
+    }),
+  );
+}
 
-    if (confirmed == true) {
-      await _menuService.deleteMenuItem(uid, item.itemId);
+class _MenuEditor extends StatefulWidget {
+  const _MenuEditor({required this.uid, required this.item, required this.menu, required this.storage});
+  final String uid;
+  final MenuItemModel? item;
+  final MenuService menu;
+  final StorageService storage;
+  @override
+  State<_MenuEditor> createState() => _MenuEditorState();
+}
+
+class _MenuEditorState extends State<_MenuEditor> {
+  final _form = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _price;
+  late final String _itemId;
+  File? _image;
+  bool _saving = false;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.item?.name ?? '');
+    _price = TextEditingController(text: widget.item?.price.toStringAsFixed(2) ?? '');
+    // Reuse the same ID on retries so an uncertain network result cannot duplicate a dish.
+    _itemId = widget.item?.itemId ?? widget.menu.newMenuItemId(widget.uid);
+  }
+  @override
+  void dispose() { _name.dispose(); _price.dispose(); super.dispose(); }
+
+  Future<void> _pick() async {
+    try {
+      final image = await widget.storage.pickImage();
+      if (mounted && image != null) { setState(() => _image = image); }
+    } catch (_) {
+      if (mounted) { setState(() => _error = 'Could not open your photos. Please retry.'); }
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_form.currentState!.validate()) { return; }
+    setState(() { _saving = true; _error = null; });
+    try {
+      String? imageUrl;
+      if (_image != null) { imageUrl = await widget.storage.uploadMenuItemImage(widget.uid, _itemId, _image!); }
+      if (widget.item == null) {
+        await widget.menu.addMenuItem(widget.uid, _name.text.trim(), double.parse(_price.text.trim()),
+            itemId: _itemId, imageUrl: imageUrl);
+      } else {
+        await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(), double.parse(_price.text.trim()), imageUrl: imageUrl);
+      }
+      if (mounted) {
+        setState(() => _saving = false);
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) { setState(() { _saving = false; _error = 'Could not save this dish. Your changes are still here. Please retry.'; }); }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Menu'),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showItemDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Dish'),
-      ),
-      body: user == null
-          ? const Center(child: Text('Not logged in.'))
-          : StreamBuilder<List<MenuItemModel>>(
-              stream: _menuService.getMenuItems(user.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final items = snapshot.data ?? [];
-
-                if (items.isEmpty) {
-                  return const Center(
-                    child:
-                        Text('No menu items added yet.\nTap + Add Dish below!'),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12.0),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: SizedBox(
-                                width: 48,
-                                height: 48,
-                                child: item.imageUrl.isNotEmpty
-                                    ? Image.network(
-                                        item.imageUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                Container(
-                                          color: Colors.grey.shade200,
-                                          child: const Icon(Icons.fastfood,
-                                              color: Colors.grey),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: Colors.grey.shade200,
-                                        child: const Icon(Icons.fastfood,
-                                            color: Colors.grey),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text('RM ${item.price.toStringAsFixed(2)}'),
-                                ],
-                              ),
-                            ),
-
-                            // Traffic Light Buttons
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Green Button (Available)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'available'
-                                        ? Colors.green
-                                        : Colors.green.shade100,
-                                    size: item.status == 'available' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'available'),
-                                ),
-                                // Yellow Button (Low Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'low_stock'
-                                        ? Colors.orange
-                                        : Colors.orange.shade100,
-                                    size: item.status == 'low_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(
-                                          user.uid, item.itemId, 'low_stock'),
-                                ),
-                                // Red Button (Out of Stock)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.circle,
-                                    color: item.status == 'out_of_stock'
-                                        ? Colors.red
-                                        : Colors.red.shade100,
-                                    size:
-                                        item.status == 'out_of_stock' ? 28 : 20,
-                                  ),
-                                  onPressed: () =>
-                                      _menuService.updateItemStatus(user.uid,
-                                          item.itemId, 'out_of_stock'),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined,
-                                      color: Colors.blueGrey),
-                                  onPressed: () =>
-                                      _showItemDialog(existingItem: item),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.grey),
-                                  onPressed: () =>
-                                      _confirmDelete(user.uid, item),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-    );
-  }
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(widget.item == null ? 'Add dish' : 'Edit dish', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        if (_image != null) ClipRRect(borderRadius: BorderRadius.circular(12),
+            child: Image.file(_image!, height: 140, fit: BoxFit.cover))
+        else if (widget.item?.imageUrl.isNotEmpty == true)
+          Image.network(widget.item!.imageUrl, height: 140, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.restaurant)),
+        TextButton.icon(onPressed: _saving ? null : _pick, icon: const Icon(Icons.add_a_photo_outlined), label: const Text('Choose photo')),
+        TextFormField(controller: _name, enabled: !_saving, maxLength: 80,
+          decoration: const InputDecoration(labelText: 'Dish name'),
+          validator: (value) => value == null || value.trim().isEmpty ? 'Enter a dish name.' : null),
+        const SizedBox(height: 12),
+        TextFormField(controller: _price, enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Price', prefixText: 'RM '),
+          validator: (value) {
+            final text = value?.trim() ?? '';
+            final price = double.tryParse(text);
+            if (price == null || !price.isFinite || price <= 0 || !RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(text)) {
+              return 'Enter a positive price with up to 2 decimal places.';
+            }
+            return null;
+          }),
+        if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: _saving ? null : _save,
+          child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save dish')),
+        TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+      ])),
+    ),
+  );
 }

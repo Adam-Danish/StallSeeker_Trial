@@ -80,10 +80,10 @@ class _EditStallScreenState extends State<EditStallScreen> {
 
   // Save updated stall profile to Firestore
   Future<void> _saveStallProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) { return; }
 
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) { return; }
 
     setState(() {
       _isSaving = true;

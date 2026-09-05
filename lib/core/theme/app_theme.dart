@@ -6,11 +6,23 @@ class AppTheme {
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
       useMaterial3: true,
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      )),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: ElevatedButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      )),
       scaffoldBackgroundColor: AppColors.background,
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: Colors.white,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-        height: 65.0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 72.0,
       ),
       // Root-cause fix for cards looking peach/tinted instead of pure
       // white: Material 3 automatically tints elevated surfaces with a

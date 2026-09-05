@@ -29,6 +29,13 @@ Future<void> confirmAndLogout(
   );
 
   if (confirmed == true) {
-    await authService.signOut();
+    try {
+      await authService.signOut();
+      if (context.mounted) { Navigator.of(context).popUntil((route) => route.isFirst); }
+    } catch (_) {
+      if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not finish logging out. Please retry.')),
+      ); }
+    }
   }
 }

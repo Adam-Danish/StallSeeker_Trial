@@ -26,7 +26,7 @@ class VendorService {
   Future<void> saveVendorProfile(VendorModel vendor) async {
     try {
       await _vendorsRef.doc(vendor.vendorId).set(
-            vendor.toMap(),
+            vendor.toProfileMap(),
             SetOptions(merge: true),
           );
     } catch (e) {
@@ -40,6 +40,7 @@ class VendorService {
       await _vendorsRef.doc(vendorId).set({
         'vendorId': vendorId,
         'isOpen': isOpen,
+        if (!isOpen) 'locationSharingActive': false,
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Error toggling stall status: $e');
@@ -56,11 +57,20 @@ class VendorService {
       await _vendorsRef.doc(vendorId).update({
         'latitude': latitude,
         'longitude': longitude,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+        'locationSharingActive': true,
       });
     } catch (e) {
       debugPrint('Error updating vendor location: $e');
       rethrow;
     }
+  }
+
+  Stream<VendorModel?> watchVendorProfile(String vendorId) {
+    return _vendorsRef.doc(vendorId).snapshots().map((doc) =>
+        doc.exists && doc.data() != null
+            ? VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)
+            : null);
   }
 
   Stream<List<VendorModel>> getOpenVendors() {

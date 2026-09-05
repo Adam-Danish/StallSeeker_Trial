@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class VendorModel {
   final String vendorId;
   final String stallName;
@@ -8,6 +10,20 @@ class VendorModel {
   final double latitude;
   final double longitude;
   final String imageUrl;
+  final DateTime? locationUpdatedAt;
+  final bool locationSharingActive;
+
+  bool get hasValidLocation => latitude.isFinite && longitude.isFinite &&
+      latitude.abs() <= 90 && longitude.abs() <= 180 &&
+      !(latitude == 0 && longitude == 0);
+
+  bool get hasFreshLocation {
+    final updated = locationUpdatedAt;
+    if (!locationSharingActive || updated == null) { return false; }
+    final age = DateTime.now().difference(updated);
+    return !age.isNegative && age < const Duration(minutes: 2);
+  }
+
 
   VendorModel({
     required this.vendorId,
@@ -19,7 +35,19 @@ class VendorModel {
     this.latitude = 0.0,
     this.longitude = 0.0,
     this.imageUrl = '',
+    this.locationUpdatedAt,
+    this.locationSharingActive = false,
   });
+
+  /// Editable information only. Operational state belongs to the selling session.
+  Map<String, dynamic> toProfileMap() => {
+    'vendorId': vendorId,
+    'stallName': stallName,
+    'description': description,
+    'category': category,
+    'openingHours': openingHours,
+    'imageUrl': imageUrl,
+  };
 
   // Convert VendorModel to Map for Firestore
   Map<String, dynamic> toMap() {
@@ -48,6 +76,8 @@ class VendorModel {
       latitude: (map['latitude'] ?? 0.0).toDouble(),
       longitude: (map['longitude'] ?? 0.0).toDouble(),
       imageUrl: map['imageUrl'] ?? '',
+      locationUpdatedAt: (map['locationUpdatedAt'] as Timestamp?)?.toDate(),
+      locationSharingActive: map['locationSharingActive'] == true,
     );
   }
 
@@ -72,6 +102,8 @@ class VendorModel {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       imageUrl: imageUrl ?? this.imageUrl,
+      locationUpdatedAt: locationUpdatedAt,
+      locationSharingActive: locationSharingActive,
     );
   }
 }
