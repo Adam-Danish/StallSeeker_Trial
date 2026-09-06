@@ -33,10 +33,14 @@ void main() async {
       );
     }
   } catch (e) {
-    runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
+    runApp(MaterialApp(
+        home: Scaffold(
+            body: Center(
+                child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('StallSeeker could not start. Check your connection and retry.'),
+        const Text(
+            'StallSeeker could not start. Check your connection and retry.'),
         TextButton(onPressed: main, child: const Text('Retry')),
       ]),
     )))));
@@ -45,7 +49,9 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   runApp(const StallSeekerApp());
-  unawaited(NotificationService.instance.initialize(navigatorKey).catchError((Object error) {
+  unawaited(NotificationService.instance
+      .initialize(navigatorKey)
+      .catchError((Object error) {
     debugPrint('Notifications are currently unavailable.');
   }));
 }

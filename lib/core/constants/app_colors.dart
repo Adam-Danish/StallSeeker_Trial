@@ -6,7 +6,7 @@ class AppColors {
   static const Color primaryLight = Color(0xFFFF8142);
 
   // New design system
-  static const Color background = Color(0xFFF2EFF5); // Soft Lavender-Gray
+  static const Color background = Color(0xFFF2F2F7); // Grouped page background
   static const Color cardColor = Color(0xFFFFFFFF); // Pure White
   static const Color textDark = Color(0xFF222222); // Dark Charcoal
   static const Color textMuted = Color(0xFF9A9A9E); // Muted Gray

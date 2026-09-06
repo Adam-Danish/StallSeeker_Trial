@@ -1,0 +1,12 @@
+// Add inside your existing match /databases/{database}/documents block.
+// Merge with existing rules; this is NOT a replacement rules file.
+match /users/{userId}/notifications/{notificationId} {
+  allow read: if request.auth != null && request.auth.uid == userId;
+  allow update: if request.auth != null
+      && request.auth.uid == userId
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+      && request.resource.data.isRead == true;
+  allow create, delete: if false;
+}
+// Check that no existing broad recursive allow rule grants other users access
+// to these records. Firebase Admin writes from the function bypass these rules.

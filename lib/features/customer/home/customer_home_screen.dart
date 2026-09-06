@@ -1,3 +1,5 @@
+import '../../../core/services/notification_history_service.dart';
+import '../notifications/customer_notifications_screen.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +25,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _vendorService = VendorService();
   final _authService = AuthService();
   final _searchController = TextEditingController();
+  Stream<int>? _unreadCount;
 
   int _selectedIndex = 0;
   String _searchQuery = '';
@@ -32,7 +35,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // NEW: Track the visible map area to filter vendors
   LatLngBounds? _visibleBounds;
 
-  final List<String> _tabTitles = ['Home', 'Following', 'Profile'];
+  final List<String> _tabTitles = ['Home', 'Following', 'Notifications', 'Profile'];
   String _greeting = 'Welcome!';
 
   String? _selectedVendorId;
@@ -56,6 +59,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _vendors = _vendorService.getOpenVendors();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && !user.isAnonymous) {
+      _unreadCount = NotificationHistoryService().watchUnreadCount(user.uid);
+    }
     _getCustomerLocation();
     _loadGreeting();
     _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -200,16 +207,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       appBar: AppBar(
         title: Text(
           _selectedIndex == 0 ? _greeting : _tabTitles[_selectedIndex],
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            fontFamily: 'Poppins',
-          ),
           overflow: TextOverflow.ellipsis,
         ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
+        centerTitle: true,
+        backgroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
@@ -227,6 +228,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         children: [
           _buildMapTab(),
           const CustomerFollowingScreen(),
+          const CustomerNotificationsScreen(),
           const CustomerProfileScreen(),
         ],
       ),
@@ -237,18 +239,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         backgroundColor: Colors.white,
         indicatorColor: Colors.transparent,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.map_outlined),
             selectedIcon: Icon(Icons.map, color: Color(0xFFFF6E41)),
             label: 'Discover',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.favorite_border),
             selectedIcon: Icon(Icons.favorite, color: Color(0xFFFF6E41)),
             label: 'Following',
           ),
           NavigationDestination(
+            icon: _notificationIcon(false),
+            selectedIcon: _notificationIcon(true),
+            label: 'Notifications',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
             label: 'Profile',
@@ -257,6 +264,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
     );
   }
+
+  Widget _notificationIcon(bool selected) => StreamBuilder<int>(
+    stream: _unreadCount,
+    builder: (context, snapshot) {
+      final count = snapshot.data ?? 0;
+      return Badge(
+        isLabelVisible: count > 0,
+        label: Text(count >= 100 ? '99+' : '$count'),
+        child: Icon(selected ? Icons.notifications : Icons.notifications_none_rounded,
+          color: selected ? const Color(0xFFFF6E41) : null),
+      );
+    },
+  );
 
   Widget _buildMapTab() {
     return StreamBuilder<List<VendorModel>>(

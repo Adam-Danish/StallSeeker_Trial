@@ -267,10 +267,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
     final user = FirebaseAuth.instance.currentUser;
     final guest = user?.isAnonymous ?? true;
-    final name = guest ? 'Welcome, explorer' : _userModel?.fullName.isNotEmpty == true
+    final name = guest ? 'Guest' : _userModel?.fullName.isNotEmpty == true
         ? _userModel!.fullName : user?.displayName ?? 'Your profile';
     return ProfilePage(
       name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
+      photoUrl: guest ? null : user?.photoURL,
       isVendor: true, isGuest: guest,
       canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
       location: _locationText, isLoadingLocation: _isLoadingLocation,

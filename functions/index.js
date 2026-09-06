@@ -8,6 +8,9 @@ initializeApp();
 // Fires whenever any vendor document is updated. We only act when the
 // vendor transitions from closed to open -- editing other fields (name,
 // description, menu, etc.) does not trigger a notification.
+exports.recordVendorOpeningHistory =
+  require('./notification-history.cjs').recordVendorOpeningHistory;
+  
 exports.notifyFollowersOnStallOpen = onDocumentUpdated(
   "vendors/{vendorId}",
   async (event) => {

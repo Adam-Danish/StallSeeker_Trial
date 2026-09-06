@@ -13,7 +13,7 @@ class VendorMainScreen extends StatefulWidget {
 class _VendorMainScreenState extends State<VendorMainScreen> {
   int _selectedIndex = 0;
 
-  static const _titles = ['Vendor Dashboard', 'My Profile'];
+  static const _titles = ['Vendor Dashboard', 'Profile'];
 
   // Key to call dashboard refresh method
   final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
@@ -28,15 +28,9 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
       appBar: AppBar(
         title: Text(
           _titles[_selectedIndex],
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            fontFamily: 'Poppins',
-          ),
         ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
+        centerTitle: true,
+        backgroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
