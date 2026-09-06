@@ -3,6 +3,7 @@ import 'vendor_location_service.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
@@ -204,37 +205,105 @@ class AuthService {
       await _auth.sendPasswordResetEmail(email: email.trim());
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message ?? "Could not send reset email.";
-    } catch (e) {
-      return e.toString();
+      // Give the same result for unknown accounts to avoid exposing sign-ups.
+      if (e.code == 'user-not-found') { return null; }
+      if (e.code == 'invalid-email') { return 'Enter a valid email address.'; }
+      if (e.code == 'too-many-requests') { return 'Too many requests. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      return 'Could not send the reset link. Please try again.';
+    } catch (_) {
+      return 'Could not send the reset link. Please try again.';
     }
   }
 
-  Future<String?> changePassword(String newPassword) async {
+  Future<String?> changePassword(String newPassword, {String? currentPassword}) async {
     try {
       final user = _auth.currentUser;
       if (user == null) { return "No user is currently logged in."; }
+      if (currentPassword != null) {
+        if (user.email == null || !user.providerData.any((p) => p.providerId == 'password')) {
+          return 'Manage your password with your sign-in provider.';
+        }
+        final credential = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+        await user.reauthenticateWithCredential(credential);
+      }
       await user.updatePassword(newPassword);
       return null;
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect. Please try again.';
+      }
+      if (e.code == 'too-many-requests') { return 'Too many attempts. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
       if (e.code == 'requires-recent-login') {
         return "For security, please log out and log back in before changing your password.";
       }
       return e.message ?? "Could not change password.";
-    } catch (e) {
-      return e.toString();
+    } catch (_) {
+      return 'Could not update your password. Please try again.';
     }
   }
 
   Future<String?> updateFullName(String uid, String newName) async {
     try {
+      final user = _auth.currentUser;
+      if (user == null || user.isAnonymous || user.uid != uid) { return 'Please sign in to edit your profile.'; }
+      final name = newName.trim();
+      if (name.isEmpty || name.length > 80) { return 'Enter a name between 1 and 80 characters.'; }
       await _firestore
           .collection(FirestoreCollections.users)
           .doc(uid)
-          .update({'fullName': newName});
+          .update({'fullName': name});
+      // Firestore is the app's profile source. Sync Auth's display name as well.
+      try { await user.updateDisplayName(name); }
+      catch (_) { debugPrint('Profile saved; Auth display-name sync is unavailable.'); }
       return null;
-    } catch (e) {
-      return e.toString();
+    } catch (_) {
+      return 'Could not save your profile. Please try again.';
+    }
+  }
+
+  Future<String?> deleteAccount({String? currentPassword}) async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in before deleting your account.'; }
+    try {
+      final providers = user.providerData.map((provider) => provider.providerId).toSet();
+      if (providers.contains('password')) {
+        if (currentPassword == null || currentPassword.isEmpty || user.email == null) {
+          return 'Enter your current password.';
+        }
+        await user.reauthenticateWithCredential(EmailAuthProvider.credential(
+          email: user.email!, password: currentPassword));
+      } else if (providers.contains('google.com')) {
+        await _ensureGoogleSignInReady();
+        final googleUser = await _googleSignIn.authenticate();
+        final googleAuth = googleUser.authentication;
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+      } else {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
+
+      await NotificationService.instance.clearCurrentDevice();
+      await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
+      await _auth.signOut();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect.';
+      }
+      if (e.code == 'requires-recent-login') {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
+      return e.message ?? 'Could not verify your account.';
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unauthenticated') { return 'Your session expired. Sign in and try again.'; }
+      if (e.code == 'failed-precondition') {
+        return 'Confirm your sign-in, then retry account deletion.';
+      }
+      return 'Could not finish account deletion. Please retry.';
+    } catch (_) {
+      return 'Could not delete your account. Please try again.';
     }
   }
 }

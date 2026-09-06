@@ -42,12 +42,14 @@ lib/
       firestore_collections.dart
     models/
       menu_item_model.dart
+      notification_model.dart
       user_model.dart
       vendor_model.dart
     services/
       auth_service.dart
       follow_service.dart
       menu_service.dart
+      notification_history_service.dart
       notification_service.dart
       storage_service.dart
       vendor_location_service.dart
@@ -57,6 +59,7 @@ lib/
   features/
     auth/
       screens/
+        forgot_password_screen.dart
         login_screen.dart
         register_screen.dart
         welcome_screen.dart
@@ -66,14 +69,23 @@ lib/
         customer_following_screen.dart
       home/
         customer_home_screen.dart
+      notifications/
+        customer_notifications_screen.dart
       profile/
         customer_profile_screen.dart
       vendor_details/
         vendor_details_screen.dart
     shared/
       about_screen.dart
+      account_ui.dart
+      change_password_screen.dart
+      delete_account_screen.dart
+      edit_profile_screen.dart
       faq_screen.dart
+      legal_screen.dart
       logout_helper.dart
+      notification_settings_screen.dart
+      personal_information_screen.dart
       profile_page.dart
     splash/
       splash_screen.dart
@@ -91,6 +103,672 @@ lib/
 ````
 
 # Files
+
+## File: lib/features/auth/screens/forgot_password_screen.dart
+````dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/account_ui.dart';
+
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
+  final String initialEmail;
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _form = GlobalKey<FormState>();
+  late final _email = TextEditingController(text: widget.initialEmail);
+  Timer? _timer;
+  int _seconds = 0;
+  bool _busy = false;
+  bool _sent = false;
+  String? _error;
+  String _sentTo = '';
+  @override
+  void dispose() { _timer?.cancel(); _email.dispose(); super.dispose(); }
+
+  Future<void> _send() async {
+    if (_busy || _seconds > 0) { return; }
+    if (!_sent && !_form.currentState!.validate()) { return; }
+    FocusScope.of(context).unfocus();
+    final address = _email.text.trim();
+    setState(() { _busy = true; _error = null; });
+    final error = await AuthService().resetPassword(email: address);
+    if (!mounted) { return; }
+    setState(() {
+      _busy = false; _error = error;
+      if (error == null) { _sent = true; _sentTo = address; _seconds = 60; }
+    });
+    if (error == null) {
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) { timer.cancel(); return; }
+        setState(() { if (_seconds > 0) { _seconds--; } });
+        if (_seconds == 0) { timer.cancel(); }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(title: 'Forgot password', busy: _busy,
+    children: [
+      const SizedBox(height: 24),
+      AccountIntro(icon: _sent ? Icons.mark_email_read_outlined : Icons.lock_reset_rounded,
+        title: _sent ? 'Check your email' : 'Reset your password',
+        body: _sent
+          ? 'If an account uses $_sentTo, you will receive a link to reset its password.'
+          : 'Enter the email address linked to your account. We will send you a reset link.'),
+      if (!_sent) ...[
+        Form(key: _form, child: TextFormField(controller: _email, enabled: !_busy,
+          keyboardType: TextInputType.emailAddress, textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.email], autocorrect: false,
+          decoration: accountField('Email address'),
+          validator: (v) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch((v ?? '').trim())
+            ? null : 'Enter a valid email address.',
+          onFieldSubmitted: (_) => _send())),
+        const SizedBox(height: 24), AccountError(_error),
+        AccountButton(label: _seconds > 0 ? 'Send again in ${_seconds}s' : 'Send reset link',
+          busy: _busy, onPressed: _seconds > 0 ? null : _send),
+        const SizedBox(height: 20),
+        const Text('Signed up with Google? Use Continue with Google to sign in.',
+          textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF707078), height: 1.5)),
+      ] else ...[
+        const Text('Open the email and follow the link to choose a new password. Check Spam or Junk if it is missing.',
+          textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF707078), height: 1.5)),
+        const SizedBox(height: 28), AccountError(_error),
+        AccountButton(label: 'Done', onPressed: _busy ? null : () => Navigator.pop(context)),
+        const SizedBox(height: 12),
+        TextButton(onPressed: _busy || _seconds > 0 ? null : _send,
+          child: Text(_busy ? 'Sending…' : _seconds > 0 ? 'Resend in ${_seconds}s' : 'Resend email')),
+        TextButton(onPressed: _busy ? null : () => setState(() { _sent = false; _error = null; }),
+          child: const Text('Use another email')),
+      ],
+    ]);
+}
+````
+
+## File: lib/features/shared/account_ui.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+
+/// Shared spacing, fields and actions for account pages.
+class AccountLayout extends StatelessWidget {
+  const AccountLayout({super.key, required this.title, required this.children,
+    this.busy = false, this.background = Colors.white});
+  final String title;
+  final List<Widget> children;
+  final bool busy;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !busy,
+    child: Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(title: Text(title), centerTitle: true,
+        backgroundColor: Colors.white, surfaceTintColor: Colors.transparent,
+        elevation: 0, scrolledUnderElevation: 0,
+        titleTextStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500,
+          color: AppColors.textDark, letterSpacing: 0),
+        leading: BackButton(onPressed: busy ? () {} : () => Navigator.maybePop(context))),
+      body: SafeArea(top: false, child: Align(alignment: Alignment.topCenter,
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
+          child: ListView(padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            children: children)))),
+    ),
+  );
+}
+
+class AccountIntro extends StatelessWidget {
+  const AccountIntro({super.key, required this.icon, required this.title, required this.body});
+  final IconData icon;
+  final String title;
+  final String body;
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    Container(width: 64, height: 64,
+      decoration: const BoxDecoration(color: Color(0xFFFFF0E9), shape: BoxShape.circle),
+      child: Icon(icon, color: AppColors.primary, size: 30)),
+    const SizedBox(height: 24),
+    Text(title, textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -.3)),
+    const SizedBox(height: 10),
+    Text(body, textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 15, height: 1.5, color: Color(0xFF707078))),
+    const SizedBox(height: 32),
+  ]);
+}
+
+InputDecoration accountField(String label, {Widget? suffix, String? helper}) => InputDecoration(
+  labelText: label, helperText: helper, helperMaxLines: 3, errorMaxLines: 3,
+  suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
+  labelStyle: const TextStyle(color: Color(0xFF707078), fontSize: 14),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+  border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20),
+    borderSide: const BorderSide(color: AppColors.primary)),
+  errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20),
+    borderSide: const BorderSide(color: Color(0xFFB3261E))),
+  focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20),
+    borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.5)),
+);
+
+class AccountButton extends StatelessWidget {
+  const AccountButton({super.key, required this.label, this.onPressed, this.busy = false,
+    this.color = AppColors.primary});
+  final String label;
+  final VoidCallback? onPressed;
+  final bool busy;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => SizedBox(width: double.infinity,
+    child: FilledButton(onPressed: busy ? null : onPressed,
+      style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        minimumSize: const Size(48, 54),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+      child: busy ? const SizedBox(width: 22, height: 22,
+        child: CircularProgressIndicator(strokeWidth: 2))
+        : Text(label, textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))));
+}
+
+class AccountError extends StatelessWidget {
+  const AccountError(this.message, {super.key});
+  final String? message;
+  @override
+  Widget build(BuildContext context) => message == null ? const SizedBox.shrink()
+    : Padding(padding: const EdgeInsets.only(bottom: 16),
+        child: Semantics(liveRegion: true, child: Text(message!,
+          style: const TextStyle(color: Color(0xFFB3261E), height: 1.4))));
+}
+````
+
+## File: lib/features/shared/change_password_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../core/services/auth_service.dart';
+import '../auth/screens/forgot_password_screen.dart';
+import 'account_ui.dart';
+
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key, required this.email});
+  final String email;
+  @override
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  final _form = GlobalKey<FormState>();
+  final _current = TextEditingController();
+  final _next = TextEditingController();
+  final _confirm = TextEditingController();
+  final _hidden = [true, true, true];
+  bool _busy = false;
+  bool _saved = false;
+  String? _error;
+  @override
+  void dispose() { _current.dispose(); _next.dispose(); _confirm.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    if (_busy || !_form.currentState!.validate()) { return; }
+    FocusScope.of(context).unfocus();
+    setState(() { _busy = true; _error = null; });
+    // Do not trim passwords: spaces may be intentional.
+    final error = await AuthService().changePassword(_next.text, currentPassword: _current.text);
+    if (!mounted) { return; }
+    setState(() { _busy = false; _error = error; _saved = error == null; });
+    if (_saved) { _current.clear(); _next.clear(); _confirm.clear(); }
+  }
+
+  Widget _field(String label, TextEditingController controller, int index,
+      String? Function(String?) validator) => Padding(padding: const EdgeInsets.only(bottom: 18),
+    child: TextFormField(controller: controller, enabled: !_busy, obscureText: _hidden[index],
+      enableSuggestions: false, autocorrect: false,
+      autofillHints: [index == 0 ? AutofillHints.password : AutofillHints.newPassword],
+      textInputAction: index == 2 ? TextInputAction.done : TextInputAction.next,
+      onFieldSubmitted: index == 2 ? (_) => _save() : null,
+      validator: validator, decoration: accountField(label,
+        suffix: IconButton(tooltip: _hidden[index] ? 'Show password' : 'Hide password',
+          onPressed: () => setState(() => _hidden[index] = !_hidden[index]),
+          icon: Icon(_hidden[index] ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            size: 21, color: const Color(0xFF707078))))));
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(title: 'Change password', busy: _busy,
+    children: _saved ? [
+      const SizedBox(height: 40),
+      const AccountIntro(icon: Icons.check_rounded, title: 'Password changed',
+        body: 'Your new password is ready. Use it the next time you sign in.'),
+      AccountButton(label: 'Back to profile', onPressed: () => Navigator.pop(context)),
+    ] : [
+      const AccountIntro(icon: Icons.lock_outline_rounded, title: 'Choose a new password',
+        body: 'Confirm your current password, then enter a new one.'),
+      Form(key: _form, child: AutofillGroup(child: Column(children: [
+        _field('Current password', _current, 0,
+          (v) => (v ?? '').isEmpty ? 'Enter your current password.' : null),
+        _field('New password', _next, 1, (v) {
+          if ((v ?? '').length < 6) { return 'Use at least 6 characters.'; }
+          if (v == _current.text) { return 'Choose a different password.'; }
+          return null;
+        }),
+        _field('Confirm new password', _confirm, 2,
+          (v) => v != _next.text ? 'Your passwords do not match.' : null),
+      ]))),
+      const Padding(padding: EdgeInsets.only(bottom: 20), child: Text(
+        'Use a long, unique password. Your account may require extra characters.',
+        style: TextStyle(fontSize: 13, color: Color(0xFF707078), height: 1.4))),
+      AccountError(_error),
+      AccountButton(label: 'Update password', busy: _busy, onPressed: _save),
+      const SizedBox(height: 12),
+      TextButton(onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(initialEmail: widget.email))),
+        child: const Text('Forgot your current password?')),
+    ]);
+}
+````
+
+## File: lib/features/shared/delete_account_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../core/services/auth_service.dart';
+import 'account_ui.dart';
+
+class DeleteAccountScreen extends StatefulWidget {
+  const DeleteAccountScreen({super.key});
+  @override
+  State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
+}
+
+class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
+  final _auth = AuthService();
+  final _confirmation = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  bool _hidePassword = true;
+  String? _error;
+
+  bool get _usesPassword => FirebaseAuth.instance.currentUser?.providerData
+      .any((provider) => provider.providerId == 'password') ?? false;
+
+  Future<void> _delete() async {
+    if (_confirmation.text.trim().toUpperCase() != 'DELETE') {
+      setState(() => _error = 'Type DELETE to confirm.'); return;
+    }
+    if (_usesPassword && _password.text.isEmpty) {
+      setState(() => _error = 'Enter your current password.'); return;
+    }
+    setState(() { _busy = true; _error = null; });
+    final error = await _auth.deleteAccount(currentPassword: _usesPassword ? _password.text : null);
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() { _busy = false; _error = error; });
+    }
+  }
+
+  @override
+  void dispose() { _confirmation.dispose(); _password.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(
+    title: 'Delete account', busy: _busy,
+    children: [
+      const AccountIntro(icon: Icons.delete_outline_rounded, title: 'Delete your account?',
+        body: 'This permanently removes your profile, follows, notification history and vendor data. This cannot be undone.'),
+      TextField(controller: _confirmation, enabled: !_busy,
+        textCapitalization: TextCapitalization.characters,
+        decoration: accountField('Type DELETE to confirm')),
+      if (_usesPassword) ...[
+        const SizedBox(height: 14),
+        TextField(controller: _password, enabled: !_busy, obscureText: _hidePassword,
+          decoration: accountField('Current password', suffix: IconButton(
+            onPressed: _busy ? null : () => setState(() => _hidePassword = !_hidePassword),
+            icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined)))),
+      ],
+      const SizedBox(height: 16),
+      AccountError(_error),
+      AccountButton(label: 'Delete account permanently', busy: _busy,
+        color: const Color(0xFFB3261E), onPressed: _delete),
+      const SizedBox(height: 12),
+      TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+    ],
+  );
+}
+````
+
+## File: lib/features/shared/edit_profile_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/services/auth_service.dart';
+import 'account_ui.dart';
+
+class EditProfileScreen extends StatefulWidget {
+  const EditProfileScreen({super.key, required this.name, required this.email});
+  final String name;
+  final String email;
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _form = GlobalKey<FormState>();
+  final _auth = AuthService();
+  late final TextEditingController _name = TextEditingController(text: widget.name);
+  bool _busy = false;
+  String? _error;
+  @override
+  void dispose() { _name.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    if (_busy || !_form.currentState!.validate()) { return; }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      setState(() => _error = 'Please sign in to edit your profile.'); return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() { _busy = true; _error = null; });
+    final error = await _auth.updateFullName(user.uid, _name.text.trim());
+    if (!mounted) { return; }
+    setState(() { _busy = false; _error = error; });
+    if (error == null) { Navigator.pop(context, true); }
+  }
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(title: 'Edit profile', busy: _busy,
+    children: [
+      const AccountIntro(icon: Icons.person_outline_rounded, title: 'Make it yours',
+        body: 'Keep your name up to date so your account feels like you.'),
+      Form(key: _form, child: Column(children: [
+        TextFormField(controller: _name, enabled: !_busy, maxLength: 80,
+          textCapitalization: TextCapitalization.words,
+          autofillHints: const [AutofillHints.name], textInputAction: TextInputAction.done,
+          decoration: accountField('Full name'),
+          validator: (value) => (value ?? '').trim().isEmpty ? 'Enter your name.' : null,
+          onFieldSubmitted: (_) => _save()),
+        const SizedBox(height: 12),
+        TextFormField(initialValue: widget.email, readOnly: true,
+          decoration: accountField('Email address', suffix: const Icon(Icons.lock_outline, size: 20),
+            helper: 'This is the email linked to your sign-in account.')),
+      ])),
+      const SizedBox(height: 24), AccountError(_error),
+      AccountButton(label: 'Save changes', busy: _busy, onPressed: _save),
+    ]);
+}
+````
+
+## File: lib/features/shared/legal_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'account_ui.dart';
+
+enum LegalPage { privacy, terms }
+
+class LegalScreen extends StatelessWidget {
+  const LegalScreen({super.key, required this.page});
+  final LegalPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final privacy = page == LegalPage.privacy;
+    return AccountLayout(
+      title: privacy ? 'Privacy Policy' : 'Terms of Use',
+      background: const Color(0xFFF2F2F7),
+      children: [
+        Container(padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(privacy ? 'Your privacy at StallSeeker' : 'Using StallSeeker',
+              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600, letterSpacing: -.3)),
+            const SizedBox(height: 8),
+            const Text('Last updated: 6 September 2026',
+              style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
+            const SizedBox(height: 24),
+            ...(privacy ? _privacySections : _termSections).map((section) => Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(section.key, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 7),
+                Text(section.value, style: const TextStyle(fontSize: 15, height: 1.55,
+                  color: Color(0xFF52525A))),
+              ]))),
+          ])),
+      ],
+    );
+  }
+
+  static const _privacySections = <MapEntry<String, String>>[
+    MapEntry('Information we collect', 'We store your name, email address, account type, followed stalls, notification history and device notification token. Vendors may share their stall details and live location while using the service.'),
+    MapEntry('How we use it', 'We use this information to run your account, show nearby stalls, save favourites, send stall updates and keep the service secure.'),
+    MapEntry('Location', 'Customer location is used to show nearby stalls. Vendor location may be shown to customers when the stall is active. StallSeeker does not need location when these features are not being used.'),
+    MapEntry('Sharing and storage', 'Account and app data are stored using Firebase services. We do not sell personal information. Data may be processed by service providers needed to operate the app.'),
+    MapEntry('Your choices', 'You can turn off alerts in Notification settings, remove phone permissions in device settings, or delete your StallSeeker account from the Profile page.'),
+    MapEntry('Data deletion', 'Deleting your account removes your account and related StallSeeker data. Some security or legal records may be kept only when required by law.'),
+    MapEntry('Contact', 'For privacy questions, contact the StallSeeker team at support@stallseeker.my.'),
+  ];
+
+  static const _termSections = <MapEntry<String, String>>[
+    MapEntry('Service purpose', 'StallSeeker helps customers find food stalls and helps vendors share their status, menu and location.'),
+    MapEntry('Account responsibility', 'Use correct information, protect your password and do not use another person’s account. You are responsible for activity under your account.'),
+    MapEntry('Vendor information', 'Vendors are responsible for keeping their location, opening status, menu, prices and stock information accurate.'),
+    MapEntry('Acceptable use', 'Do not misuse the service, post harmful or false content, interfere with the app, scrape private data or break applicable laws.'),
+    MapEntry('Availability', 'Stall locations, stock and opening status can change. StallSeeker cannot guarantee that every listing or live update is always correct or available.'),
+    MapEntry('Account action', 'We may limit or remove accounts that abuse the service or put other users at risk. You may delete your account from the Profile page.'),
+    MapEntry('Changes and contact', 'These terms may change as the service develops. For questions, contact support@stallseeker.my.'),
+  ];
+}
+````
+
+## File: lib/features/shared/notification_settings_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/services/notification_service.dart';
+import 'account_ui.dart';
+
+class NotificationSettingsScreen extends StatefulWidget {
+  const NotificationSettingsScreen({super.key});
+  @override
+  State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
+}
+
+class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
+    with WidgetsBindingObserver {
+  bool _enabled = true;
+  bool _busy = true;
+  AuthorizationStatus _systemStatus = AuthorizationStatus.notDetermined;
+  String? _error;
+
+  @override
+  void initState() { super.initState(); WidgetsBinding.instance.addObserver(this); _load(); }
+
+  @override
+  void dispose() { WidgetsBinding.instance.removeObserver(this); super.dispose(); }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
+  Future<void> _load() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      if (mounted) setState(() { _busy = false; _error = 'Sign in to manage notifications.'; });
+      return;
+    }
+    try {
+      final values = await Future.wait([
+        NotificationService.instance.isEnabledForCurrentUser(),
+        FirebaseMessaging.instance.getNotificationSettings(),
+      ]);
+      if (mounted) setState(() {
+        _enabled = values[0] as bool;
+        _systemStatus = (values[1] as NotificationSettings).authorizationStatus;
+        _busy = false; _error = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() { _busy = false; _error = 'Could not load notification settings.'; });
+    }
+  }
+
+  Future<void> _toggle(bool value) async {
+    setState(() { _busy = true; _error = null; });
+    final error = await NotificationService.instance.setEnabledForCurrentUser(value);
+    if (!mounted) return;
+    setState(() { _busy = false; if (error == null) _enabled = value; else _error = error; });
+    if (error == null) await _load();
+  }
+
+  String get _permissionText {
+    if (_systemStatus == AuthorizationStatus.authorized) return 'Allowed by this device';
+    if (_systemStatus == AuthorizationStatus.provisional) return 'Quiet notifications allowed';
+    if (_systemStatus == AuthorizationStatus.denied) return 'Blocked in phone settings';
+    return 'Permission not requested';
+  }
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(
+    title: 'Notifications', busy: _busy,
+    background: const Color(0xFFF2F2F7),
+    children: [
+      Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        child: SwitchListTile.adaptive(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          activeColor: AppColors.primary,
+          value: _enabled, onChanged: _busy ? null : _toggle,
+          secondary: const Icon(Icons.notifications_active_outlined, color: AppColors.primary),
+          title: const Text('Stall notifications', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
+          subtitle: const Padding(padding: EdgeInsets.only(top: 4),
+            child: Text('Get an alert when a followed stall opens.')),
+        )),
+      const SizedBox(height: 22),
+      Container(padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        child: Row(children: [
+          const Icon(Icons.phone_android_rounded, color: Color(0xFF8E8E93)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Device permission', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 4),
+            Text(_permissionText, style: const TextStyle(color: Color(0xFF707078))),
+          ])),
+        ])),
+      if (_systemStatus == AuthorizationStatus.denied) ...[
+        const SizedBox(height: 12),
+        const Text('Allow notifications in your phone settings, then return to StallSeeker.',
+          style: TextStyle(color: Color(0xFF707078), height: 1.4)),
+      ],
+      if (_error != null) ...[
+        const SizedBox(height: 16),
+        AccountError(_error),
+      ],
+      const SizedBox(height: 18),
+      const Text('Notification history stays in the app even when alerts are turned off.',
+        style: TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF8E8E93))),
+    ],
+  );
+}
+````
+
+## File: lib/features/shared/personal_information_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/services/auth_service.dart';
+import 'account_ui.dart';
+import 'edit_profile_screen.dart';
+
+class PersonalInformationScreen extends StatefulWidget {
+  const PersonalInformationScreen({super.key, required this.name, required this.email,
+    required this.isVendor});
+  final String name;
+  final String email;
+  final bool isVendor;
+  @override
+  State<PersonalInformationScreen> createState() => _PersonalInformationScreenState();
+}
+
+class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
+  late String _name = widget.name;
+  Future<void> _edit() async {
+    final changed = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => EditProfileScreen(name: _name, email: widget.email)));
+    if (changed != true || !mounted) { return; }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) { return; }
+    final data = await AuthService().getUserData(uid);
+    if (mounted) { setState(() => _name = data?.fullName ?? FirebaseAuth.instance.currentUser?.displayName ?? _name); }
+  }
+
+  Widget _row(String label, String value) => Padding(
+    padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+      children: [Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF707078))),
+        const SizedBox(height: 6), SelectableText(value.isEmpty ? 'Not available' : value,
+          style: const TextStyle(fontSize: 16, height: 1.4))]));
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final providers = user?.providerData.map((p) => p.providerId).toSet() ?? <String>{};
+    final methods = providers.map((p) => p == 'google.com' ? 'Google' : p == 'password' ? 'Email and password' : p).join(', ');
+    return AccountLayout(title: 'Personal information', background: const Color(0xFFF2F2F7),
+      children: [
+        const Text('YOUR ACCOUNT', style: TextStyle(fontSize: 12, color: Color(0xFF707078))),
+        const SizedBox(height: 12),
+        Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _row('Full name', _name), const Divider(height: 1),
+            _row('Email address', widget.email), const Divider(height: 1),
+            _row('Account type', widget.isVendor ? 'Vendor' : 'Customer'), const Divider(height: 1),
+            _row('Sign-in method', methods),
+          ])),
+        const SizedBox(height: 24),
+        AccountButton(label: 'Edit profile', onPressed: _edit),
+      ]);
+  }
+}
+````
+
+## File: lib/core/models/notification_model.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class NotificationModel {
+  const NotificationModel({required this.id, required this.vendorId,
+    required this.title, required this.body, required this.createdAt,
+    required this.isRead});
+
+  final String id;
+  final String vendorId;
+  final String title;
+  final String body;
+  final DateTime? createdAt;
+  final bool isRead;
+
+  factory NotificationModel.fromMap(Map<String, dynamic> data, String id) {
+    final time = data['createdAt'];
+    return NotificationModel(
+      id: id,
+      vendorId: data['vendorId'] is String ? data['vendorId'] as String : '',
+      title: data['title'] is String ? data['title'] as String : 'Stall update',
+      body: data['body'] is String ? data['body'] as String : '',
+      createdAt: time is Timestamp ? time.toDate() : null,
+      isRead: data['isRead'] == true,
+    );
+  }
+}
+````
 
 ## File: lib/core/services/follow_service.dart
 ````dart
@@ -137,6 +815,60 @@ class FollowService {
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
+  }
+}
+````
+
+## File: lib/core/services/notification_history_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/notification_model.dart';
+
+/// The server creates history records. Clients can read their own records
+/// and mark them read, but cannot invent or edit alert content.
+class NotificationHistoryService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> _inbox(String uid) =>
+      _db.collection('users').doc(uid).collection('notifications');
+
+  Stream<List<NotificationModel>> watch(String uid, {int limit = 50}) =>
+      _inbox(uid).orderBy('createdAt', descending: true).limit(limit).snapshots()
+          .map((snapshot) => snapshot.docs
+              .map((doc) => NotificationModel.fromMap(doc.data(), doc.id)).toList());
+
+  // Cap the badge query; the UI displays 99+ rather than a misleading exact count.
+  Stream<int> watchUnreadCount(String uid) => _inbox(uid)
+      .where('isRead', isEqualTo: false).limit(100).snapshots()
+      .map((snapshot) => snapshot.docs.length);
+
+  Future<void> markRead(String uid, String notificationId) async {
+    _requireOwner(uid);
+    await _inbox(uid).doc(notificationId).update({'isRead': true})
+        .timeout(const Duration(seconds: 10));
+  }
+
+  /// Marks only the records the screen displayed. A new alert arriving during
+  /// this operation remains unread, and writes stay below the batch limit.
+  Future<void> markDisplayedRead(String uid, Iterable<NotificationModel> items) async {
+    _requireOwner(uid);
+    final ids = items.where((item) => !item.isRead).map((item) => item.id).toSet().toList();
+    for (var start = 0; start < ids.length; start += 400) {
+      _requireOwner(uid);
+      final batch = _db.batch();
+      for (final id in ids.skip(start).take(400)) {
+        batch.update(_inbox(uid).doc(id), {'isRead': true});
+      }
+      await batch.commit().timeout(const Duration(seconds: 10));
+    }
+  }
+
+  void _requireOwner(String uid) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous || user.uid != uid) {
+      throw StateError('Sign in to read your notifications.');
+    }
   }
 }
 ````
@@ -249,6 +981,219 @@ class VendorLocationService extends ChangeNotifier {
 }
 ````
 
+## File: lib/features/customer/notifications/customer_notifications_screen.dart
+````dart
+import 'package:flutter/cupertino.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/notification_model.dart';
+import '../../../core/services/notification_history_service.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../auth/screens/login_screen.dart';
+import '../vendor_details/vendor_details_screen.dart';
+
+class CustomerNotificationsScreen extends StatefulWidget {
+  const CustomerNotificationsScreen({super.key});
+  @override
+  State<CustomerNotificationsScreen> createState() => _CustomerNotificationsScreenState();
+}
+
+class _CustomerNotificationsScreenState extends State<CustomerNotificationsScreen> {
+  final _history = NotificationHistoryService();
+  final _vendors = VendorService();
+  final _uid = FirebaseAuth.instance.currentUser?.uid;
+  late Stream<List<NotificationModel>> _stream;
+  final Set<String> _opening = {};
+  int _limit = 50;
+  bool _marking = false;
+  bool _onlyUnread = false;
+
+  @override
+  void initState() { super.initState(); _listen(); }
+
+  void _listen() {
+    final uid = _uid;
+    _stream = uid == null || FirebaseAuth.instance.currentUser?.isAnonymous == true
+        ? Stream.value(<NotificationModel>[])
+        : _history.watch(uid, limit: _limit);
+  }
+
+  void _message(String message) {
+    if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message))); }
+  }
+
+  Future<void> _open(NotificationModel item) async {
+    final uid = _uid;
+    if (uid == null || _opening.contains(item.id)) { return; }
+    setState(() => _opening.add(item.id));
+    try {
+      if (!item.isRead) {
+        try { await _history.markRead(uid, item.id); }
+        catch (_) { _message('Could not mark this alert as read.'); }
+      }
+      if (item.vendorId.isEmpty) { _message('This alert has no stall link.'); return; }
+      final vendor = await _vendors.getVendorProfile(item.vendorId)
+          .timeout(const Duration(seconds: 10));
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) { return; }
+      if (vendor == null) { _message('This stall is unavailable or could not be loaded.'); return; }
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)));
+    } catch (_) {
+      _message('Could not open the stall. Please retry.');
+    } finally {
+      if (mounted) { setState(() => _opening.remove(item.id)); }
+    }
+  }
+
+  Future<void> _markRead(List<NotificationModel> items) async {
+    final uid = _uid;
+    if (uid == null || _marking) { return; }
+    setState(() => _marking = true);
+    try { await _history.markDisplayedRead(uid, items); }
+    catch (_) { _message('Could not mark alerts as read. Please retry.'); }
+    finally { if (mounted) { setState(() => _marking = false); } }
+  }
+
+  String _date(DateTime? value) {
+    if (value == null) { return 'Date unavailable'; }
+    final local = value.toLocal();
+    final time = TimeOfDay.fromDateTime(local).format(context);
+    return '${local.day}/${local.month}/${local.year} · $time';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      return _empty('Your stall updates, in one place',
+        'Sign in and follow stalls to keep their updates here.', action: TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          child: const Text('Sign in')));
+    }
+    return ColoredBox(color: const Color(0xFFF2F2F7), child: StreamBuilder<List<NotificationModel>>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _errorState(snapshot.error!);
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final all = snapshot.data ?? [];
+        final visible = _onlyUnread ? all.where((item) => !item.isRead).toList() : all;
+        return RefreshIndicator(onRefresh: () async { setState(_listen); }, child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 28), children: [
+            Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8, runSpacing: 4, children: [
+                CupertinoSlidingSegmentedControl<bool>(
+                  groupValue: _onlyUnread,
+                  children: const {
+                    false: Padding(padding: EdgeInsets.symmetric(horizontal: 18), child: Text('All')),
+                    true: Padding(padding: EdgeInsets.symmetric(horizontal: 18), child: Text('Unread')),
+                  },
+                  onValueChanged: (value) {
+                    if (value != null) { setState(() => _onlyUnread = value); }
+                  },
+                ),
+                TextButton(onPressed: _marking || !all.any((item) => !item.isRead) ? null : () => _markRead(all),
+                  child: Text(_marking ? 'Updating…' : 'Mark shown as read')),
+              ]),
+            const Padding(padding: EdgeInsets.fromLTRB(8, 16, 8, 12),
+              child: Text('STALL UPDATES', style: TextStyle(fontSize: 12, color: Color(0xFF8E8E93)))),
+            if (visible.isEmpty) Padding(padding: const EdgeInsets.all(32), child: Column(children: [
+              const Icon(Icons.notifications_none_rounded, size: 42, color: Color(0xFF8E8E93)),
+              const SizedBox(height: 12),
+              Text(_onlyUnread ? 'No unread updates in this list' : 'No notifications yet',
+                textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              const Text('When a stall you follow opens, its new update will appear here.',
+                textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF8E8E93))),
+            ]))
+            else Container(clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+              child: Column(children: [
+                for (var i = 0; i < visible.length; i++) ...[
+                  if (i > 0) const Divider(height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
+                  _tile(visible[i]),
+                ],
+              ])),
+            if (all.length >= _limit) Padding(padding: const EdgeInsets.only(top: 12),
+              child: TextButton(onPressed: () => setState(() { _limit += 50; _listen(); }),
+                child: const Text('Load older updates'))),
+          ],
+        ));
+      },
+    ));
+  }
+
+  Widget _tile(NotificationModel item) => Material(
+    color: item.isRead ? Colors.white : const Color(0xFFFFFAF6),
+    child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      leading: Icon(Icons.storefront_outlined,
+        color: item.isRead ? const Color(0xFF8E8E93) : const Color(0xFFFF6E41)),
+      title: Text(item.title, style: TextStyle(fontSize: 17, letterSpacing: 0,
+        fontWeight: item.isRead ? FontWeight.w400 : FontWeight.w500)),
+      subtitle: Padding(padding: const EdgeInsets.only(top: 5), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (item.body.isNotEmpty) Text(item.body, style: const TextStyle(fontSize: 14, letterSpacing: 0)),
+          const SizedBox(height: 5),
+          Text(_date(item.createdAt), style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
+        ])),
+      trailing: _opening.contains(item.id)
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(item.isRead ? Icons.chevron_right : Icons.circle,
+              size: item.isRead ? 20 : 8, color: item.isRead ? const Color(0xFFAEAEB2) : const Color(0xFFFF6E41)),
+      onTap: () => _open(item),
+    ),
+  );
+
+  Widget _errorState(Object error) {
+    final code = error is FirebaseException ? error.code : 'unknown';
+    // Preserve the real error in the debug console instead of blaming Wi-Fi.
+    debugPrint('Notification history [$code]: $error');
+    String title;
+    String body;
+    switch (code) {
+      case 'permission-denied':
+        title = 'Notification access is blocked';
+        body = 'Your account cannot read notification history yet. Please contact support.';
+        break;
+      case 'unauthenticated':
+        title = 'Please sign in again';
+        body = 'Your session has expired. Sign out and sign in to load your updates.';
+        break;
+      case 'unavailable':
+      case 'deadline-exceeded':
+        title = 'Cannot reach notifications';
+        body = 'Check your connection, then try again.';
+        break;
+      case 'failed-precondition':
+        title = 'Notifications are not ready';
+        body = 'Notification history needs a service update. Please contact support.';
+        break;
+      default:
+        title = 'Could not load notifications';
+        body = 'Try again. If this continues, share the error code with support.';
+    }
+    return _empty(title, body, action: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextButton(onPressed: () => setState(_listen), child: const Text('Retry')),
+      SelectableText('Error: $code', textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
+    ]));
+  }
+
+  Widget _empty(String title, String body, {Widget? action}) => Center(child: Padding(
+    padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.notifications_none_rounded, size: 44, color: Color(0xFF8E8E93)),
+      const SizedBox(height: 16), Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8), Text(body, textAlign: TextAlign.center),
+      if (action != null) action,
+    ]),
+  ));
+}
+````
+
 ## File: lib/features/shared/about_screen.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -305,154 +1250,6 @@ class AboutScreen extends StatelessWidget {
       ),
     );
   }
-}
-````
-
-## File: lib/features/shared/profile_page.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-
-/// Shared account presentation. Callers keep their existing authentication,
-/// editing, and location actions; this widget does not own account data.
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key, required this.name, required this.email,
-    required this.isVendor, required this.isGuest, required this.canChangePassword,
-    required this.location, required this.isLoadingLocation, required this.onRefresh,
-    required this.onLocation, required this.onEdit, required this.onPassword,
-    required this.onFaq, required this.onAbout, required this.onLogout,
-    required this.onSignIn, this.onEditStall});
-
-  final String name;
-  final String email;
-  final bool isVendor;
-  final bool isGuest;
-  final bool canChangePassword;
-  final String location;
-  final bool isLoadingLocation;
-  final Future<void> Function() onRefresh;
-  final VoidCallback onLocation;
-  final VoidCallback onEdit;
-  final VoidCallback onPassword;
-  final VoidCallback onFaq;
-  final VoidCallback onAbout;
-  final VoidCallback onLogout;
-  final VoidCallback onSignIn;
-  final VoidCallback? onEditStall;
-
-  static const _ink = Color(0xFF17202D);
-  static const _muted = Color(0xFF64748B);
-  static const _line = Color(0xFFEDF0F3);
-
-  String get _initials {
-    final words = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2);
-    final initials = words.map((part) => String.fromCharCode(part.runes.first)).join().toUpperCase();
-    return initials.isEmpty ? 'S' : initials;
-  }
-
-  Widget _section(String title, List<Widget> children) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Padding(padding: const EdgeInsets.fromLTRB(4, 24, 4, 10),
-        child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _muted))),
-      Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _line)),
-        child: Column(children: [
-          for (int i = 0; i < children.length; i++) ...[
-            if (i > 0) const Divider(height: 1, indent: 68, endIndent: 16, color: _line),
-            children[i],
-          ],
-        ])),
-    ],
-  );
-
-  Widget _action({required IconData icon, required String title, required String subtitle,
-      required VoidCallback onTap, Color accent = AppColors.primary, Widget? trailing}) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    leading: Container(width: 40, height: 40,
-      decoration: BoxDecoration(color: accent.withValues(alpha: .09), borderRadius: BorderRadius.circular(12)),
-      child: Icon(icon, color: accent, size: 21)),
-    title: Text(title, style: const TextStyle(fontSize: 14, color: _ink, fontWeight: FontWeight.w600)),
-    subtitle: Padding(padding: const EdgeInsets.only(top: 3),
-      child: Text(subtitle, style: const TextStyle(fontSize: 12, color: _muted))),
-    trailing: trailing ?? const Icon(Icons.chevron_right_rounded, size: 20, color: _muted),
-    onTap: onTap,
-  );
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: const Color(0xFFF7F8FA),
-    child: RefreshIndicator(onRefresh: onRefresh,
-      child: ListView(physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28), children: [
-          Container(padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: const Color(0xFFFFF2E9), borderRadius: BorderRadius.circular(24)),
-            child: Column(children: [
-              Container(width: 80, height: 80, alignment: Alignment.center,
-                decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFFFD8C4), width: 3)),
-                child: Text(_initials, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Color(0xFFC64B22)))),
-              const SizedBox(height: 14),
-              Text(name, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _ink, height: 1.25)),
-              if (email.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(email, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: _muted)),
-              ],
-              const SizedBox(height: 12),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(isVendor ? Icons.storefront_outlined : Icons.person_outline_rounded,
-                    size: 14, color: const Color(0xFFC64B22)),
-                  const SizedBox(width: 5),
-                  Text(isGuest ? 'Guest' : isVendor ? 'Vendor account' : 'Customer account',
-                    style: const TextStyle(fontSize: 11, color: Color(0xFFC64B22), fontWeight: FontWeight.w600)),
-                ])),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(onPressed: isGuest ? onSignIn : onEdit,
-                style: OutlinedButton.styleFrom(backgroundColor: Colors.white,
-                  foregroundColor: _ink, side: const BorderSide(color: Color(0xFFFFD8C4)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                icon: Icon(isGuest ? Icons.login_rounded : Icons.edit_outlined, size: 16),
-                label: Text(isGuest ? 'Sign in to your account' : 'Edit profile')),
-            ])),
-          _section('Your area', [
-            _action(icon: Icons.near_me_outlined, title: 'Current location', subtitle: location,
-              accent: const Color(0xFF147D68), onTap: onLocation,
-              trailing: isLoadingLocation
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.refresh_rounded, color: _muted, size: 20)),
-          ]),
-          if (!isGuest) _section(isVendor ? 'Account & business' : 'Account', [
-            _action(icon: Icons.person_outline_rounded, title: 'Personal information',
-              subtitle: 'Update your display name', onTap: onEdit),
-            if (isVendor && onEditStall != null)
-              _action(icon: Icons.storefront_outlined, title: 'My stall',
-                subtitle: 'Photos, opening hours and stall information', onTap: onEditStall!),
-            if (canChangePassword)
-              _action(icon: Icons.lock_outline_rounded, title: 'Password & security',
-                subtitle: 'Change your account password', onTap: onPassword, accent: const Color(0xFF6260BF)),
-          ]),
-          _section('Help & information', [
-            _action(icon: Icons.help_outline_rounded, title: 'Help centre',
-              subtitle: 'Answers to common questions', onTap: onFaq, accent: const Color(0xFF4774B8)),
-            _action(icon: Icons.info_outline_rounded, title: 'About StallSeeker',
-              subtitle: 'Get to know the app', onTap: onAbout, accent: const Color(0xFF4774B8)),
-          ]),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(onPressed: onLogout,
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50),
-              foregroundColor: const Color(0xFFB42318), side: const BorderSide(color: Color(0xFFF1D4D0)),
-              backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-            icon: const Icon(Icons.logout_rounded, size: 18), label: Text(isGuest ? 'Leave guest mode' : 'Log out')),
-          const SizedBox(height: 18),
-          const Text('StallSeeker', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _muted)),
-        ]),
-    ),
-  );
 }
 ````
 
@@ -597,160 +1394,330 @@ class StorageService {
 ## File: lib/features/shared/faq_screen.dart
 ````dart
 import 'package:flutter/material.dart';
+import 'account_ui.dart';
 
-class FaqScreen extends StatelessWidget {
-  final bool isVendor;
-
+class FaqScreen extends StatefulWidget {
   const FaqScreen({super.key, required this.isVendor});
+  final bool isVendor;
+  @override
+  State<FaqScreen> createState() => _FaqScreenState();
+}
 
-  static const List<Map<String, String>> _vendorFaqs = [
-    {
-      'question': 'How do I mark my stall as open?',
-      'answer': 'On your Dashboard, flip the "Stall Status" switch to Open. '
-          'The app will ask for your location permission the first time '
-          '-- this is needed so customers can find you on the map.',
-    },
-    {
-      'question': 'Why is my stall not showing up on the customer map?',
-      'answer': 'Make sure your stall is toggled Open, and that you allowed '
-          'location permission when prompted. If location services are '
-          'off on your phone, the app cannot save your position.',
-    },
-    {
-      'question': 'How do I update my menu prices or stock status?',
-      'answer':
-          'Go to Dashboard > Manage Menu & Stock. Tap the colored circles '
-              'next to a dish to mark it Available, Low Stock, or Out of '
-              'Stock -- customers see this update instantly.',
-    },
-    {
-      'question': 'How do I add a photo to my stall or a menu item?',
-      'answer': 'Go to Edit Stall Profile to set your stall\'s cover photo, '
-          'or Manage Menu & Stock and tap the photo box when adding a dish '
-          'to attach a picture to that item.',
-    },
-    {
-      'question': 'Will customers be notified when I open my stall?',
-      'answer': 'Yes. Anyone who follows your stall gets a push '
-          'notification the moment you switch your status to Open.',
-    },
-    {
-      'question': 'I forgot my password. What do I do?',
-      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
-          'email. You will receive a link to reset your password.',
-    },
+class _FaqEntry {
+  const _FaqEntry(this.group, this.question, this.answer);
+  final String group;
+  final String question;
+  final String answer;
+}
+
+class _FaqScreenState extends State<FaqScreen> {
+  final _search = TextEditingController();
+  String _query = '';
+  @override
+  void dispose() { _search.dispose(); super.dispose(); }
+
+  static const _customer = [
+    _FaqEntry('FINDING STALLS', 'How do I find stalls near me?',
+      'Open Discover to see the map. Allow location access to find your area, or move the map yourself. Search by stall name or food category.'),
+    _FaqEntry('FINDING STALLS', 'Why can’t I see a stall on the map?',
+      'The stall may be closed, outside the area shown, or hidden by a filter. Clear your filters and zoom out. Vendors need to share a valid location.'),
+    _FaqEntry('FINDING STALLS', 'Where can I see the menu and stock?',
+      'Open a stall’s details to see its menu and available stock. Stock is updated by the vendor, so check with them if you need to be certain.'),
+    _FaqEntry('FOLLOWING & UPDATES', 'How do I follow or unfollow a stall?',
+      'Sign in and open the stall’s details. Tap the follow or heart button. Your saved stalls appear in Following. Tap the button again to unfollow.'),
+    _FaqEntry('FOLLOWING & UPDATES', 'Where are my past notifications?',
+      'Open Notifications for saved stall-opening updates. Use All or Unread to filter the list. Older pushes sent before history was enabled are not added automatically.'),
+    _FaqEntry('FOLLOWING & UPDATES', 'Why am I not getting alerts?',
+      'Check that you follow the stall, are signed in, and have allowed notifications in your phone settings. Alerts are sent when a stall changes from closed to open. Your phone or network may delay delivery.'),
   ];
-
-  static const List<Map<String, String>> _customerFaqs = [
-    {
-      'question': 'How do I find stalls near me?',
-      'answer': 'The Home tab shows a map centered on your current '
-          'location, with a live list of open stalls sorted by distance. '
-          'Use the search bar to filter by name or food category.',
-    },
-    {
-      'question': 'How do I follow a stall?',
-      'answer':
-          'Open a stall\'s details page (tap its marker on the map or its '
-              'card in the nearby list) and tap the heart icon in the top '
-              'right corner.',
-    },
-    {
-      'question': 'How will I know when a stall I follow opens?',
-      'answer': 'You will get a push notification as soon as a followed '
-          'stall switches to Open, and can tap it to jump straight to '
-          'that stall\'s page.',
-    },
-    {
-      'question': 'How do I see what a stall is selling?',
-      'answer': 'Open the stall\'s details page to see its live menu, '
-          'including which items are Available, Low Stock, or Out of '
-          'Stock.',
-    },
-    {
-      'question': 'I forgot my password. What do I do?',
-      'answer': 'On the login screen, tap "Forgot Password?" and enter your '
-          'email. You will receive a link to reset your password.',
-    },
+  static const _vendor = [
+    _FaqEntry('YOUR STALL', 'How do I mark my stall as open?',
+      'Use the stall status switch on your Dashboard. Allow location access and turn on your phone’s location services so customers can find you.'),
+    _FaqEntry('YOUR STALL', 'Why is my stall missing from the map?',
+      'Check that your stall is open and its location has updated. Customers may also need to clear filters or move the map to your area.'),
+    _FaqEntry('MENU & STOCK', 'How do I update my menu and stock?',
+      'Open Manage Menu & Stock from the Dashboard. Edit a dish’s details or change its stock status. Keep this updated when items sell out.'),
+    _FaqEntry('MENU & STOCK', 'How do I change my stall photo?',
+      'Open Profile, then My stall to edit your stall details and photo. Menu item photos can be changed in Manage Menu & Stock.'),
+    _FaqEntry('STALL UPDATES', 'When are followers notified?',
+      'An opening update is created when your stall changes from closed to open. Changing a price or moving your location alone does not create an opening alert. Push delivery depends on customer settings and connectivity.'),
+  ];
+  static const _account = [
+    _FaqEntry('ACCOUNT', 'How do I change my name?',
+      'Open Profile and tap Edit Profile. Enter your full name and save. Your avatar uses your account photo when available, or the first word of your name.'),
+    _FaqEntry('ACCOUNT', 'I forgot my password. What should I do?',
+      'Tap Forgot Password on Sign In and enter your account email. Follow the link in the email to set a new password. If you signed up with Google, use Continue with Google.'),
+    _FaqEntry('ACCOUNT', 'Why is the reset email missing?',
+      'Check the email address and look in Spam or Junk. If you requested the email and recognise the sender, mark it as not spam. Wait for the resend countdown before requesting another link.'),
+    _FaqEntry('ACCOUNT', 'Will logging out delete my account?',
+      'No. Logging out ends your session on this device. Your account and saved follows stay available when you sign in again.'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final faqs = isVendor ? _vendorFaqs : _customerFaqs;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('FAQ')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: faqs.length,
-        itemBuilder: (context, index) {
-          final faq = faqs[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ExpansionTile(
-              title: Text(
-                faq['question']!,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              expandedCrossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  faq['answer']!,
-                  style: TextStyle(color: Colors.grey.shade700),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+    final all = [...(widget.isVendor ? _vendor : _customer), ..._account];
+    final entries = all.where((e) => '${e.question} ${e.answer}'.toLowerCase().contains(_query)).toList();
+    final groups = entries.map((e) => e.group).toSet();
+    return AccountLayout(title: 'Help & FAQ', background: const Color(0xFFF2F2F7), children: [
+      const Text('How can we help?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      const Text('Find quick answers about your account and stalls.',
+        style: TextStyle(fontSize: 14, color: Color(0xFF707078), height: 1.5)),
+      const SizedBox(height: 20),
+      TextField(controller: _search, onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+        decoration: accountField('Search questions', suffix: _query.isEmpty
+          ? const Icon(Icons.search_rounded) : IconButton(tooltip: 'Clear search',
+            onPressed: () { _search.clear(); setState(() => _query = ''); },
+            icon: const Icon(Icons.close_rounded)))),
+      const SizedBox(height: 28),
+      if (entries.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 32),
+        child: Text('No matching answers. Try a different word.', textAlign: TextAlign.center)),
+      for (final group in groups) ...[
+        Padding(padding: const EdgeInsets.only(left: 4, bottom: 10), child: Text(group,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF707078)))),
+        _group(entries.where((e) => e.group == group).toList()),
+        const SizedBox(height: 26),
+      ],
+    ]);
   }
+
+  Widget _group(List<_FaqEntry> entries) => Material(color: Colors.white,
+    borderRadius: BorderRadius.circular(16), clipBehavior: Clip.antiAlias,
+    child: Column(children: [
+      for (var i = 0; i < entries.length; i++) ...[
+        if (i > 0) const Divider(height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
+        ExpansionTile(key: PageStorageKey(entries[i].question),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          shape: const Border(), collapsedShape: const Border(),
+          backgroundColor: Colors.white, collapsedBackgroundColor: Colors.white,
+          iconColor: const Color(0xFFFF6E41), collapsedIconColor: const Color(0xFF8E8E93),
+          title: Text(entries[i].question, style: const TextStyle(fontSize: 15,
+            fontWeight: FontWeight.w500, color: Color(0xFF222222), height: 1.4)),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          children: [Align(alignment: Alignment.centerLeft, child: Text(entries[i].answer,
+            style: const TextStyle(fontSize: 14, height: 1.6, color: Color(0xFF707078))))]),
+      ],
+    ]));
 }
 ````
 
 ## File: lib/features/shared/logout_helper.dart
 ````dart
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/services/auth_service.dart';
+import 'account_ui.dart';
 
-// Shows a confirmation dialog before logging out. Used by every logout
-// button in the app (customer AppBar icon, customer profile, vendor
-// dashboard AppBar icon, vendor profile) so the confirmation behavior
-// stays identical everywhere instead of being copy-pasted per screen.
-Future<void> confirmAndLogout(
-  BuildContext context,
-  AuthService authService,
-) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Log Out'),
-      content: const Text('Are you sure you want to log out?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('Log Out'),
-        ),
-      ],
-    ),
-  );
+Future<void> confirmAndLogout(BuildContext context, AuthService authService) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final signedOut = await showDialog<bool>(context: context, barrierDismissible: false,
+    builder: (_) => _LogoutDialog(authService: authService));
+  if (signedOut == true && navigator.mounted) {
+    navigator.popUntil((route) => route.isFirst);
+  }
+}
 
-  if (confirmed == true) {
+class _LogoutDialog extends StatefulWidget {
+  const _LogoutDialog({required this.authService});
+  final AuthService authService;
+  @override
+  State<_LogoutDialog> createState() => _LogoutDialogState();
+}
+
+class _LogoutDialogState extends State<_LogoutDialog> {
+  bool _busy = false;
+  String? _error;
+  late final bool _guest = FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
+
+  Future<void> _logout() async {
+    if (_busy) { return; }
+    setState(() { _busy = true; _error = null; });
     try {
-      await authService.signOut();
-      if (context.mounted) { Navigator.of(context).popUntil((route) => route.isFirst); }
+      await widget.authService.signOut();
+      if (mounted) { Navigator.pop(context, true); }
     } catch (_) {
-      if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not finish logging out. Please retry.')),
-      ); }
+      if (mounted) { setState(() {
+        _busy = false;
+        _error = 'Could not finish logging out. Please try again.';
+      }); }
     }
   }
+
+  @override
+  Widget build(BuildContext context) => PopScope(canPop: !_busy,
+    child: Dialog(backgroundColor: Colors.white, surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 56, height: 56,
+              decoration: const BoxDecoration(color: Color(0xFFFFF0E9), shape: BoxShape.circle),
+              child: const Icon(Icons.logout_rounded, color: Color(0xFFFF6E41), size: 26)),
+            const SizedBox(height: 20),
+            Text(_guest ? 'Leave guest mode?' : 'Log out?',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Text(_guest ? 'You can browse again or sign in to your account.'
+              : 'Your account details will stay saved. You can sign in again anytime.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF707078), height: 1.5)),
+            const SizedBox(height: 24), AccountError(_error),
+            AccountButton(label: _guest ? 'Leave guest mode' : 'Log out', busy: _busy,
+              onPressed: _logout, color: const Color(0xFFB3261E)),
+            const SizedBox(height: 8),
+            TextButton(onPressed: _busy ? null : () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF55555D)))),
+          ])))));
+}
+````
+
+## File: lib/features/shared/profile_page.dart
+````dart
+import 'package:flutter/material.dart';
+
+/// Grouped settings layout inspired by the supplied references.
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key, required this.name, required this.email,
+    this.photoUrl, required this.isVendor, required this.isGuest,
+    required this.canChangePassword, required this.location,
+    required this.isLoadingLocation, required this.onRefresh,
+    required this.onLocation, required this.onEdit, required this.onPassword,
+    required this.onFaq, required this.onAbout, required this.onLogout,
+    required this.onSignIn, required this.onNotificationSettings,
+    required this.onPrivacyPolicy, required this.onTerms,
+    required this.onDeleteAccount, this.onEditStall, this.onPersonalInformation});
+
+  final String name;
+  final String email;
+  final String? photoUrl;
+  final bool isVendor;
+  final bool isGuest;
+  final bool canChangePassword;
+  final String location;
+  final bool isLoadingLocation;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onLocation;
+  final VoidCallback onEdit;
+  final VoidCallback onPassword;
+  final VoidCallback onFaq;
+  final VoidCallback onAbout;
+  final VoidCallback onLogout;
+  final VoidCallback onSignIn;
+  final VoidCallback onNotificationSettings;
+  final VoidCallback onPrivacyPolicy;
+  final VoidCallback onTerms;
+  final VoidCallback onDeleteAccount;
+  final VoidCallback? onEditStall;
+  final VoidCallback? onPersonalInformation;
+
+  static const _background = Color(0xFFF2F2F7);
+  static const _muted = Color(0xFF8E8E93);
+  static const _divider = Color(0xFFE5E5EA);
+
+  // The avatar must never receive the full display name.
+  String get _firstWord {
+    final words = name.trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    return words.isEmpty ? 'Guest' : words.first;
+  }
+
+  Widget _fallbackPhoto() => Container(color: const Color(0xFFFFE8DB), alignment: Alignment.center,
+    padding: const EdgeInsets.all(9),
+    child: FittedBox(fit: BoxFit.scaleDown, child: Text(_firstWord,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFFC64B22)))));
+
+  Widget _avatar() => ClipOval(child: SizedBox(width: 64, height: 64,
+    child: photoUrl == null || photoUrl!.trim().isEmpty ? _fallbackPhoto()
+        : Image.network(photoUrl!, fit: BoxFit.cover,
+            loadingBuilder: (_, child, progress) => progress == null ? child : _fallbackPhoto(),
+            errorBuilder: (_, __, ___) => _fallbackPhoto())));
+
+  Widget _group(String label, List<Widget> rows) => Padding(padding: const EdgeInsets.only(top: 28),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+        child: Text(label, style: const TextStyle(color: _muted, fontSize: 12, fontWeight: FontWeight.w400))),
+      Container(clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+        child: Column(children: [
+          for (var index = 0; index < rows.length; index++) ...[
+            if (index > 0) const Divider(height: .5, thickness: .5, color: _divider),
+            rows[index],
+          ],
+        ])),
+    ]));
+
+  Widget _row(IconData icon, String label, VoidCallback onTap, {String? subtitle, Widget? trailing}) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    leading: Icon(icon, color: _muted, size: 24),
+    title: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
+    subtitle: subtitle == null ? null : Padding(padding: const EdgeInsets.only(top: 3),
+      child: Text(subtitle, style: const TextStyle(fontSize: 14, color: _muted, letterSpacing: 0))),
+    trailing: trailing ?? const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2), size: 22),
+    onTap: onTap,
+  );
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(color: _background,
+    child: RefreshIndicator(onRefresh: onRefresh, child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 40), children: [
+        Container(padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          child: Row(children: [
+            _avatar(), const SizedBox(width: 16),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, letterSpacing: 0)),
+              if (email.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(email, style: const TextStyle(fontSize: 14, color: _muted, letterSpacing: 0)),
+              ],
+              const SizedBox(height: 8),
+              TextButton(onPressed: isGuest ? onSignIn : onEdit,
+                style: TextButton.styleFrom(backgroundColor: _background, foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: Text(isGuest ? 'Sign in' : 'Edit Profile', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, letterSpacing: 0))),
+            ])),
+            const SizedBox(width: 4),
+            IconButton(tooltip: isGuest ? 'Sign in' : 'Edit profile',
+              onPressed: isGuest ? onSignIn : onEdit,
+              icon: const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2)),
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 48), padding: EdgeInsets.zero),
+          ])),
+        _group('LOCATION', [
+          _row(Icons.location_on_outlined, 'Current location', onLocation, subtitle: location,
+            trailing: isLoadingLocation
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2))),
+        ]),
+        if (!isGuest) _group(isVendor ? 'ACCOUNT & STALL' : 'ACCOUNT', [
+          _row(Icons.person_outline_rounded, 'Personal information', onPersonalInformation ?? onEdit),
+          if (isVendor && onEditStall != null) _row(Icons.storefront_outlined, 'My stall', onEditStall!),
+          if (canChangePassword) _row(Icons.lock_outline_rounded, 'Change password', onPassword),
+          _row(Icons.notifications_none_rounded, 'Notification settings', onNotificationSettings),
+        ]),
+        _group('ABOUT', [
+          _row(Icons.help_outline_rounded, 'Help & FAQ', onFaq),
+          _row(Icons.info_outline_rounded, 'About StallSeeker', onAbout),
+          _row(Icons.privacy_tip_outlined, 'Privacy policy', onPrivacyPolicy),
+          _row(Icons.description_outlined, 'Terms of use', onTerms),
+        ]),
+        if (!isGuest) _group('ACCOUNT ACTIONS', [
+          _row(Icons.delete_outline_rounded, 'Delete account', onDeleteAccount,
+            trailing: const Icon(Icons.chevron_right, color: Color(0xFFB3261E), size: 22)),
+        ]),
+        const SizedBox(height: 28),
+        Container(clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          child: _row(Icons.logout_rounded, isGuest ? 'Leave guest mode' : 'Logout', onLogout,
+            trailing: const SizedBox.shrink())),
+        const SizedBox(height: 36),
+        const Icon(Icons.storefront_outlined, size: 32, color: Color(0xFFAEAEB2)),
+        const SizedBox(height: 8),
+        const Text('StallSeeker', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: _muted, letterSpacing: 0)),
+      ],
+    )),
+  );
 }
 ````
 
@@ -1026,9 +1993,13 @@ class NotificationService {
   // Fetches this device's FCM token and saves it on the logged-in user's
   // Firestore record, and keeps it updated if it ever rotates. Call this
   // once the user is known to be logged in.
-  Future<void> syncTokenForCurrentUser() async {
+  Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
+    if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
+      await _removeCurrentDeviceToken(user);
+      return;
+    }
     _syncedUid = user.uid;
     await _tokenSubscription?.cancel();
     _tokenSubscription = _messaging.onTokenRefresh.listen((token) {
@@ -1046,33 +2017,73 @@ class NotificationService {
     }
   }
 
-  Future<void> clearCurrentDevice() async {
-    _navigationReady = false;
-    _pendingVendorId = null;
+  Future<bool> isEnabledForCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return false; }
+    final profile = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid).get();
+    return profile.data()?['notificationsEnabled'] != false;
+  }
+
+  Future<String?> setEnabledForCurrentUser(bool enabled) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
+    try {
+      if (enabled) {
+        final settings = await _messaging.requestPermission();
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          return 'Notifications are blocked in your phone settings.';
+        }
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid)
+          .set({
+            'notificationsEnabled': enabled,
+            if (!enabled) 'fcmToken': FieldValue.delete(),
+          }, SetOptions(merge: true));
+      if (enabled) {
+        _syncedUid = null;
+        await syncTokenForCurrentUser(skipPreferenceCheck: true);
+      } else {
+        await _removeCurrentDeviceToken(user);
+        await _localNotifications.cancelAll();
+      }
+      return null;
+    } catch (_) {
+      return 'Could not update notification settings. Please try again.';
+    }
+  }
+
+  Future<void> _removeCurrentDeviceToken(User user) async {
     _syncedUid = null;
     await _tokenSubscription?.cancel();
     _tokenSubscription = null;
     await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
-    if (user == null || user.isAnonymous) { return; }
     try {
       final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
       if (token != null) {
         final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final doc = await tx.get(ref);
-          // Preserve another device's registration in the existing single-token schema.
-          if (doc.data()?['fcmToken'] == token) { tx.update(ref, {'fcmToken': FieldValue.delete()}); }
+          if (doc.data()?['fcmToken'] == token) {
+            tx.update(ref, {'fcmToken': FieldValue.delete()});
+          }
         }).timeout(const Duration(seconds: 5));
       }
+    } finally {
+      await _messaging.deleteToken().timeout(const Duration(seconds: 5)).catchError((Object _) {});
+    }
+  }
+
+  Future<void> clearCurrentDevice() async {
+    _navigationReady = false;
+    _pendingVendorId = null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return; }
+    try {
+      await _removeCurrentDeviceToken(user);
     } catch (_) {
       debugPrint('Could not remove notification registration.');
     } finally {
-      try {
-        await _messaging.deleteToken().timeout(const Duration(seconds: 5));
-      } catch (_) {
-        debugPrint('Could not revoke this device notification token.');
-      }
       await _localNotifications.cancelAll();
     }
   }
@@ -1190,28 +2201,6 @@ class VendorService {
 }
 ````
 
-## File: lib/core/constants/app_colors.dart
-````dart
-import 'package:flutter/material.dart';
-
-class AppColors {
-  static const Color primary =
-      Color(0xFFFF6E41); // Deep Orange / Food Stall theme
-  static const Color primaryLight = Color(0xFFFF8142);
-
-  // New design system
-  static const Color background = Color(0xFFF2EFF5); // Soft Lavender-Gray
-  static const Color cardColor = Color(0xFFFFFFFF); // Pure White
-  static const Color textDark = Color(0xFF222222); // Dark Charcoal
-  static const Color textMuted = Color(0xFF9A9A9E); // Muted Gray
-
-  // Status Colors
-  static const Color openGreen = Color(0xFF2E7D32);
-  static const Color closedRed = Color(0xFFC62828);
-  static const Color limitedYellow = Color(0xFFF57F17);
-}
-````
-
 ## File: lib/core/models/vendor_model.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1320,167 +2309,6 @@ class VendorModel {
       imageUrl: imageUrl ?? this.imageUrl,
       locationUpdatedAt: locationUpdatedAt,
       locationSharingActive: locationSharingActive,
-    );
-  }
-}
-````
-
-## File: lib/core/theme/app_theme.dart
-````dart
-import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
-
-class AppTheme {
-  static ThemeData get lightTheme {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-      useMaterial3: true,
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      ),
-      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      )),
-      elevatedButtonTheme: ElevatedButtonThemeData(style: ElevatedButton.styleFrom(
-        minimumSize: const Size(48, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      )),
-      scaffoldBackgroundColor: AppColors.background,
-      navigationBarTheme: const NavigationBarThemeData(
-        backgroundColor: Colors.white,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        height: 72.0,
-      ),
-      // Root-cause fix for cards looking peach/tinted instead of pure
-      // white: Material 3 automatically tints elevated surfaces with a
-      // primary-colored overlay (surfaceTintColor) the higher their
-      // elevation is -- since every Card in the app uses elevation,
-      // they were all picking up a warm/orange cast from the primary
-      // color even though color: null was meant to just mean "white".
-      // Setting surfaceTintColor: Colors.transparent here disables
-      // that overlay app-wide, so every Card renders true
-      // AppColors.cardColor regardless of elevation.
-      cardTheme: const CardThemeData(
-        color: AppColors.cardColor,
-        surfaceTintColor: Colors.transparent,
-      ),
-    );
-  }
-}
-````
-
-## File: lib/features/customer/following/customer_following_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../../core/services/follow_service.dart';
-import '../vendor_details/vendor_details_screen.dart';
-
-class CustomerFollowingScreen extends StatefulWidget {
-  const CustomerFollowingScreen({super.key});
-
-  @override
-  State<CustomerFollowingScreen> createState() =>
-      _CustomerFollowingScreenState();
-}
-
-class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
-  final followService = FollowService();
-  final vendorService = VendorService();
-
-  @override
-  Widget build(BuildContext context) {
-    final customerId = FirebaseAuth.instance.currentUser?.uid;
-
-    if (customerId == null || FirebaseAuth.instance.currentUser!.isAnonymous) {
-      return const Center(child: Text('Please log in to see followed stalls.'));
-    }
-
-    return StreamBuilder<List<String>>(
-      stream: followService.getFollowedVendorIds(customerId),
-      builder: (context, idSnapshot) {
-        if (idSnapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (idSnapshot.hasError) {
-          return const Center(child: Text('Could not load followed stalls. Please reopen this screen.'));
-        }
-        final vendorIds = idSnapshot.data ?? [];
-
-        if (vendorIds.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Text(
-                'You are not following any stalls yet.\n'
-                'Tap the heart icon on a stall to follow it.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            // Trigger a rebuild to re‑fetch vendor profiles.
-            setState(() {});
-          },
-          child: ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: vendorIds.length,
-            itemBuilder: (context, index) {
-              final vendorId = vendorIds[index];
-
-              return StreamBuilder<VendorModel?>(
-                stream: vendorService.watchVendorProfile(vendorId),
-                builder: (context, vendorSnapshot) {
-                  if (vendorSnapshot.hasError) {
-                    return const ListTile(title: Text('Could not update this stall.'));
-                  }
-                  if (!vendorSnapshot.hasData || vendorSnapshot.data == null) {
-                    return const SizedBox.shrink();
-                  }
-
-                  final vendor = vendorSnapshot.data!;
-
-                  return Card(
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: vendor.isOpen
-                            ? Colors.green.shade100
-                            : Colors.red.shade100,
-                        child: Icon(
-                          Icons.storefront,
-                          color: vendor.isOpen ? Colors.green : Colors.red,
-                        ),
-                      ),
-                      title: Text(vendor.stallName.isNotEmpty
-                          ? vendor.stallName
-                          : 'Unnamed Stall'),
-                      subtitle: Text(
-                          '${vendor.category} • ${vendor.isOpen ? "Open" : "Closed"}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => VendorDetailsScreen(vendor: vendor),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        );
-      },
     );
   }
 }
@@ -2137,89 +2965,25 @@ class _EditStallScreenState extends State<EditStallScreen> {
 }
 ````
 
-## File: lib/features/vendor/vendor_main_screen.dart
+## File: lib/core/constants/app_colors.dart
 ````dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dashboard/vendor_dashboard_screen.dart';
-import 'profile/vendor_profile_screen.dart';
 
-class VendorMainScreen extends StatefulWidget {
-  const VendorMainScreen({super.key});
+class AppColors {
+  static const Color primary =
+      Color(0xFFFF6E41); // Deep Orange / Food Stall theme
+  static const Color primaryLight = Color(0xFFFF8142);
 
-  @override
-  State<VendorMainScreen> createState() => _VendorMainScreenState();
-}
+  // New design system
+  static const Color background = Color(0xFFF2F2F7); // Grouped page background
+  static const Color cardColor = Color(0xFFFFFFFF); // Pure White
+  static const Color textDark = Color(0xFF222222); // Dark Charcoal
+  static const Color textMuted = Color(0xFF9A9A9E); // Muted Gray
 
-class _VendorMainScreenState extends State<VendorMainScreen> {
-  int _selectedIndex = 0;
-
-  static const _titles = ['Vendor Dashboard', 'My Profile'];
-
-  // Key to call dashboard refresh method
-  final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
-
-  void _refreshDashboard() {
-    _dashboardKey.currentState?.fetchVendorDetails();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _titles[_selectedIndex],
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            fontFamily: 'Poppins',
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        actions: [
-          // Refresh button only on Dashboard
-          if (_selectedIndex == 0)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.black),
-              tooltip: 'Refresh',
-              onPressed: _refreshDashboard,
-            ),
-
-        ],
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          VendorDashboardScreen(key: _dashboardKey),
-          const VendorProfileScreen(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
-        backgroundColor: Colors.white,
-        indicatorColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard, color: Color(0xFFFF6E41)),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
-  }
+  // Status Colors
+  static const Color openGreen = Color(0xFF2E7D32);
+  static const Color closedRed = Color(0xFFC62828);
+  static const Color limitedYellow = Color(0xFFF57F17);
 }
 ````
 
@@ -2326,312 +3090,207 @@ class MenuService {
 }
 ````
 
-## File: lib/features/auth/screens/register_screen.dart
+## File: lib/core/theme/app_theme.dart
 ````dart
 import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
+
+class AppTheme {
+  static ThemeData get lightTheme {
+    return ThemeData(
+      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary).copyWith(
+        primary: AppColors.primary,
+        surface: Colors.white,
+        onSurface: AppColors.textDark,
+      ),
+      // Use the platform sans-serif consistently, without per-page Poppins overrides.
+      textTheme: Typography.material2021().black.apply(
+        bodyColor: AppColors.textDark, displayColor: AppColors.textDark,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.textDark,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w500,
+          color: AppColors.textDark, letterSpacing: 0),
+      ),
+      dividerTheme: const DividerThemeData(color: Color(0xFFE5E5EA), thickness: .5),
+      useMaterial3: true,
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      )),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: ElevatedButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      )),
+      scaffoldBackgroundColor: AppColors.background,
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w400, letterSpacing: 0,
+          color: AppColors.textDark)),
+        iconTheme: WidgetStatePropertyAll(IconThemeData(color: AppColors.textDark, size: 25)),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 72.0,
+      ),
+      // Root-cause fix for cards looking peach/tinted instead of pure
+      // white: Material 3 automatically tints elevated surfaces with a
+      // primary-colored overlay (surfaceTintColor) the higher their
+      // elevation is -- since every Card in the app uses elevation,
+      // they were all picking up a warm/orange cast from the primary
+      // color even though color: null was meant to just mean "white".
+      // Setting surfaceTintColor: Colors.transparent here disables
+      // that overlay app-wide, so every Card renders true
+      // AppColors.cardColor regardless of elevation.
+      cardTheme: const CardThemeData(
+        color: AppColors.cardColor,
+        surfaceTintColor: Colors.transparent,
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/auth/screens/register_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
-
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  String _selectedRole = 'customer';
-  bool _isLoading = false;
+  final _auth = AuthService();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  String _role = 'customer';
+  bool _busy = false;
+  bool _hidePassword = true;
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) { return; }
-
-    setState(() => _isLoading = true);
-
-    String? error = await _authService.signUp(
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-      fullName: _fullNameController.text.trim(),
-      role: _selectedRole,
-    );
-
-    setState(() => _isLoading = false);
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    } else if (mounted) {
-      Navigator.pop(context); // Go back after successful registration
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final error = await _auth.signUp(email: _email.text.trim(), password: _password.text,
+      fullName: _name.text.trim(), role: _role);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      Navigator.maybePop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error), backgroundColor: const Color(0xFFB3261E)));
     }
   }
 
-  void _goToLogin() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
+  Future<void> _guest() async {
+    if (_busy) return;
+    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+      Navigator.maybePop(context); return;
+    }
+    setState(() => _busy = true);
+    final error = await _auth.signInAsGuest();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) Navigator.maybePop(context); else ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error), backgroundColor: const Color(0xFFB3261E)));
   }
+
+  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+    labelText: label, suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: Color(0xFFB3261E))),
+  );
 
   @override
-  void dispose() {
-    _fullNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  // Reusable pill-shaped text field to match your image perfectly
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
-    bool obscureText = false,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      validator: validator,
-      style: const TextStyle(
-        fontFamily: 'Poppins',
-        fontSize: 16,
-        color: Color(0xFF212121),
-      ),
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 16,
-          color: Colors.grey.shade500,
-        ),
-        filled: true,
-        fillColor: Color(0xFFF1F3F4), // Bbackground text box tempat taip
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-      ),
-    );
-  }
+  void dispose() { _name.dispose(); _email.dispose(); _password.dispose(); _confirm.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(
-          255, 250, 250, 250), // Light grey screen background
-      appBar: AppBar(
-        title: const Text(
-          'Sign Up',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Full Name
-                  _buildTextField(
-                    controller: _fullNameController,
-                    hintText: 'Full Name',
-                    validator: (val) =>
-                        val == null || val.isEmpty ? 'Enter your name' : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 2. Email Address
-                  _buildTextField(
-                    controller: _emailController,
-                    hintText: 'Email Address',
-                    validator: (val) => val == null || !val.contains('@')
-                        ? 'Enter a valid email'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 3. Password
-                  _buildTextField(
-                    controller: _passwordController,
-                    hintText: 'Password',
-                    obscureText: true,
-                    validator: (val) => val == null || val.length < 6
-                        ? 'Password must be 6+ chars'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 5. Choose Role
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
-                    child: Text(
-                      'I am a...', // Removed the weird extra spaces
-                      textAlign: TextAlign.start, // Fixes left alignment
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-
-                  // 6. Role Selection Box (Pill-shaped Container + Dropdown)
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F3F4),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 10),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        isDense: true,
-                        value: _selectedRole,
-                        dropdownColor: Colors
-                            .white, // Added this back for a clean popup background
-                        icon: const Icon(Icons.arrow_drop_down,
-                            color: Colors.grey),
-                        style: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 16,
-                          color: Color(0xFF212121),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'customer', child: Text('Customer')),
-                          DropdownMenuItem(
-                              value: 'vendor',
-                              child: Text('Vendor / Stall Owner')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              _selectedRole = val;
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // "Sign Up" Coral Button (Pill-shaped)
-                  SizedBox(
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _register,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFFF6E41), // Matches your coral color
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 0,
-                        textStyle: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('Sign Up'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Footer: Already have an account? Sign In
-                  Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Already have an account? ',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 14,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: _isLoading ? null : _goToLogin,
-                          child: Text(
-                            'Sign In',
-                            style: TextStyle(
-                              color: const Color(0xFFFF6E41),
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.white,
+    body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
+      child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Align(alignment: Alignment.centerRight, child: IconButton(
+            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
+            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF0F0F2)),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF6E6E73)))),
+          const SizedBox(height: 18),
+          const Icon(Icons.storefront_rounded, size: 46, color: AppColors.primary),
+          const SizedBox(height: 14),
+          const Text('Create your account', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 27, fontWeight: FontWeight.w600, letterSpacing: -.4)),
+          const SizedBox(height: 7),
+          const Text('Save favourite stalls and receive live updates.', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF707078))),
+          const SizedBox(height: 28),
+          TextFormField(controller: _name, textInputAction: TextInputAction.next,
+            decoration: _field('Full name'),
+            validator: (v) => v == null || v.trim().isEmpty ? 'Enter your name.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _email, keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next, decoration: _field('Email address'),
+            validator: (v) => v == null || !v.trim().contains('@') ? 'Enter a valid email address.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _password, obscureText: _hidePassword,
+            textInputAction: TextInputAction.next,
+            decoration: _field('Password', suffix: IconButton(
+              onPressed: () => setState(() => _hidePassword = !_hidePassword),
+              icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined))),
+            validator: (v) => v == null || v.length < 6 ? 'Use at least 6 characters.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _confirm, obscureText: _hidePassword,
+            textInputAction: TextInputAction.done, decoration: _field('Confirm password'),
+            validator: (v) => v != _password.text ? 'Passwords do not match.' : null),
+          const SizedBox(height: 18),
+          const Text('Account type', style: TextStyle(fontSize: 13, color: Color(0xFF707078))),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(segments: const [
+            ButtonSegment(value: 'customer', icon: Icon(Icons.person_outline), label: Text('Customer')),
+            ButtonSegment(value: 'vendor', icon: Icon(Icons.storefront_outlined), label: Text('Vendor')),
+          ], selected: {_role}, onSelectionChanged: _busy ? null : (v) => setState(() => _role = v.first),
+            style: ButtonStyle(shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))))),
+          const SizedBox(height: 24),
+          SizedBox(height: 56, child: FilledButton(onPressed: _busy ? null : _register,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+            child: _busy ? const SizedBox(width: 22, height: 22,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Create account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)))),
+          const SizedBox(height: 18),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text('Already have an account? ', style: TextStyle(color: Color(0xFF707078))),
+            TextButton(onPressed: _busy ? null : () => Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const LoginScreen())),
+              child: const Text('Sign in', style: TextStyle(color: AppColors.primary,
+                fontWeight: FontWeight.w600))),
+          ]),
+        ]))),
+    ))));
 }
 ````
 
@@ -2823,294 +3482,267 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 }
 ````
 
-## File: lib/features/vendor/profile/vendor_profile_screen.dart
+## File: lib/features/customer/following/customer_following_screen.dart
 ````dart
-import 'edit_stall_screen.dart';
-import '../../shared/profile_page.dart';
-import '../../auth/screens/login_screen.dart';
+import 'dart:async';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../shared/faq_screen.dart';
-import '../../shared/about_screen.dart';
-import '../../shared/logout_helper.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../../core/services/follow_service.dart';
+import '../../auth/screens/login_screen.dart';
+import '../vendor_details/vendor_details_screen.dart';
 
-class VendorProfileScreen extends StatefulWidget {
-  const VendorProfileScreen({super.key});
-
+class CustomerFollowingScreen extends StatefulWidget {
+  const CustomerFollowingScreen({super.key});
   @override
-  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+  State<CustomerFollowingScreen> createState() => _CustomerFollowingScreenState();
 }
 
-class _VendorProfileScreenState extends State<VendorProfileScreen> {
-  final _authService = AuthService();
-  final _geocoding = Geocoding();
-
-  UserModel? _userModel;
-  bool _isLoading = true;
-
-  // Current Location section state -- shows the vendor's live GPS
-  // position (turned into a readable address via reverse geocoding),
-  // same pattern as the customer profile screen.
-  String _locationText = 'Tap to find your current area';
-  bool _isLoadingLocation = false;
+class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
+  final _follows = FollowService();
+  final _vendors = VendorService();
+  final _profiles = <String, VendorModel>{};
+  final _subscriptions = <String, StreamSubscription<VendorModel?>>{};
+  final _pending = <String>{};
+  final _failed = <String>{};
+  StreamSubscription<List<String>>? _followSubscription;
+  bool _loading = true;
+  bool _loadFailed = false;
+  bool _openOnly = false;
+  bool _ascending = true;
+  int _generation = 0;
+  bool _restarting = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadUserData();
+  void initState() { super.initState(); _listen(); }
+
+  @override
+  void dispose() {
+    ++_generation;
+    _followSubscription?.cancel();
+    for (final sub in _subscriptions.values) { sub.cancel(); }
+    super.dispose();
   }
 
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _isLoading = false;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _loadLocation() async {
-    if (!mounted || _isLoadingLocation) { return; }
-    setState(() => _isLoadingLocation = true);
-
+  Future<void> _listen() async {
+    if (_restarting) { return; }
+    _restarting = true;
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) { return; }
-      if (!serviceEnabled) {
-        setState(() {
-          _locationText = 'Location services are turned off.';
-          _isLoadingLocation = false;
-        });
-        return;
+    final generation = ++_generation;
+    await _followSubscription?.cancel();
+    for (final sub in _subscriptions.values) { await sub.cancel(); }
+    _subscriptions.clear();
+    _pending.clear();
+    _failed.clear();
+    _profiles.clear();
+    if (!mounted || generation != _generation) { return; }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { setState(() => _loading = false); return; }
+    setState(() { _loading = true; _loadFailed = false; });
+    _followSubscription = _follows.getFollowedVendorIds(user.uid).listen((ids) {
+      if (!mounted || generation != _generation) { return; }
+      final active = ids.toSet();
+      for (final id in _subscriptions.keys.toList()) {
+        if (!active.contains(id)) {
+          _subscriptions.remove(id)?.cancel();
+          _profiles.remove(id);
+          _pending.remove(id);
+          _failed.remove(id);
+        }
       }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (!mounted) { return; }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        setState(() {
-          _locationText = 'Location permission not granted.';
-          _isLoadingLocation = false;
-        });
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
-      ).timeout(const Duration(seconds: 12));
-
-      final placemarks = await _geocoding.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(const Duration(seconds: 8));
-      final address =
-          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
-
-      if (mounted) {
-        setState(() {
-          _locationText = address;
-          _isLoadingLocation = false;
+      setState(() { _loading = false; _loadFailed = false; });
+      for (final id in active) {
+        if (_subscriptions.containsKey(id)) { continue; }
+        _pending.add(id);
+        _subscriptions[id] = _vendors.watchVendorProfile(id).listen((vendor) {
+          if (!mounted || generation != _generation || !_subscriptions.containsKey(id)) { return; }
+          setState(() {
+            _pending.remove(id);
+            _failed.remove(id);
+            if (vendor == null) { _profiles.remove(id); } else { _profiles[id] = vendor; }
+          });
+        }, onError: (Object error) {
+          if (!mounted || generation != _generation || !_subscriptions.containsKey(id)) { return; }
+          setState(() { _pending.remove(id); _failed.add(id); _profiles.remove(id); });
         });
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _locationText = 'Unable to fetch location.';
-          _isLoadingLocation = false;
-        });
+    }, onError: (Object error) {
+      if (mounted && generation == _generation) {
+        setState(() { _loading = false; _loadFailed = true; });
       }
-    }
-  }
-
-  String _formatPlacemark(Placemark? p) {
-    if (p == null) { return 'Location unavailable'; }
-    final parts = [p.subLocality, p.locality, p.administrativeArea]
-        .where((s) => s != null && s.isNotEmpty)
-        .toList();
-    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
-  }
-
-  void _showEditProfileDialog() {
-    final nameController =
-        TextEditingController(text: _userModel?.fullName ?? '');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Profile'),
-              content: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final user = FirebaseAuth.instance.currentUser;
-                          final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) { return; }
-
-                          setDialogState(() => isSaving = true);
-                          final error = await _authService.updateFullName(
-                              user.uid, newName);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (error == null) {
-                            await _loadUserData(); // refresh header card
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error ?? 'Profile updated.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final passwordController = TextEditingController();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Change Password'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final newPassword = passwordController.text.trim();
-                          if (newPassword.length < 6) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Password must be 6+ characters.')),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-                          final error =
-                              await _authService.changePassword(newPassword);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  error ?? 'Password changed successfully.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+    });
+    } finally { _restarting = false; }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
     final user = FirebaseAuth.instance.currentUser;
-    final guest = user?.isAnonymous ?? true;
-    final name = guest ? 'Welcome, explorer' : _userModel?.fullName.isNotEmpty == true
-        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
-    return ProfilePage(
-      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
-      isVendor: true, isGuest: guest,
-      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
-      location: _locationText, isLoadingLocation: _isLoadingLocation,
-      onRefresh: _loadUserData,
-      onLocation: _loadLocation,
-      onEdit: _showEditProfileDialog,
-      onPassword: _showChangePasswordDialog,
-      onFaq: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
-      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
-      onLogout: () => confirmAndLogout(context, _authService),
-      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-      onEditStall: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
+    final guest = user == null || user.isAnonymous;
+    final sorted = _profiles.values.toList()..sort((a, b) {
+      final comparison = a.stallName.toLowerCase().compareTo(b.stallName.toLowerCase());
+      return _ascending ? comparison : -comparison;
+    });
+    final open = sorted.where((vendor) => vendor.isOpen).toList();
+    final closed = sorted.where((vendor) => !vendor.isOpen).toList();
+    return ColoredBox(color: const Color(0xFFF2F2F7), child: SafeArea(top: false, bottom: false,
+      child: RefreshIndicator(onRefresh: _listen, child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 28), children: [
+          Row(children: [
+            IconButton(tooltip: _ascending ? 'Sort Z to A' : 'Sort A to Z',
+              onPressed: () => setState(() => _ascending = !_ascending),
+              icon: const Icon(Icons.sort_by_alpha_rounded, color: Color(0xFFFF6E41))),
+            Expanded(child: Center(child: CupertinoSlidingSegmentedControl<bool>(
+              groupValue: _openOnly,
+              children: const {
+                false: Padding(padding: EdgeInsets.symmetric(horizontal: 14), child: Text('All stalls')),
+                true: Padding(padding: EdgeInsets.symmetric(horizontal: 14), child: Text('Open now')),
+              },
+              onValueChanged: (value) { if (value != null) { setState(() => _openOnly = value); } },
+            ))),
+            IconButton(tooltip: 'Refresh followed stalls', onPressed: _listen,
+              icon: const Icon(Icons.refresh_rounded, color: Color(0xFFFF6E41))),
+          ]),
+          const SizedBox(height: 24),
+          if (guest) _notice('Keep your favourite stalls here',
+            'Sign in, then tap Follow on a stall.', action: TextButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+              child: const Text('Sign in')))
+          else if (_loading || (_pending.isNotEmpty && sorted.isEmpty))
+            const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
+          else if (_loadFailed) _notice('Could not load followed stalls', 'Check your connection and retry.',
+            action: TextButton(onPressed: _listen, child: const Text('Retry')))
+          else ...[
+            if (_failed.isNotEmpty) _notice('Some stalls could not load', 'Pull down to retry.'),
+            if (open.isNotEmpty) _group('OPEN NOW', open),
+            if (!_openOnly && closed.isNotEmpty) _group('CLOSED', closed),
+            if (_openOnly && open.isEmpty) _notice('No followed stalls are open', 'Check again later, or switch to All stalls.'),
+            if (!_openOnly && sorted.isEmpty && _failed.isEmpty)
+              _notice('No followed stalls yet', 'Find a stall on the map and tap Follow to save it here.'),
+          ],
+        ],
+      )),
+    ));
+  }
+
+  Widget _group(String label, List<VendorModel> vendors) => Padding(
+    padding: const EdgeInsets.only(bottom: 30), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Text('$label · ${vendors.length}', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)))),
+      Container(clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+        child: Column(children: [
+          for (var index = 0; index < vendors.length; index++) ...[
+            if (index > 0) const Divider(height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
+            _stallRow(vendors[index]),
+          ],
+        ])),
+    ]),
+  );
+
+  Widget _stallRow(VendorModel vendor) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    leading: Icon(Icons.storefront_outlined, size: 24,
+      color: vendor.isOpen ? const Color(0xFFFF6E41) : const Color(0xFF8E8E93)),
+    title: Text(vendor.stallName.isEmpty ? 'Unnamed stall' : vendor.stallName,
+      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
+    subtitle: Padding(padding: const EdgeInsets.only(top: 4),
+      child: Text(vendor.category, style: const TextStyle(fontSize: 14, color: Color(0xFF8E8E93), letterSpacing: 0))),
+    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(vendor.isOpen ? 'Open' : 'Closed', style: TextStyle(fontSize: 12,
+        color: vendor.isOpen ? const Color(0xFF15803D) : const Color(0xFF8E8E93))),
+      const SizedBox(width: 6), const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2), size: 20),
+    ]),
+    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor))),
+  );
+
+  Widget _notice(String title, String body, {Widget? action}) => Padding(
+    padding: const EdgeInsets.all(24), child: Column(children: [
+      Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8), Text(body, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF8E8E93))),
+      if (action != null) action,
+    ]),
+  );
+}
+````
+
+## File: lib/features/vendor/vendor_main_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dashboard/vendor_dashboard_screen.dart';
+import 'profile/vendor_profile_screen.dart';
+
+class VendorMainScreen extends StatefulWidget {
+  const VendorMainScreen({super.key});
+
+  @override
+  State<VendorMainScreen> createState() => _VendorMainScreenState();
+}
+
+class _VendorMainScreenState extends State<VendorMainScreen> {
+  int _selectedIndex = 0;
+
+  static const _titles = ['Vendor Dashboard', 'Profile'];
+
+  // Key to call dashboard refresh method
+  final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
+
+  void _refreshDashboard() {
+    _dashboardKey.currentState?.fetchVendorDetails();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _titles[_selectedIndex],
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
+        actions: [
+          // Refresh button only on Dashboard
+          if (_selectedIndex == 0)
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.black),
+              tooltip: 'Refresh',
+              onPressed: _refreshDashboard,
+            ),
+
+        ],
+      ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          VendorDashboardScreen(key: _dashboardKey),
+          const VendorProfileScreen(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) =>
+            setState(() => _selectedIndex = index),
+        backgroundColor: Colors.white,
+        indicatorColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Color(0xFFFF6E41)),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
+            label: 'Profile',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3345,6 +3977,201 @@ class _MenuEditorState extends State<_MenuEditor> {
 }
 ````
 
+## File: lib/features/vendor/profile/vendor_profile_screen.dart
+````dart
+import 'edit_stall_screen.dart';
+import '../../shared/profile_page.dart';
+import '../../shared/edit_profile_screen.dart';
+import '../../shared/personal_information_screen.dart';
+import '../../shared/change_password_screen.dart';
+import '../../shared/notification_settings_screen.dart';
+import '../../shared/legal_screen.dart';
+import '../../shared/delete_account_screen.dart';
+import '../../auth/screens/login_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+import '../../shared/logout_helper.dart';
+
+class VendorProfileScreen extends StatefulWidget {
+  const VendorProfileScreen({super.key});
+
+  @override
+  State<VendorProfileScreen> createState() => _VendorProfileScreenState();
+}
+
+class _VendorProfileScreenState extends State<VendorProfileScreen> {
+  final _authService = AuthService();
+  final _geocoding = Geocoding();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  // Current Location section state -- shows the vendor's live GPS
+  // position (turned into a readable address via reverse geocoding),
+  // same pattern as the customer profile screen.
+  String _locationText = 'Tap to find your current area';
+  bool _isLoadingLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadLocation() async {
+    if (!mounted || _isLoadingLocation) { return; }
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) { return; }
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (!mounted) { return; }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 12));
+
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) { return 'Location unavailable'; }
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
+  }
+
+  Future<void> _editProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => EditProfileScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '')));
+    if (saved == true && mounted) {
+      await _loadUserData();
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated.'))); }
+    }
+  }
+
+  Future<void> _personalInformation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => PersonalInformationScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '',
+        isVendor: true)));
+    if (mounted) { await _loadUserData(); }
+  }
+
+  void _changePassword() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChangePasswordScreen(
+        email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
+    final user = FirebaseAuth.instance.currentUser;
+    final guest = user?.isAnonymous ?? true;
+    final name = guest ? 'Guest' : _userModel?.fullName.isNotEmpty == true
+        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
+    return ProfilePage(
+      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
+      photoUrl: guest ? null : user?.photoURL,
+      isVendor: true, isGuest: guest,
+      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
+      location: _locationText, isLoadingLocation: _isLoadingLocation,
+      onRefresh: _loadUserData,
+      onLocation: _loadLocation,
+      onEdit: _editProfile,
+      onPersonalInformation: _personalInformation,
+      onPassword: _changePassword,
+      onFaq: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
+      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+      onNotificationSettings: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
+      onPrivacyPolicy: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.privacy))),
+      onTerms: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.terms))),
+      onDeleteAccount: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+      onLogout: () => confirmAndLogout(context, _authService),
+      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+      onEditStall: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
+    );
+  }
+}
+````
+
 ## File: lib/core/services/auth_service.dart
 ````dart
 import 'notification_service.dart';
@@ -3352,6 +4179,7 @@ import 'vendor_location_service.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
@@ -3553,328 +4381,106 @@ class AuthService {
       await _auth.sendPasswordResetEmail(email: email.trim());
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message ?? "Could not send reset email.";
-    } catch (e) {
-      return e.toString();
+      // Give the same result for unknown accounts to avoid exposing sign-ups.
+      if (e.code == 'user-not-found') { return null; }
+      if (e.code == 'invalid-email') { return 'Enter a valid email address.'; }
+      if (e.code == 'too-many-requests') { return 'Too many requests. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      return 'Could not send the reset link. Please try again.';
+    } catch (_) {
+      return 'Could not send the reset link. Please try again.';
     }
   }
 
-  Future<String?> changePassword(String newPassword) async {
+  Future<String?> changePassword(String newPassword, {String? currentPassword}) async {
     try {
       final user = _auth.currentUser;
       if (user == null) { return "No user is currently logged in."; }
+      if (currentPassword != null) {
+        if (user.email == null || !user.providerData.any((p) => p.providerId == 'password')) {
+          return 'Manage your password with your sign-in provider.';
+        }
+        final credential = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+        await user.reauthenticateWithCredential(credential);
+      }
       await user.updatePassword(newPassword);
       return null;
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect. Please try again.';
+      }
+      if (e.code == 'too-many-requests') { return 'Too many attempts. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
       if (e.code == 'requires-recent-login') {
         return "For security, please log out and log back in before changing your password.";
       }
       return e.message ?? "Could not change password.";
-    } catch (e) {
-      return e.toString();
+    } catch (_) {
+      return 'Could not update your password. Please try again.';
     }
   }
 
   Future<String?> updateFullName(String uid, String newName) async {
     try {
+      final user = _auth.currentUser;
+      if (user == null || user.isAnonymous || user.uid != uid) { return 'Please sign in to edit your profile.'; }
+      final name = newName.trim();
+      if (name.isEmpty || name.length > 80) { return 'Enter a name between 1 and 80 characters.'; }
       await _firestore
           .collection(FirestoreCollections.users)
           .doc(uid)
-          .update({'fullName': newName});
+          .update({'fullName': name});
+      // Firestore is the app's profile source. Sync Auth's display name as well.
+      try { await user.updateDisplayName(name); }
+      catch (_) { debugPrint('Profile saved; Auth display-name sync is unavailable.'); }
       return null;
-    } catch (e) {
-      return e.toString();
-    }
-  }
-}
-````
-
-## File: lib/features/customer/profile/customer_profile_screen.dart
-````dart
-import '../../shared/profile_page.dart';
-import '../../auth/screens/login_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/auth_service.dart';
-import '../../shared/faq_screen.dart';
-import '../../shared/about_screen.dart';
-import '../../shared/logout_helper.dart';
-
-class CustomerProfileScreen extends StatefulWidget {
-  const CustomerProfileScreen({super.key});
-
-  @override
-  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
-}
-
-class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
-  final _authService = AuthService();
-  final _geocoding = Geocoding();
-
-  UserModel? _userModel;
-  bool _isLoading = true;
-
-  String _locationText = 'Tap to find your current area';
-  bool _isLoadingLocation = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (mounted) {
-        setState(() {
-          _userModel = userData;
-          _isLoading = false;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _loadLocation() async {
-    if (!mounted || _isLoadingLocation) { return; }
-    setState(() => _isLoadingLocation = true);
-
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) { return; }
-      if (!serviceEnabled) {
-        setState(() {
-          _locationText = 'Location services are turned off.';
-          _isLoadingLocation = false;
-        });
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (!mounted) { return; }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        setState(() {
-          _locationText = 'Location permission not granted.';
-          _isLoadingLocation = false;
-        });
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
-      ).timeout(const Duration(seconds: 12));
-
-      // FIXED: use _geocoding.placemarkFromCoordinates
-      final placemarks = await _geocoding.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(const Duration(seconds: 8));
-      final address =
-          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
-
-      if (mounted) {
-        setState(() {
-          _locationText = address;
-          _isLoadingLocation = false;
-        });
-      }
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _locationText = 'Unable to fetch location.';
-          _isLoadingLocation = false;
-        });
-      }
+      return 'Could not save your profile. Please try again.';
     }
   }
 
-  String _formatPlacemark(Placemark? p) {
-    if (p == null) { return 'Location unavailable'; }
-    final parts = [p.subLocality, p.locality, p.administrativeArea]
-        .where((s) => s != null && s.isNotEmpty)
-        .toList();
-    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
-  }
+  Future<String?> deleteAccount({String? currentPassword}) async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in before deleting your account.'; }
+    try {
+      final providers = user.providerData.map((provider) => provider.providerId).toSet();
+      if (providers.contains('password')) {
+        if (currentPassword == null || currentPassword.isEmpty || user.email == null) {
+          return 'Enter your current password.';
+        }
+        await user.reauthenticateWithCredential(EmailAuthProvider.credential(
+          email: user.email!, password: currentPassword));
+      } else if (providers.contains('google.com')) {
+        await _ensureGoogleSignInReady();
+        final googleUser = await _googleSignIn.authenticate();
+        final googleAuth = googleUser.authentication;
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+      } else {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
 
-  void _showEditProfileDialog() {
-    final nameController =
-        TextEditingController(text: _userModel?.fullName ?? '');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Profile'),
-              content: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final user = FirebaseAuth.instance.currentUser;
-                          final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) { return; }
-
-                          setDialogState(() => isSaving = true);
-                          final error = await _authService.updateFullName(
-                              user.uid, newName);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (error == null) {
-                            await _loadUserData(); // refresh header card
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error ?? 'Profile updated.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final passwordController = TextEditingController();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Change Password'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final newPassword = passwordController.text.trim();
-                          if (newPassword.length < 6) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Password must be 6+ characters.')),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-                          final error =
-                              await _authService.changePassword(newPassword);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  error ?? 'Password changed successfully.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
-    final user = FirebaseAuth.instance.currentUser;
-    final guest = user?.isAnonymous ?? true;
-    final name = guest ? 'Welcome, explorer' : _userModel?.fullName.isNotEmpty == true
-        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
-    return ProfilePage(
-      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
-      isVendor: false, isGuest: guest,
-      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
-      location: _locationText, isLoadingLocation: _isLoadingLocation,
-      onRefresh: _loadUserData,
-      onLocation: _loadLocation,
-      onEdit: _showEditProfileDialog,
-      onPassword: _showChangePasswordDialog,
-      onFaq: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),
-      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
-      onLogout: () => confirmAndLogout(context, _authService),
-      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-      
-    );
+      await NotificationService.instance.clearCurrentDevice();
+      await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
+      await _auth.signOut();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect.';
+      }
+      if (e.code == 'requires-recent-login') {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
+      return e.message ?? 'Could not verify your account.';
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unauthenticated') { return 'Your session expired. Sign in and try again.'; }
+      if (e.code == 'failed-precondition') {
+        return 'Confirm your sign-in, then retry account deletion.';
+      }
+      return 'Could not finish account deletion. Please retry.';
+    } catch (_) {
+      return 'Could not delete your account. Please try again.';
+    }
   }
 }
 ````
@@ -4081,435 +4687,330 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen>
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
+import 'forgot_password_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isLoading = false;
-
+  final _auth = AuthService();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   StreamSubscription<User?>? _authSub;
+  bool _busy = false;
+  bool _hidePassword = true;
 
   @override
   void initState() {
     super.initState();
-    // If this screen was pushed on top of something else -- e.g. a
-    // guest was prompted to log in before following a vendor -- close
-    // it automatically once a real account signs in, so the user
-    // lands back where they were instead of getting stuck here.
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null &&
-          !user.isAnonymous &&
-          mounted &&
-          Navigator.canPop(context)) {
+      if (user != null && !user.isAnonymous && mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
     });
   }
 
-  void _login() async {
-    if (!_formKey.currentState!.validate()) { return; }
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final error = await _auth.login(email: _email.text.trim(), password: _password.text);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error != null) _error(error);
+  }
 
-    setState(() => _isLoading = true);
-
-    final error = await _authService.login(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
-
-    if (!mounted) { return; }
-
-    setState(() => _isLoading = false);
-
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
+  Future<void> _guest() async {
+    if (_busy) return;
+    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+      Navigator.maybePop(context);
+      return;
     }
+    setState(() => _busy = true);
+    final error = await _auth.signInAsGuest();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) Navigator.maybePop(context); else _error(error);
   }
 
-  void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController(
-      text: _emailController.text,
-    );
-    bool isSending = false;
+  void _error(String message) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message), backgroundColor: const Color(0xFFB3261E)));
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Reset Password'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Enter your email address and we will send you a link to reset your password.',
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: resetEmailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSending
-                      ? null
-                      : () async {
-                          final email = resetEmailController.text.trim();
-                          if (email.isEmpty || !email.contains('@')) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Enter a valid email first.'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSending = true);
-
-                          final error =
-                              await _authService.resetPassword(email: email);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                error ??
-                                    'Password reset email sent. Check your inbox.',
-                              ),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Send Reset Link'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _goToRegister() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
-  }
+  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+    labelText: label, suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: Color(0xFFB3261E))),
+  );
 
   @override
   void dispose() {
-    _authSub?.cancel();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  // Reusable pill-shaped text field to match the image
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
-    bool obscureText = false,
-    String? Function(String?)? validator,
-    Widget? suffixIcon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      validator: validator,
-      style: const TextStyle(
-        fontFamily: 'Poppins',
-        fontSize: 16,
-        color: Color(0xFF212121),
-      ),
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 16,
-          color: Colors.grey.shade500,
-        ),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: const Color(0xFFE5E5E5), // BOX  BUTTON EMAIL A
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: BorderSide.none,
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
-          borderSide: const BorderSide(color: Colors.red, width: 1),
-        ),
-      ),
-    );
+    _authSub?.cancel(); _email.dispose(); _password.dispose(); super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // Light grey screen background
-
-      // iOS-style AppBar with centered title and back button
-      appBar: AppBar(
-        title: const Text(
-          'Sign In',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey),
-          onPressed: () => Navigator.pop(context), // Adds the Back button
-        ),
-      ),
-
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Email Address Field
-                _buildTextField(
-                  controller: _emailController,
-                  hintText: 'Email Address',
-                  validator: (val) => val == null || !val.contains('@')
-                      ? 'Enter a valid email'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-
-                // Password Field
-                _buildTextField(
-                  controller: _passwordController,
-                  hintText: 'Password',
-                  obscureText: true,
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter your password' : null,
-                ),
-
-                const SizedBox(height: 32),
-
-                // "Sign In" Coral Button (Pill-shaped)
-                SizedBox(
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6E41), // Coral color
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 0,
-                      textStyle: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text('Sign In'),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Forgot Password? Button
-                Center(
-                  child: TextButton(
-                    onPressed: _isLoading ? null : _showForgotPasswordDialog,
-                    child: const Text(
-                      'Forgot Password?',
-                      style: TextStyle(
-                        color: Color(0xFFFF6E41), // Coral color
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Footer: Don't have an account? Sign Up
-                Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Don\'t have an account? ',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _isLoading ? null : _goToRegister,
-                        child: Text(
-                          'Sign Up',
-                          style: TextStyle(
-                            color: const Color(0xFFFF6E41),
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.white,
+    body: SafeArea(child: Center(child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Align(alignment: Alignment.centerRight, child: IconButton(
+            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
+            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF0F0F2)),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF6E6E73)))),
+          const SizedBox(height: 42),
+          Container(width: 64, height: 64, alignment: Alignment.center,
+            decoration: const BoxDecoration(color: Color(0xFFFFF0E9), shape: BoxShape.circle),
+            child: const Icon(Icons.storefront_rounded, size: 32, color: AppColors.primary)),
+          const SizedBox(height: 20),
+          const Text('Welcome back', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -.4)),
+          const SizedBox(height: 8),
+          const Text('Sign in to follow stalls and receive live updates.', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF707078))),
+          const SizedBox(height: 36),
+          TextFormField(controller: _email, keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next, autofillHints: const [AutofillHints.email],
+            decoration: _field('Email address'),
+            validator: (v) => v == null || !v.trim().contains('@') ? 'Enter a valid email address.' : null),
+          const SizedBox(height: 14),
+          TextFormField(controller: _password, obscureText: _hidePassword,
+            textInputAction: TextInputAction.done, autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) => _login(),
+            decoration: _field('Password', suffix: IconButton(
+              onPressed: () => setState(() => _hidePassword = !_hidePassword),
+              icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined))),
+            validator: (v) => v == null || v.isEmpty ? 'Enter your password.' : null),
+          Align(alignment: Alignment.centerRight, child: TextButton(
+            onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => ForgotPasswordScreen(initialEmail: _email.text.trim()))),
+            child: const Text('Forgot password?', style: TextStyle(
+              color: AppColors.primary, fontWeight: FontWeight.w600)))),
+          const SizedBox(height: 8),
+          SizedBox(height: 56, child: FilledButton(
+            onPressed: _busy ? null : _login,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+            child: _busy ? const SizedBox(width: 22, height: 22,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Sign in', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)))),
+          const SizedBox(height: 18),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text("Don't have an account? ", style: TextStyle(color: Color(0xFF707078))),
+            TextButton(onPressed: _busy ? null : () => Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const RegisterScreen())),
+              child: const Text('Sign up', style: TextStyle(color: AppColors.primary,
+                fontWeight: FontWeight.w600))),
+          ]),
+          TextButton.icon(onPressed: _busy ? null : _guest,
+            icon: const Icon(Icons.person_outline_rounded), label: const Text('Continue as guest'),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFF52525A))),
+        ]))),
+    ))),
+  );
 }
 ````
 
-## File: lib/main.dart
+## File: lib/features/customer/profile/customer_profile_screen.dart
 ````dart
-import 'dart:async';
+import '../../shared/profile_page.dart';
+import '../../shared/edit_profile_screen.dart';
+import '../../shared/personal_information_screen.dart';
+import '../../shared/change_password_screen.dart';
+import '../../shared/notification_settings_screen.dart';
+import '../../shared/legal_screen.dart';
+import '../../shared/delete_account_screen.dart';
+import '../../auth/screens/login_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
-import 'core/services/notification_service.dart';
-import 'features/splash/splash_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/models/user_model.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/faq_screen.dart';
+import '../../shared/about_screen.dart';
+import '../../shared/logout_helper.dart';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+class CustomerProfileScreen extends StatefulWidget {
+  const CustomerProfileScreen({super.key});
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // The app's background is light (white/cream), so the status bar's
-  // time/battery/signal icons need to render dark to stay visible --
-  // otherwise they default to light and blend into the light
-  // background, becoming nearly invisible. Set globally here so it
-  // applies even on screens that override AppBar styling directly.
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-    ),
-  );
-
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-  } catch (e) {
-    runApp(MaterialApp(
-        home: Scaffold(
-            body: Center(
-                child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text(
-            'StallSeeker could not start. Check your connection and retry.'),
-        TextButton(onPressed: main, child: const Text('Retry')),
-      ]),
-    )))));
-    return;
-  }
-
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  runApp(const StallSeekerApp());
-  unawaited(NotificationService.instance
-      .initialize(navigatorKey)
-      .catchError((Object error) {
-    debugPrint('Notifications are currently unavailable.');
-  }));
+  @override
+  State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
 }
 
-class StallSeekerApp extends StatelessWidget {
-  const StallSeekerApp({super.key});
+class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
+  final _authService = AuthService();
+  final _geocoding = Geocoding();
+
+  UserModel? _userModel;
+  bool _isLoading = true;
+
+  String _locationText = 'Tap to find your current area';
+  bool _isLoadingLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userData = await _authService.getUserData(user.uid);
+      if (mounted) {
+        setState(() {
+          _userModel = userData;
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadLocation() async {
+    if (!mounted || _isLoadingLocation) { return; }
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) { return; }
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services are turned off.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (!mounted) { return; }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationText = 'Location permission not granted.';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 12));
+
+      // FIXED: use _geocoding.placemarkFromCoordinates
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      final address =
+          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+
+      if (mounted) {
+        setState(() {
+          _locationText = address;
+          _isLoadingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationText = 'Unable to fetch location.';
+          _isLoadingLocation = false;
+        });
+      }
+    }
+  }
+
+  String _formatPlacemark(Placemark? p) {
+    if (p == null) { return 'Location unavailable'; }
+    final parts = [p.subLocality, p.locality, p.administrativeArea]
+        .where((s) => s != null && s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
+  }
+
+  Future<void> _editProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => EditProfileScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '')));
+    if (saved == true && mounted) {
+      await _loadUserData();
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated.'))); }
+    }
+  }
+
+  Future<void> _personalInformation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => PersonalInformationScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '',
+        isVendor: false)));
+    if (mounted) { await _loadUserData(); }
+  }
+
+  void _changePassword() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChangePasswordScreen(
+        email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'StallSeeker',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const SplashScreen(),
+    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
+    final user = FirebaseAuth.instance.currentUser;
+    final guest = user?.isAnonymous ?? true;
+    final name = guest ? 'Guest' : _userModel?.fullName.isNotEmpty == true
+        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
+    return ProfilePage(
+      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
+      photoUrl: guest ? null : user?.photoURL,
+      isVendor: false, isGuest: guest,
+      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
+      location: _locationText, isLoadingLocation: _isLoadingLocation,
+      onRefresh: _loadUserData,
+      onLocation: _loadLocation,
+      onEdit: _editProfile,
+      onPersonalInformation: _personalInformation,
+      onPassword: _changePassword,
+      onFaq: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),
+      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+      onNotificationSettings: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
+      onPrivacyPolicy: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.privacy))),
+      onTerms: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.terms))),
+      onDeleteAccount: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+      onLogout: () => confirmAndLogout(context, _authService),
+      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+      
     );
   }
 }
@@ -4628,8 +5129,86 @@ class _AccountRecovery extends StatelessWidget {
 }
 ````
 
+## File: lib/main.dart
+````dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/notification_service.dart';
+import 'features/splash/splash_screen.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // The app's background is light (white/cream), so the status bar's
+  // time/battery/signal icons need to render dark to stay visible --
+  // otherwise they default to light and blend into the light
+  // background, becoming nearly invisible. Set globally here so it
+  // applies even on screens that override AppBar styling directly.
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    runApp(MaterialApp(
+        home: Scaffold(
+            body: Center(
+                child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text(
+            'StallSeeker could not start. Check your connection and retry.'),
+        TextButton(onPressed: main, child: const Text('Retry')),
+      ]),
+    )))));
+    return;
+  }
+
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  runApp(const StallSeekerApp());
+  unawaited(NotificationService.instance
+      .initialize(navigatorKey)
+      .catchError((Object error) {
+    debugPrint('Notifications are currently unavailable.');
+  }));
+}
+
+class StallSeekerApp extends StatelessWidget {
+  const StallSeekerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'StallSeeker',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const SplashScreen(),
+    );
+  }
+}
+````
+
 ## File: lib/features/customer/home/customer_home_screen.dart
 ````dart
+import '../../../core/services/notification_history_service.dart';
+import '../notifications/customer_notifications_screen.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -4655,6 +5234,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _vendorService = VendorService();
   final _authService = AuthService();
   final _searchController = TextEditingController();
+  Stream<int>? _unreadCount;
 
   int _selectedIndex = 0;
   String _searchQuery = '';
@@ -4664,7 +5244,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // NEW: Track the visible map area to filter vendors
   LatLngBounds? _visibleBounds;
 
-  final List<String> _tabTitles = ['Home', 'Following', 'Profile'];
+  final List<String> _tabTitles = ['Home', 'Following', 'Notifications', 'Profile'];
   String _greeting = 'Welcome!';
 
   String? _selectedVendorId;
@@ -4688,6 +5268,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _vendors = _vendorService.getOpenVendors();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && !user.isAnonymous) {
+      _unreadCount = NotificationHistoryService().watchUnreadCount(user.uid);
+    }
     _getCustomerLocation();
     _loadGreeting();
     _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -4832,16 +5416,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       appBar: AppBar(
         title: Text(
           _selectedIndex == 0 ? _greeting : _tabTitles[_selectedIndex],
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-            fontFamily: 'Poppins',
-          ),
           overflow: TextOverflow.ellipsis,
         ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
+        centerTitle: true,
+        backgroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
@@ -4859,6 +5437,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         children: [
           _buildMapTab(),
           const CustomerFollowingScreen(),
+          const CustomerNotificationsScreen(),
           const CustomerProfileScreen(),
         ],
       ),
@@ -4869,18 +5448,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         backgroundColor: Colors.white,
         indicatorColor: Colors.transparent,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.map_outlined),
             selectedIcon: Icon(Icons.map, color: Color(0xFFFF6E41)),
             label: 'Discover',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.favorite_border),
             selectedIcon: Icon(Icons.favorite, color: Color(0xFFFF6E41)),
             label: 'Following',
           ),
           NavigationDestination(
+            icon: _notificationIcon(false),
+            selectedIcon: _notificationIcon(true),
+            label: 'Notifications',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
             label: 'Profile',
@@ -4889,6 +5473,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
     );
   }
+
+  Widget _notificationIcon(bool selected) => StreamBuilder<int>(
+    stream: _unreadCount,
+    builder: (context, snapshot) {
+      final count = snapshot.data ?? 0;
+      return Badge(
+        isLabelVisible: count > 0,
+        label: Text(count >= 100 ? '99+' : '$count'),
+        child: Icon(selected ? Icons.notifications : Icons.notifications_none_rounded,
+          color: selected ? const Color(0xFFFF6E41) : null),
+      );
+    },
+  );
 
   Widget _buildMapTab() {
     return StreamBuilder<List<VendorModel>>(

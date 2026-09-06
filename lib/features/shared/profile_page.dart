@@ -8,7 +8,9 @@ class ProfilePage extends StatelessWidget {
     required this.isLoadingLocation, required this.onRefresh,
     required this.onLocation, required this.onEdit, required this.onPassword,
     required this.onFaq, required this.onAbout, required this.onLogout,
-    required this.onSignIn, this.onEditStall});
+    required this.onSignIn, required this.onNotificationSettings,
+    required this.onPrivacyPolicy, required this.onTerms,
+    required this.onDeleteAccount, this.onEditStall, this.onPersonalInformation});
 
   final String name;
   final String email;
@@ -26,7 +28,12 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onAbout;
   final VoidCallback onLogout;
   final VoidCallback onSignIn;
+  final VoidCallback onNotificationSettings;
+  final VoidCallback onPrivacyPolicy;
+  final VoidCallback onTerms;
+  final VoidCallback onDeleteAccount;
   final VoidCallback? onEditStall;
+  final VoidCallback? onPersonalInformation;
 
   static const _background = Color(0xFFF2F2F7);
   static const _muted = Color(0xFF8E8E93);
@@ -108,13 +115,20 @@ class ProfilePage extends StatelessWidget {
                 : const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2))),
         ]),
         if (!isGuest) _group(isVendor ? 'ACCOUNT & STALL' : 'ACCOUNT', [
-          _row(Icons.person_outline_rounded, 'Personal information', onEdit),
+          _row(Icons.person_outline_rounded, 'Personal information', onPersonalInformation ?? onEdit),
           if (isVendor && onEditStall != null) _row(Icons.storefront_outlined, 'My stall', onEditStall!),
           if (canChangePassword) _row(Icons.lock_outline_rounded, 'Change password', onPassword),
+          _row(Icons.notifications_none_rounded, 'Notification settings', onNotificationSettings),
         ]),
         _group('ABOUT', [
           _row(Icons.help_outline_rounded, 'Help & FAQ', onFaq),
           _row(Icons.info_outline_rounded, 'About StallSeeker', onAbout),
+          _row(Icons.privacy_tip_outlined, 'Privacy policy', onPrivacyPolicy),
+          _row(Icons.description_outlined, 'Terms of use', onTerms),
+        ]),
+        if (!isGuest) _group('ACCOUNT ACTIONS', [
+          _row(Icons.delete_outline_rounded, 'Delete account', onDeleteAccount,
+            trailing: const Icon(Icons.chevron_right, color: Color(0xFFB3261E), size: 22)),
         ]),
         const SizedBox(height: 28),
         Container(clipBehavior: Clip.antiAlias,

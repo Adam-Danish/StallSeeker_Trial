@@ -123,9 +123,13 @@ class NotificationService {
   // Fetches this device's FCM token and saves it on the logged-in user's
   // Firestore record, and keeps it updated if it ever rotates. Call this
   // once the user is known to be logged in.
-  Future<void> syncTokenForCurrentUser() async {
+  Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
+    if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
+      await _removeCurrentDeviceToken(user);
+      return;
+    }
     _syncedUid = user.uid;
     await _tokenSubscription?.cancel();
     _tokenSubscription = _messaging.onTokenRefresh.listen((token) {
@@ -143,33 +147,73 @@ class NotificationService {
     }
   }
 
-  Future<void> clearCurrentDevice() async {
-    _navigationReady = false;
-    _pendingVendorId = null;
+  Future<bool> isEnabledForCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return false; }
+    final profile = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid).get();
+    return profile.data()?['notificationsEnabled'] != false;
+  }
+
+  Future<String?> setEnabledForCurrentUser(bool enabled) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
+    try {
+      if (enabled) {
+        final settings = await _messaging.requestPermission();
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          return 'Notifications are blocked in your phone settings.';
+        }
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid)
+          .set({
+            'notificationsEnabled': enabled,
+            if (!enabled) 'fcmToken': FieldValue.delete(),
+          }, SetOptions(merge: true));
+      if (enabled) {
+        _syncedUid = null;
+        await syncTokenForCurrentUser(skipPreferenceCheck: true);
+      } else {
+        await _removeCurrentDeviceToken(user);
+        await _localNotifications.cancelAll();
+      }
+      return null;
+    } catch (_) {
+      return 'Could not update notification settings. Please try again.';
+    }
+  }
+
+  Future<void> _removeCurrentDeviceToken(User user) async {
     _syncedUid = null;
     await _tokenSubscription?.cancel();
     _tokenSubscription = null;
     await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
-    if (user == null || user.isAnonymous) { return; }
     try {
       final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
       if (token != null) {
         final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final doc = await tx.get(ref);
-          // Preserve another device's registration in the existing single-token schema.
-          if (doc.data()?['fcmToken'] == token) { tx.update(ref, {'fcmToken': FieldValue.delete()}); }
+          if (doc.data()?['fcmToken'] == token) {
+            tx.update(ref, {'fcmToken': FieldValue.delete()});
+          }
         }).timeout(const Duration(seconds: 5));
       }
+    } finally {
+      await _messaging.deleteToken().timeout(const Duration(seconds: 5)).catchError((Object _) {});
+    }
+  }
+
+  Future<void> clearCurrentDevice() async {
+    _navigationReady = false;
+    _pendingVendorId = null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return; }
+    try {
+      await _removeCurrentDeviceToken(user);
     } catch (_) {
       debugPrint('Could not remove notification registration.');
     } finally {
-      try {
-        await _messaging.deleteToken().timeout(const Duration(seconds: 5));
-      } catch (_) {
-        debugPrint('Could not revoke this device notification token.');
-      }
       await _localNotifications.cancelAll();
     }
   }

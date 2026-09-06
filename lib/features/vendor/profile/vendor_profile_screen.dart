@@ -1,5 +1,11 @@
 import 'edit_stall_screen.dart';
 import '../../shared/profile_page.dart';
+import '../../shared/edit_profile_screen.dart';
+import '../../shared/personal_information_screen.dart';
+import '../../shared/change_password_screen.dart';
+import '../../shared/notification_settings_screen.dart';
+import '../../shared/legal_screen.dart';
+import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -119,147 +125,33 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
   }
 
-  void _showEditProfileDialog() {
-    final nameController =
-        TextEditingController(text: _userModel?.fullName ?? '');
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit Profile'),
-              content: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final user = FirebaseAuth.instance.currentUser;
-                          final newName = nameController.text.trim();
-                          if (user == null || newName.isEmpty) { return; }
-
-                          setDialogState(() => isSaving = true);
-                          final error = await _authService.updateFullName(
-                              user.uid, newName);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (error == null) {
-                            await _loadUserData(); // refresh header card
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error ?? 'Profile updated.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  Future<void> _editProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => EditProfileScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '')));
+    if (saved == true && mounted) {
+      await _loadUserData();
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated.'))); }
+    }
   }
 
-  void _showChangePasswordDialog() {
-    final passwordController = TextEditingController();
-    bool isSaving = false;
+  Future<void> _personalInformation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => PersonalInformationScreen(
+        name: _userModel?.fullName ?? user?.displayName ?? '',
+        email: _userModel?.email ?? user?.email ?? '',
+        isVendor: true)));
+    if (mounted) { await _loadUserData(); }
+  }
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Change Password'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          final newPassword = passwordController.text.trim();
-                          if (newPassword.length < 6) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Password must be 6+ characters.')),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() => isSaving = true);
-                          final error =
-                              await _authService.changePassword(newPassword);
-
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-
-                          if (!mounted) { return; }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  error ?? 'Password changed successfully.'),
-                              backgroundColor:
-                                  error != null ? Colors.red : Colors.green,
-                            ),
-                          );
-                        },
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  void _changePassword() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChangePasswordScreen(
+        email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
   }
 
   @override
@@ -277,11 +169,20 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       location: _locationText, isLoadingLocation: _isLoadingLocation,
       onRefresh: _loadUserData,
       onLocation: _loadLocation,
-      onEdit: _showEditProfileDialog,
-      onPassword: _showChangePasswordDialog,
+      onEdit: _editProfile,
+      onPersonalInformation: _personalInformation,
+      onPassword: _changePassword,
       onFaq: () => Navigator.push(context,
         MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
       onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+      onNotificationSettings: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
+      onPrivacyPolicy: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.privacy))),
+      onTerms: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.terms))),
+      onDeleteAccount: () => Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
       onLogout: () => confirmAndLogout(context, _authService),
       onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
       onEditStall: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
