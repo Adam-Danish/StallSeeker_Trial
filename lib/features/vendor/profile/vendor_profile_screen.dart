@@ -61,12 +61,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
   Future<void> _loadLocation() async {
-    if (!mounted || _isLoadingLocation) { return; }
+    if (!mounted || _isLoadingLocation) {
+      return;
+    }
     setState(() => _isLoadingLocation = true);
 
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) { return; }
+      if (!mounted) {
+        return;
+      }
       if (!serviceEnabled) {
         setState(() {
           _locationText = 'Location services are turned off.';
@@ -79,7 +83,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (!mounted) { return; }
+      if (!mounted) {
+        return;
+      }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         setState(() {
@@ -94,10 +100,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             const LocationSettings(accuracy: LocationAccuracy.high),
       ).timeout(const Duration(seconds: 12));
 
-      final placemarks = await _geocoding.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(const Duration(seconds: 8));
+      final placemarks = await _geocoding
+          .placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          )
+          .timeout(const Duration(seconds: 8));
       final address =
           _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
 
@@ -118,7 +126,9 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   }
 
   String _formatPlacemark(Placemark? p) {
-    if (p == null) { return 'Location unavailable'; }
+    if (p == null) {
+      return 'Location unavailable';
+    }
     final parts = [p.subLocality, p.locality, p.administrativeArea]
         .where((s) => s != null && s.isNotEmpty)
         .toList();
@@ -127,65 +137,96 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
   Future<void> _editProfile() async {
     final user = FirebaseAuth.instance.currentUser;
-    final saved = await Navigator.push<bool>(context, MaterialPageRoute(
-      builder: (_) => EditProfileScreen(
-        name: _userModel?.fullName ?? user?.displayName ?? '',
-        email: _userModel?.email ?? user?.email ?? '')));
+    final saved = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => EditProfileScreen(
+                name: _userModel?.fullName ?? user?.displayName ?? '',
+                email: _userModel?.email ?? user?.email ?? '')));
     if (saved == true && mounted) {
       await _loadUserData();
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated.'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Profile updated.')));
+      }
     }
   }
 
   Future<void> _personalInformation() async {
     final user = FirebaseAuth.instance.currentUser;
-    await Navigator.push(context, MaterialPageRoute(
-      builder: (_) => PersonalInformationScreen(
-        name: _userModel?.fullName ?? user?.displayName ?? '',
-        email: _userModel?.email ?? user?.email ?? '',
-        isVendor: true)));
-    if (mounted) { await _loadUserData(); }
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => PersonalInformationScreen(
+                name: _userModel?.fullName ?? user?.displayName ?? '',
+                email: _userModel?.email ?? user?.email ?? '',
+                isVendor: true)));
+    if (mounted) {
+      await _loadUserData();
+    }
   }
 
   void _changePassword() {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ChangePasswordScreen(
-        email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => ChangePasswordScreen(
+                email: _userModel?.email ??
+                    FirebaseAuth.instance.currentUser?.email ??
+                    '')));
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final user = FirebaseAuth.instance.currentUser;
     final guest = user?.isAnonymous ?? true;
-    final name = guest ? 'Guest' : _userModel?.fullName.isNotEmpty == true
-        ? _userModel!.fullName : user?.displayName ?? 'Your profile';
+    final name = guest
+        ? 'Guest'
+        : _userModel?.fullName.isNotEmpty == true
+            ? _userModel!.fullName
+            : user?.displayName ?? 'Your profile';
     return ProfilePage(
-      name: name, email: guest ? '' : _userModel?.email ?? user?.email ?? '',
+      name: name,
+      email: guest ? '' : _userModel?.email ?? user?.email ?? '',
       photoUrl: guest ? null : user?.photoURL,
-      isVendor: true, isGuest: guest,
-      canChangePassword: user?.providerData.any((provider) => provider.providerId == 'password') ?? false,
-      location: _locationText, isLoadingLocation: _isLoadingLocation,
+      isVendor: true,
+      isGuest: guest,
+      canChangePassword: user?.providerData
+              .any((provider) => provider.providerId == 'password') ??
+          false,
+      location: _locationText,
+      isLoadingLocation: _isLoadingLocation,
       onRefresh: _loadUserData,
       onLocation: _loadLocation,
       onEdit: _editProfile,
       onPersonalInformation: _personalInformation,
       onPassword: _changePassword,
       onFaq: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
-      onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
-      onNotificationSettings: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
-      onPrivacyPolicy: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.privacy))),
-      onTerms: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const LegalScreen(page: LegalPage.terms))),
+          MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
+      onAbout: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+      onNotificationSettings: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => const NotificationSettingsScreen())),
+      onPrivacyPolicy: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => const LegalScreen(page: LegalPage.privacy))),
+      onTerms: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => const LegalScreen(page: LegalPage.terms))),
       onDeleteAccount: () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+          MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
       onLogout: () => confirmAndLogout(context, _authService),
-      onSignIn: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-      onEditStall: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
+      onSignIn: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+      onEditStall: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
     );
   }
 }

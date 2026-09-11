@@ -13,13 +13,15 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  bool _googleSignInReady = false;
+  static bool _googleSignInReady = false;
 
   // google_sign_in v7 requires an explicit initialize() call, exactly
   // once, before authenticate()/signOut() are used. Cheap to call
   // repeatedly since it's guarded by the flag below.
   Future<void> _ensureGoogleSignInReady() async {
-    if (_googleSignInReady) { return; }
+    if (_googleSignInReady) {
+      return;
+    }
     await _googleSignIn.initialize(
       serverClientId:
           '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
@@ -76,14 +78,22 @@ class AuthService {
     required String password,
   }) async {
     try {
-      await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
+      final user = credential.user;
+      if (user != null) {
+        await _ensureUserProfile(user);
+      }
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? "An authentication error occurred.";
+    } on FirebaseException {
+      await _discardFailedSignIn();
+      return 'Your account profile could not be restored. Check your connection and try again.';
     } catch (e) {
+      await _discardFailedSignIn();
       return e.toString();
     }
   }
@@ -118,19 +128,8 @@ class AuthService {
           .timeout(const Duration(seconds: 25));
       final user = userCredential.user;
 
-      if (user != null &&
-          (userCredential.additionalUserInfo?.isNewUser ?? false)) {
-        final newUser = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          fullName: user.displayName ?? '',
-          role: 'customer',
-          createdAt: DateTime.now(),
-        );
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(user.uid)
-            .set(newUser.toMap());
+      if (user != null) {
+        await _ensureUserProfile(user);
       }
 
       return null;
@@ -147,9 +146,74 @@ class AuthService {
         return "An account already exists with this email. Log in with your email and password instead.";
       }
       return e.message ?? "Google sign-in failed.";
+    } on FirebaseException {
+      await _discardFailedSignIn(includeGoogle: true);
+      return 'Your account profile could not be restored. Check your connection and try again.';
     } catch (e) {
+      await _discardFailedSignIn(includeGoogle: true);
       return e.toString();
     }
+  }
+
+  Future<void> _discardFailedSignIn({bool includeGoogle = false}) async {
+    if (includeGoogle) {
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {
+        // Continue clearing Firebase Auth even if Google cannot sign out.
+      }
+    }
+    try {
+      await _auth.signOut();
+    } catch (_) {
+      // The original sign-in/profile error is the useful error to return.
+    }
+  }
+
+  /// Repairs the split account model after a profile document was removed
+  /// while the Firebase Authentication account was left intact.
+  ///
+  /// A surviving vendor document is the only reliable evidence that the
+  /// account was a vendor. Otherwise a recovered account is treated as a
+  /// customer, matching the existing Google sign-in default.
+  Future<void> _ensureUserProfile(User user) async {
+    final userRef =
+        _firestore.collection(FirestoreCollections.users).doc(user.uid);
+    final profile = await userRef.get();
+    final existing = profile.data();
+    final existingRole = existing?['role'];
+    if (existingRole == 'customer' || existingRole == 'vendor') {
+      return;
+    }
+
+    final vendor = await _firestore
+        .collection(FirestoreCollections.vendors)
+        .doc(user.uid)
+        .get();
+    final recoveredRole = vendor.exists ? 'vendor' : 'customer';
+    final savedEmail = existing?['email'];
+    final savedName = existing?['fullName'];
+
+    await userRef.set({
+      'uid': user.uid,
+      'email': savedEmail is String && savedEmail.trim().isNotEmpty
+          ? savedEmail
+          : user.email ?? '',
+      'fullName': savedName is String && savedName.trim().isNotEmpty
+          ? savedName
+          : user.displayName ?? '',
+      'role': recoveredRole,
+      if (existing?['createdAt'] == null)
+        'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> repairCurrentUserProfile() async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) {
+      return;
+    }
+    await _ensureUserProfile(user);
   }
 
   // Guest mode: signs in anonymously so a customer can browse without
@@ -185,6 +249,35 @@ class AuthService {
     }
   }
 
+  Future<String?> saveCustomerLocation({
+    required double latitude,
+    required double longitude,
+    required String label,
+    required bool isManual,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) {
+      return null;
+    }
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+        'customerLocation': {
+          'latitude': latitude,
+          'longitude': longitude,
+          'label': label,
+          'isManual': isManual,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      }, SetOptions(merge: true));
+      return null;
+    } catch (_) {
+      return 'Your location could not be saved.';
+    }
+  }
+
   // Sign Out
   Future<void> signOut() async {
     await VendorLocationService.instance.pause();
@@ -194,7 +287,9 @@ class AuthService {
       debugPrint('Notification cleanup could not finish.');
     }
     try {
-      if (_googleSignInReady) { await _googleSignIn.signOut(); }
+      if (_googleSignInReady) {
+        await _googleSignIn.signOut();
+      }
     } finally {
       await _auth.signOut();
     }
@@ -206,25 +301,78 @@ class AuthService {
       return null;
     } on FirebaseAuthException catch (e) {
       // Give the same result for unknown accounts to avoid exposing sign-ups.
-      if (e.code == 'user-not-found') { return null; }
-      if (e.code == 'invalid-email') { return 'Enter a valid email address.'; }
-      if (e.code == 'too-many-requests') { return 'Too many requests. Please wait and try again.'; }
-      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      if (e.code == 'user-not-found') {
+        return null;
+      }
+      if (e.code == 'invalid-email') {
+        return 'Enter a valid email address.';
+      }
+      if (e.code == 'too-many-requests') {
+        return 'Too many requests. Please wait and try again.';
+      }
+      if (e.code == 'network-request-failed') {
+        return 'Could not connect. Check your network and retry.';
+      }
       return 'Could not send the reset link. Please try again.';
     } catch (_) {
       return 'Could not send the reset link. Please try again.';
     }
   }
 
-  Future<String?> changePassword(String newPassword, {String? currentPassword}) async {
+  Future<String?> requestEmailVerificationCode({String? newEmail}) async {
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('requestEmailVerificationCode');
+      await callable.call(<String, dynamic>{
+        'purpose': newEmail == null ? 'registration' : 'email_change',
+        if (newEmail != null) 'newEmail': newEmail.trim(),
+      });
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'Could not send the verification code.';
+    } catch (_) {
+      return 'Could not send the verification code. Please try again.';
+    }
+  }
+
+  Future<String?> confirmEmailVerificationCode({
+    required String code,
+    String? newEmail,
+  }) async {
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('confirmEmailVerificationCode');
+      await callable.call(<String, dynamic>{
+        'purpose': newEmail == null ? 'registration' : 'email_change',
+        'code': code.trim(),
+        if (newEmail != null) 'newEmail': newEmail.trim(),
+      });
+      await _auth.currentUser?.reload();
+      await _auth.currentUser?.getIdToken(true);
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'The verification code could not be confirmed.';
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'The account could not be refreshed.';
+    } catch (_) {
+      return 'The verification code could not be confirmed. Please try again.';
+    }
+  }
+
+  Future<String?> changePassword(String newPassword,
+      {String? currentPassword}) async {
     try {
       final user = _auth.currentUser;
-      if (user == null) { return "No user is currently logged in."; }
+      if (user == null) {
+        return "No user is currently logged in.";
+      }
       if (currentPassword != null) {
-        if (user.email == null || !user.providerData.any((p) => p.providerId == 'password')) {
+        if (user.email == null ||
+            !user.providerData.any((p) => p.providerId == 'password')) {
           return 'Manage your password with your sign-in provider.';
         }
-        final credential = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+        final credential = EmailAuthProvider.credential(
+            email: user.email!, password: currentPassword);
         await user.reauthenticateWithCredential(credential);
       }
       await user.updatePassword(newPassword);
@@ -233,8 +381,12 @@ class AuthService {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         return 'Your current password is incorrect. Please try again.';
       }
-      if (e.code == 'too-many-requests') { return 'Too many attempts. Please wait and try again.'; }
-      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      if (e.code == 'too-many-requests') {
+        return 'Too many attempts. Please wait and try again.';
+      }
+      if (e.code == 'network-request-failed') {
+        return 'Could not connect. Check your network and retry.';
+      }
       if (e.code == 'requires-recent-login') {
         return "For security, please log out and log back in before changing your password.";
       }
@@ -247,16 +399,23 @@ class AuthService {
   Future<String?> updateFullName(String uid, String newName) async {
     try {
       final user = _auth.currentUser;
-      if (user == null || user.isAnonymous || user.uid != uid) { return 'Please sign in to edit your profile.'; }
+      if (user == null || user.isAnonymous || user.uid != uid) {
+        return 'Please sign in to edit your profile.';
+      }
       final name = newName.trim();
-      if (name.isEmpty || name.length > 80) { return 'Enter a name between 1 and 80 characters.'; }
+      if (name.isEmpty || name.length > 80) {
+        return 'Enter a name between 1 and 80 characters.';
+      }
       await _firestore
           .collection(FirestoreCollections.users)
           .doc(uid)
           .update({'fullName': name});
       // Firestore is the app's profile source. Sync Auth's display name as well.
-      try { await user.updateDisplayName(name); }
-      catch (_) { debugPrint('Profile saved; Auth display-name sync is unavailable.'); }
+      try {
+        await user.updateDisplayName(name);
+      } catch (_) {
+        debugPrint('Profile saved; Auth display-name sync is unavailable.');
+      }
       return null;
     } catch (_) {
       return 'Could not save your profile. Please try again.';
@@ -265,21 +424,26 @@ class AuthService {
 
   Future<String?> deleteAccount({String? currentPassword}) async {
     final user = _auth.currentUser;
-    if (user == null || user.isAnonymous) { return 'Sign in before deleting your account.'; }
+    if (user == null || user.isAnonymous) {
+      return 'Sign in before deleting your account.';
+    }
     try {
-      final providers = user.providerData.map((provider) => provider.providerId).toSet();
+      final providers =
+          user.providerData.map((provider) => provider.providerId).toSet();
       if (providers.contains('password')) {
-        if (currentPassword == null || currentPassword.isEmpty || user.email == null) {
+        if (currentPassword == null ||
+            currentPassword.isEmpty ||
+            user.email == null) {
           return 'Enter your current password.';
         }
         await user.reauthenticateWithCredential(EmailAuthProvider.credential(
-          email: user.email!, password: currentPassword));
+            email: user.email!, password: currentPassword));
       } else if (providers.contains('google.com')) {
         await _ensureGoogleSignInReady();
         final googleUser = await _googleSignIn.authenticate();
         final googleAuth = googleUser.authentication;
         await user.reauthenticateWithCredential(
-          GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+            GoogleAuthProvider.credential(idToken: googleAuth.idToken));
       } else {
         return 'Log out, sign in again, then retry account deletion.';
       }
@@ -297,7 +461,9 @@ class AuthService {
       }
       return e.message ?? 'Could not verify your account.';
     } on FirebaseFunctionsException catch (e) {
-      if (e.code == 'unauthenticated') { return 'Your session expired. Sign in and try again.'; }
+      if (e.code == 'unauthenticated') {
+        return 'Your session expired. Sign in and try again.';
+      }
       if (e.code == 'failed-precondition') {
         return 'Confirm your sign-in, then retry account deletion.';
       }

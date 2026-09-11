@@ -34,6 +34,18 @@
         "*.local"
       ],
       "source": "functions"
+    },
+    {
+      "codebase": "account-deletion",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "source": "functions-account"
     }
   ],
   "hosting": {

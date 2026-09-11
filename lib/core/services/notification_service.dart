@@ -35,6 +35,8 @@ class NotificationService {
   bool _initialized = false;
   StreamSubscription<String>? _tokenSubscription;
   String? _syncedUid;
+  String? _configuredUid;
+  String? _configuredRole;
   String? _pendingVendorId;
   bool _navigationReady = false;
   Future<void> _tokenWork = Future<void>.value();
@@ -58,8 +60,9 @@ class NotificationService {
   }
 
 
-  // One-time setup: creates the notification channel, requests
-  // permission, and wires up listeners for taps in every app state
+  // One-time setup: creates the notification channel and wires up listeners
+  // for taps in every app state. Permission is requested only after the
+  // signed-in account is confirmed to be a customer.
   // (foreground, background, terminated). Safe to call more than once.
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
     if (_initialized) { return; }
@@ -81,7 +84,6 @@ class NotificationService {
       },
     );
 
-    await _messaging.requestPermission();
     _initialized = true;
 
     // FCM does not show a system notification by itself while the app is
@@ -120,12 +122,56 @@ class NotificationService {
     if (vendorId != null) { _openVendorDetails(vendorId); }
   }
 
-  // Fetches this device's FCM token and saves it on the logged-in user's
-  // Firestore record, and keeps it updated if it ever rotates. Call this
-  // once the user is known to be logged in.
+  Future<void> configureForRole(String role) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return; }
+    if (_configuredUid == user.uid && _configuredRole == role) { return; }
+    _configuredUid = user.uid;
+    _configuredRole = role;
+
+    if (role != 'customer') {
+      _syncedUid = null;
+      await _tokenSubscription?.cancel();
+      _tokenSubscription = null;
+      await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid)
+            .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
+        await _messaging.deleteToken().timeout(const Duration(seconds: 5));
+        await _localNotifications.cancelAll();
+      } catch (_) {
+        debugPrint('Could not disable vendor notifications.');
+        _configuredUid = null;
+        _configuredRole = null;
+      }
+      return;
+    }
+
+    try {
+      if (!await isEnabledForCurrentUser()) {
+        await _removeCurrentDeviceToken(user);
+        return;
+      }
+      final settings = await _messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        await _removeCurrentDeviceToken(user);
+        return;
+      }
+      _syncedUid = null;
+      await syncTokenForCurrentUser(skipPreferenceCheck: true);
+    } catch (_) {
+      debugPrint('Could not configure customer notifications.');
+      _configuredUid = null;
+      _configuredRole = null;
+    }
+  }
+
+  // Fetches this device's FCM token and saves it on a customer account,
+  // and keeps it updated if it ever rotates.
   Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
+    if (_configuredRole != null && _configuredRole != 'customer') { return; }
     if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
       await _removeCurrentDeviceToken(user);
       return;
@@ -158,6 +204,9 @@ class NotificationService {
   Future<String?> setEnabledForCurrentUser(bool enabled) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
+    if (_configuredRole != 'customer') {
+      return 'Notifications are only available for customer accounts.';
+    }
     try {
       if (enabled) {
         final settings = await _messaging.requestPermission();
@@ -207,6 +256,8 @@ class NotificationService {
   Future<void> clearCurrentDevice() async {
     _navigationReady = false;
     _pendingVendorId = null;
+    _configuredUid = null;
+    _configuredRole = null;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) { return; }
     try {

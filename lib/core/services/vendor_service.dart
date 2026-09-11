@@ -52,14 +52,16 @@ class VendorService {
     String vendorId,
     double latitude,
     double longitude,
+    {bool sharingActive = true}
   ) async {
     try {
-      await _vendorsRef.doc(vendorId).update({
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
         'latitude': latitude,
         'longitude': longitude,
         'locationUpdatedAt': FieldValue.serverTimestamp(),
-        'locationSharingActive': true,
-      });
+        'locationSharingActive': sharingActive,
+      }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Error updating vendor location: $e');
       rethrow;
@@ -79,5 +81,12 @@ class VendorService {
             .map((doc) =>
                 VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
             .toList());
+  }
+
+  Stream<List<VendorModel>> getAllVendors() {
+    return _vendorsRef.snapshots().map((snapshot) => snapshot.docs
+        .map((doc) =>
+            VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+        .toList());
   }
 }

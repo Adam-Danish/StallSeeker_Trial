@@ -59,6 +59,8 @@ lib/
   features/
     auth/
       screens/
+        change_email_screen.dart
+        email_verification_screen.dart
         forgot_password_screen.dart
         login_screen.dart
         register_screen.dart
@@ -84,6 +86,7 @@ lib/
       faq_screen.dart
       legal_screen.dart
       logout_helper.dart
+      manual_location_dialog.dart
       notification_settings_screen.dart
       personal_information_screen.dart
       profile_page.dart
@@ -103,6 +106,674 @@ lib/
 ````
 
 # Files
+
+## File: lib/features/auth/screens/change_email_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../core/services/auth_service.dart';
+
+class ChangeEmailScreen extends StatefulWidget {
+  const ChangeEmailScreen({super.key});
+
+  @override
+  State<ChangeEmailScreen> createState() => _ChangeEmailScreenState();
+}
+
+class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
+  final _authService = AuthService();
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _codeController = TextEditingController();
+  bool _codeSent = false;
+  bool _isBusy = false;
+
+  Future<void> _sendCode() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _isBusy = true);
+    final error = await _authService.requestEmailVerificationCode(
+        newEmail: _emailController.text.trim());
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isBusy = false;
+      if (error == null) {
+        _codeSent = true;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(error ??
+          'Verification code sent to ${_emailController.text.trim()}.'),
+      backgroundColor: error == null ? Colors.green : Colors.red,
+    ));
+  }
+
+  Future<void> _confirmCode() async {
+    final code = _codeController.text.trim();
+    if (code.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter the complete six-digit code.')));
+      return;
+    }
+    setState(() => _isBusy = true);
+    final error = await _authService.confirmEmailVerificationCode(
+        code: code, newEmail: _emailController.text.trim());
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isBusy = false);
+    if (error == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Email changed and verified successfully.'),
+          backgroundColor: Colors.green));
+      Navigator.pop(context, true);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red));
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Change Email')),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                      'We will send a six-digit verification code to your new email address. Your email changes only after the correct code is entered.'),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _emailController,
+                    readOnly: _codeSent,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: const InputDecoration(
+                        labelText: 'New email', border: OutlineInputBorder()),
+                    validator: (value) {
+                      final email = value?.trim() ?? '';
+                      return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                              .hasMatch(email)
+                          ? null
+                          : 'Enter a valid email address';
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  if (_codeSent) ...[
+                    TextField(
+                      controller: _codeController,
+                      enabled: !_isBusy,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                          labelText: 'Verification code',
+                          counterText: '',
+                          border: OutlineInputBorder()),
+                      onSubmitted: (_) => _confirmCode(),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _isBusy ? null : _confirmCode,
+                      child: _isBusy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('Verify and Change Email'),
+                    ),
+                    TextButton(
+                        onPressed: _isBusy ? null : _sendCode,
+                        child: const Text('Resend code')),
+                  ] else
+                    FilledButton(
+                      onPressed: _isBusy ? null : _sendCode,
+                      child: _isBusy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('Send Verification Code'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+````
+
+## File: lib/features/auth/screens/email_verification_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../core/services/auth_service.dart';
+
+class EmailVerificationScreen extends StatefulWidget {
+  const EmailVerificationScreen({super.key});
+
+  @override
+  State<EmailVerificationScreen> createState() =>
+      _EmailVerificationScreenState();
+}
+
+class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
+  final _authService = AuthService();
+  final _codeController = TextEditingController();
+  bool _isSending = false;
+  bool _isVerifying = false;
+  bool _messageIsError = false;
+  String? _message;
+
+  String get _email => FirebaseAuth.instance.currentUser?.email ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sendCode());
+  }
+
+  Future<void> _sendCode() async {
+    if (_isSending || _email.isEmpty) {
+      return;
+    }
+    setState(() {
+      _isSending = true;
+      _message = null;
+    });
+    final error = await _authService.requestEmailVerificationCode();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSending = false;
+      _messageIsError = error != null;
+      _message = error ?? 'A six-digit code was sent to $_email.';
+    });
+  }
+
+  Future<void> _verifyCode() async {
+    final code = _codeController.text.trim();
+    if (code.length != 6) {
+      setState(() {
+        _message = 'Enter the complete six-digit code.';
+        _messageIsError = true;
+      });
+      return;
+    }
+    setState(() {
+      _isVerifying = true;
+      _message = null;
+    });
+    final error = await _authService.confirmEmailVerificationCode(code: code);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isVerifying = false;
+      _messageIsError = error != null;
+      _message = error ?? 'Email verified successfully.';
+    });
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Icon(Icons.mark_email_unread_outlined,
+                        size: 72, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(height: 20),
+                    Text('Verify your email',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(
+                        'Enter the code sent to $_email. The code expires in 10 minutes.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade700)),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _codeController,
+                      enabled: !_isVerifying,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      textAlign: TextAlign.center,
+                      maxLength: 6,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 10),
+                      decoration: const InputDecoration(
+                          labelText: 'Verification code',
+                          counterText: '',
+                          border: OutlineInputBorder()),
+                      onSubmitted: (_) => _verifyCode(),
+                    ),
+                    if (_message != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_message!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: _messageIsError
+                                  ? Colors.red
+                                  : Colors.green.shade700)),
+                    ],
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: _isVerifying ? null : _verifyCode,
+                      child: _isVerifying
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('Verify Email'),
+                    ),
+                    TextButton(
+                      onPressed: _isSending ? null : _sendCode,
+                      child:
+                          Text(_isSending ? 'Sending code...' : 'Resend code'),
+                    ),
+                    TextButton(
+                      onPressed: _isVerifying ? null : _authService.signOut,
+                      child: const Text('Use a different account'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+````
+
+## File: lib/features/shared/manual_location_dialog.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+Future<LatLng?> showManualLocationDialog(
+  BuildContext context, {
+  LatLng? initialLocation,
+  String title = 'Enter Location Manually',
+}) async {
+  final placeController = TextEditingController();
+  String? errorText;
+  bool isSearching = false;
+
+  final result = await showDialog<LatLng>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        Future<void> search() async {
+          final query = placeController.text.trim();
+          if (query.isEmpty) {
+            setDialogState(
+                () => errorText = 'Enter a kawasan, daerah, state, or city.');
+            return;
+          }
+          setDialogState(() {
+            isSearching = true;
+            errorText = null;
+          });
+          try {
+            // Bias towards Malaysia so short names like "Skudai" or "Bangsar"
+            // resolve correctly instead of matching a place overseas.
+            final query2 = query.toLowerCase().contains('malaysia')
+                ? query
+                : '$query, Malaysia';
+            final locations = await Geocoding()
+                .locationFromAddress(query2)
+                .timeout(const Duration(seconds: 10));
+            if (locations.isEmpty) {
+              setDialogState(() {
+                isSearching = false;
+                errorText = 'Could not find that place. Try a different name.';
+              });
+              return;
+            }
+            final match = locations.first;
+            if (!dialogContext.mounted) {
+              return;
+            }
+            Navigator.pop(
+                dialogContext, LatLng(match.latitude, match.longitude));
+          } catch (_) {
+            setDialogState(() {
+              isSearching = false;
+              errorText =
+                  'Could not find that place. Check your connection and try again.';
+            });
+          }
+        }
+
+        return AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text(
+                  'Enter a kawasan, daerah, state, or city — e.g. "Bukit Bintang" or "Johor Bahru".'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: placeController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                enabled: !isSearching,
+                onSubmitted: (_) => search(),
+                decoration: const InputDecoration(
+                  labelText: 'Kawasan, daerah, state, or city',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (errorText != null) ...[
+                const SizedBox(height: 10),
+                Text(errorText!, style: const TextStyle(color: Colors.red)),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed:
+                    isSearching ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: isSearching ? null : search,
+              child: isSearching
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Use Location'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  placeController.dispose();
+  return result;
+}
+````
+
+## File: lib/core/models/notification_model.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class NotificationModel {
+  const NotificationModel({required this.id, required this.vendorId,
+    required this.title, required this.body, required this.createdAt,
+    required this.isRead});
+
+  final String id;
+  final String vendorId;
+  final String title;
+  final String body;
+  final DateTime? createdAt;
+  final bool isRead;
+
+  factory NotificationModel.fromMap(Map<String, dynamic> data, String id) {
+    final time = data['createdAt'];
+    return NotificationModel(
+      id: id,
+      vendorId: data['vendorId'] is String ? data['vendorId'] as String : '',
+      title: data['title'] is String ? data['title'] as String : 'Stall update',
+      body: data['body'] is String ? data['body'] as String : '',
+      createdAt: time is Timestamp ? time.toDate() : null,
+      isRead: data['isRead'] == true,
+    );
+  }
+}
+````
+
+## File: lib/core/services/follow_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class FollowService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  CollectionReference get _followsRef => _firestore.collection('follows');
+
+  // Combining customerId + vendorId into one predictable document ID
+  // means a customer can never accidentally follow the same vendor
+  // twice -- the second "follow" would just overwrite the same document.
+  String _followId(String customerId, String vendorId) =>
+      '${customerId}_$vendorId';
+
+  Future<void> followVendor(String customerId, String vendorId) async {
+    await _followsRef.doc(_followId(customerId, vendorId)).set({
+      'customerId': customerId,
+      'vendorId': vendorId,
+      'followedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> unfollowVendor(String customerId, String vendorId) async {
+    await _followsRef.doc(_followId(customerId, vendorId)).delete();
+  }
+
+  // Live stream of whether this customer currently follows this vendor.
+  // Used to show the correct Follow/Unfollow button state, and keeps it
+  // in sync automatically if changed from another device.
+  Stream<bool> isFollowing(String customerId, String vendorId) {
+    return _followsRef
+        .doc(_followId(customerId, vendorId))
+        .snapshots()
+        .map((doc) => doc.exists);
+  }
+
+  // Live stream of vendor IDs this customer follows -- used by the
+  // Following tab to build its list.
+  Stream<List<String>> getFollowedVendorIds(String customerId) {
+    return _followsRef
+        .where('customerId', isEqualTo: customerId)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
+  }
+}
+````
+
+## File: lib/core/services/notification_history_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/notification_model.dart';
+
+/// The server creates history records. Clients can read their own records
+/// and mark them read, but cannot invent or edit alert content.
+class NotificationHistoryService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> _inbox(String uid) =>
+      _db.collection('users').doc(uid).collection('notifications');
+
+  Stream<List<NotificationModel>> watch(String uid, {int limit = 50}) =>
+      _inbox(uid).orderBy('createdAt', descending: true).limit(limit).snapshots()
+          .map((snapshot) => snapshot.docs
+              .map((doc) => NotificationModel.fromMap(doc.data(), doc.id)).toList());
+
+  // Cap the badge query; the UI displays 99+ rather than a misleading exact count.
+  Stream<int> watchUnreadCount(String uid) => _inbox(uid)
+      .where('isRead', isEqualTo: false).limit(100).snapshots()
+      .map((snapshot) => snapshot.docs.length);
+
+  Future<void> markRead(String uid, String notificationId) async {
+    _requireOwner(uid);
+    await _inbox(uid).doc(notificationId).update({'isRead': true})
+        .timeout(const Duration(seconds: 10));
+  }
+
+  /// Marks only the records the screen displayed. A new alert arriving during
+  /// this operation remains unread, and writes stay below the batch limit.
+  Future<void> markDisplayedRead(String uid, Iterable<NotificationModel> items) async {
+    _requireOwner(uid);
+    final ids = items.where((item) => !item.isRead).map((item) => item.id).toSet().toList();
+    for (var start = 0; start < ids.length; start += 400) {
+      _requireOwner(uid);
+      final batch = _db.batch();
+      for (final id in ids.skip(start).take(400)) {
+        batch.update(_inbox(uid).doc(id), {'isRead': true});
+      }
+      await batch.commit().timeout(const Duration(seconds: 10));
+    }
+  }
+
+  void _requireOwner(String uid) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous || user.uid != uid) {
+      throw StateError('Sign in to read your notifications.');
+    }
+  }
+}
+````
+
+## File: lib/core/services/vendor_location_service.dart
+````dart
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
+
+/// Foreground-only sampling. Native background permissions/services are not
+/// present in the supplied source export. Never claims background tracking.
+class VendorLocationService extends ChangeNotifier {
+  VendorLocationService._();
+  static final instance = VendorLocationService._();
+  Timer? _timer;
+  Future<void>? _pending;
+  String? _vendorId;
+  int _generation = 0;
+  String? error;
+  bool get isSharing => _vendorId != null;
+
+  Future<void> _operations = Future<void>.value();
+  int _request = 0;
+
+  Future<void> start(String vendorId) {
+    final request = ++_request;
+    _operations = _operations.catchError((Object _) {}).then((_) async {
+      await _pause();
+      if (request != _request || FirebaseAuth.instance.currentUser?.uid != vendorId) { return; }
+      _vendorId = vendorId;
+      error = null;
+      final generation = ++_generation;
+      notifyListeners();
+      await _sample(vendorId, generation);
+    });
+    return _operations;
+  }
+
+  Future<void> pause() {
+    ++_request;
+    ++_generation;
+    _timer?.cancel();
+    _operations = _operations.catchError((Object _) {}).then((_) => _pause());
+    return _operations;
+  }
+
+  Future<void> _sample(String vendorId, int generation) async {
+    if (generation != _generation) { return; }
+    final work = _writePosition(vendorId, generation);
+    _pending = work;
+    await work;
+    if (generation != _generation) { return; }
+    _pending = null;
+    _timer = Timer(const Duration(seconds: 15), () {
+      unawaited(_sample(vendorId, generation));
+    });
+  }
+
+  Future<void> _writePosition(String vendorId, int generation) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 12));
+      if (generation != _generation || FirebaseAuth.instance.currentUser?.uid != vendorId) { return; }
+      final ref = FirebaseFirestore.instance.collection('vendors').doc(vendorId);
+      // Do not reopen a stall closed by another screen/device.
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final doc = await tx.get(ref);
+        if (generation != _generation || doc.data()?['isOpen'] != true) { return; }
+        tx.update(ref, {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'locationUpdatedAt': FieldValue.serverTimestamp(),
+          'locationSharingActive': true,
+        });
+      }).timeout(const Duration(seconds: 8));
+      if (generation == _generation) { error = null; }
+    } catch (_) {
+      if (generation == _generation) {
+        error = 'Location could not update. Check GPS and your connection.';
+      }
+    }
+    if (generation == _generation) { notifyListeners(); }
+  }
+
+  Future<void> _pause() async {
+    ++_generation;
+    _timer?.cancel();
+    _timer = null;
+    final id = _vendorId;
+    _vendorId = null;
+    final pending = _pending;
+    _pending = null;
+    // Finish an in-flight transaction before writing the paused state.
+    if (pending != null) { await pending; }
+    if (id != null && FirebaseAuth.instance.currentUser?.uid == id) {
+      try {
+        await FirebaseFirestore.instance.collection('vendors').doc(id).update({
+          'locationSharingActive': false,
+        }).timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Customers also expire old timestamps if this device is offline/killed.
+      }
+    }
+    notifyListeners();
+  }
+}
+````
 
 ## File: lib/features/auth/screens/forgot_password_screen.dart
 ````dart
@@ -187,6 +858,65 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           child: const Text('Use another email')),
       ],
     ]);
+}
+````
+
+## File: lib/features/shared/about_screen.dart
+````dart
+import 'package:flutter/material.dart';
+
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('About StallSeeker')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Center(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: const Icon(Icons.storefront, size: 40),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'StallSeeker',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'StallSeeker connects food stall vendors with nearby customers. '
+            'Vendors can share their live location, opening hours, and menu '
+            'availability, while customers can discover open stalls nearby, '
+            'view menus in real time, and follow their favorite stalls.',
+            style: TextStyle(height: 1.5),
+          ),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 12),
+          const Text(
+            'This app was developed as a Final Year Project.',
+            style: TextStyle(color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 }
 ````
 
@@ -604,7 +1334,9 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   Future<void> _load() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) {
-      if (mounted) setState(() { _busy = false; _error = 'Sign in to manage notifications.'; });
+      if (mounted) {
+        setState(() { _busy = false; _error = 'Sign in to manage notifications.'; });
+      }
       return;
     }
     try {
@@ -612,13 +1344,17 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         NotificationService.instance.isEnabledForCurrentUser(),
         FirebaseMessaging.instance.getNotificationSettings(),
       ]);
-      if (mounted) setState(() {
-        _enabled = values[0] as bool;
-        _systemStatus = (values[1] as NotificationSettings).authorizationStatus;
-        _busy = false; _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _enabled = values[0] as bool;
+          _systemStatus = (values[1] as NotificationSettings).authorizationStatus;
+          _busy = false; _error = null;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _busy = false; _error = 'Could not load notification settings.'; });
+      if (mounted) {
+        setState(() { _busy = false; _error = 'Could not load notification settings.'; });
+      }
     }
   }
 
@@ -626,14 +1362,29 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     setState(() { _busy = true; _error = null; });
     final error = await NotificationService.instance.setEnabledForCurrentUser(value);
     if (!mounted) return;
-    setState(() { _busy = false; if (error == null) _enabled = value; else _error = error; });
-    if (error == null) await _load();
+    setState(() {
+      _busy = false;
+      if (error == null) {
+        _enabled = value;
+      } else {
+        _error = error;
+      }
+    });
+    if (error == null) {
+      await _load();
+    }
   }
 
   String get _permissionText {
-    if (_systemStatus == AuthorizationStatus.authorized) return 'Allowed by this device';
-    if (_systemStatus == AuthorizationStatus.provisional) return 'Quiet notifications allowed';
-    if (_systemStatus == AuthorizationStatus.denied) return 'Blocked in phone settings';
+    if (_systemStatus == AuthorizationStatus.authorized) {
+      return 'Allowed by this device';
+    }
+    if (_systemStatus == AuthorizationStatus.provisional) {
+      return 'Quiet notifications allowed';
+    }
+    if (_systemStatus == AuthorizationStatus.denied) {
+      return 'Blocked in phone settings';
+    }
     return 'Permission not requested';
   }
 
@@ -645,7 +1396,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
         child: SwitchListTile.adaptive(
           contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          activeColor: AppColors.primary,
+          activeThumbColor: AppColors.primary,
           value: _enabled, onChanged: _busy ? null : _toggle,
           secondary: const Icon(Icons.notifications_active_outlined, color: AppColors.primary),
           title: const Text('Stall notifications', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
@@ -740,243 +1491,140 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
 }
 ````
 
-## File: lib/core/models/notification_model.dart
+## File: lib/core/constants/firestore_collections.dart
 ````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
+class FirestoreCollections {
+  static const String users = 'users';
+  static const String vendors = 'vendors';
+  static const String menus = 'menus';
+  static const String follows = 'follows';
+}
+````
 
-class NotificationModel {
-  const NotificationModel({required this.id, required this.vendorId,
-    required this.title, required this.body, required this.createdAt,
-    required this.isRead});
+## File: lib/core/models/menu_item_model.dart
+````dart
+class MenuItemModel {
+  final String itemId;
+  final String name;
+  final double price;
+  final String
+      status; // 'available' (Green), 'low_stock' (Yellow), 'out_of_stock' (Red)
+  final String imageUrl;
 
-  final String id;
-  final String vendorId;
-  final String title;
-  final String body;
-  final DateTime? createdAt;
-  final bool isRead;
+  MenuItemModel({
+    required this.itemId,
+    required this.name,
+    required this.price,
+    this.status = 'available',
+    this.imageUrl = '',
+  });
 
-  factory NotificationModel.fromMap(Map<String, dynamic> data, String id) {
-    final time = data['createdAt'];
-    return NotificationModel(
-      id: id,
-      vendorId: data['vendorId'] is String ? data['vendorId'] as String : '',
-      title: data['title'] is String ? data['title'] as String : 'Stall update',
-      body: data['body'] is String ? data['body'] as String : '',
-      createdAt: time is Timestamp ? time.toDate() : null,
-      isRead: data['isRead'] == true,
+  Map<String, dynamic> toMap() {
+    return {
+      'itemId': itemId,
+      'name': name,
+      'price': price,
+      'status': status,
+      'imageUrl': imageUrl,
+    };
+  }
+
+  factory MenuItemModel.fromMap(Map<String, dynamic> map, String id) {
+    return MenuItemModel(
+      itemId: id,
+      name: map['name'] ?? '',
+      price: (map['price'] ?? 0.0).toDouble(),
+      status: map['status'] ?? 'available',
+      imageUrl: map['imageUrl'] ?? '',
     );
   }
 }
 ````
 
-## File: lib/core/services/follow_service.dart
+## File: lib/core/models/user_model.dart
 ````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
+class UserModel {
+  final String uid;
+  final String email;
+  final String fullName;
+  final String role; // 'customer' or 'vendor'
+  final DateTime createdAt;
 
-class FollowService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  UserModel({
+    required this.uid,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    required this.createdAt,
+  });
 
-  CollectionReference get _followsRef => _firestore.collection('follows');
-
-  // Combining customerId + vendorId into one predictable document ID
-  // means a customer can never accidentally follow the same vendor
-  // twice -- the second "follow" would just overwrite the same document.
-  String _followId(String customerId, String vendorId) =>
-      '${customerId}_$vendorId';
-
-  Future<void> followVendor(String customerId, String vendorId) async {
-    await _followsRef.doc(_followId(customerId, vendorId)).set({
-      'customerId': customerId,
-      'vendorId': vendorId,
-      'followedAt': FieldValue.serverTimestamp(),
-    });
+  // Convert Firestore Document to UserModel Object
+  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
+    return UserModel(
+      uid: docId,
+      email: map['email'] ?? '',
+      fullName: map['fullName'] ?? '',
+      role: map['role'] ?? 'customer',
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as dynamic).toDate()
+          : DateTime.now(),
+    );
   }
 
-  Future<void> unfollowVendor(String customerId, String vendorId) async {
-    await _followsRef.doc(_followId(customerId, vendorId)).delete();
-  }
-
-  // Live stream of whether this customer currently follows this vendor.
-  // Used to show the correct Follow/Unfollow button state, and keeps it
-  // in sync automatically if changed from another device.
-  Stream<bool> isFollowing(String customerId, String vendorId) {
-    return _followsRef
-        .doc(_followId(customerId, vendorId))
-        .snapshots()
-        .map((doc) => doc.exists);
-  }
-
-  // Live stream of vendor IDs this customer follows -- used by the
-  // Following tab to build its list.
-  Stream<List<String>> getFollowedVendorIds(String customerId) {
-    return _followsRef
-        .where('customerId', isEqualTo: customerId)
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => doc['vendorId'] as String).toList());
+  // Convert UserModel Object to Map for Firestore storage
+  Map<String, dynamic> toMap() {
+    return {
+      'uid': uid,
+      'email': email,
+      'fullName': fullName,
+      'role': role,
+      'createdAt': createdAt,
+    };
   }
 }
 ````
 
-## File: lib/core/services/notification_history_service.dart
+## File: lib/core/services/storage_service.dart
 ````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/notification_model.dart';
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
-/// The server creates history records. Clients can read their own records
-/// and mark them read, but cannot invent or edit alert content.
-class NotificationHistoryService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+class StorageService {
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
-  CollectionReference<Map<String, dynamic>> _inbox(String uid) =>
-      _db.collection('users').doc(uid).collection('notifications');
-
-  Stream<List<NotificationModel>> watch(String uid, {int limit = 50}) =>
-      _inbox(uid).orderBy('createdAt', descending: true).limit(limit).snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => NotificationModel.fromMap(doc.data(), doc.id)).toList());
-
-  // Cap the badge query; the UI displays 99+ rather than a misleading exact count.
-  Stream<int> watchUnreadCount(String uid) => _inbox(uid)
-      .where('isRead', isEqualTo: false).limit(100).snapshots()
-      .map((snapshot) => snapshot.docs.length);
-
-  Future<void> markRead(String uid, String notificationId) async {
-    _requireOwner(uid);
-    await _inbox(uid).doc(notificationId).update({'isRead': true})
-        .timeout(const Duration(seconds: 10));
+  // Opens the gallery picker. Returns null if the vendor backed out
+  // without choosing anything.
+  Future<File?> pickImage() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 80,
+    );
+    if (picked == null) { return null; }
+    return File(picked.path);
   }
 
-  /// Marks only the records the screen displayed. A new alert arriving during
-  /// this operation remains unread, and writes stay below the batch limit.
-  Future<void> markDisplayedRead(String uid, Iterable<NotificationModel> items) async {
-    _requireOwner(uid);
-    final ids = items.where((item) => !item.isRead).map((item) => item.id).toSet().toList();
-    for (var start = 0; start < ids.length; start += 400) {
-      _requireOwner(uid);
-      final batch = _db.batch();
-      for (final id in ids.skip(start).take(400)) {
-        batch.update(_inbox(uid).doc(id), {'isRead': true});
-      }
-      await batch.commit().timeout(const Duration(seconds: 10));
-    }
+  // Uploads a stall's cover photo. Always uses the same file name per
+  // vendor, so re-uploading overwrites the old photo instead of leaving
+  // unused files in Storage.
+  Future<String> uploadStallImage(String vendorId, File imageFile) async {
+    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
   }
 
-  void _requireOwner(String uid) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous || user.uid != uid) {
-      throw StateError('Sign in to read your notifications.');
-    }
-  }
-}
-````
-
-## File: lib/core/services/vendor_location_service.dart
-````dart
-import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
-import 'package:geolocator/geolocator.dart';
-
-/// Foreground-only sampling. Native background permissions/services are not
-/// present in the supplied source export. Never claims background tracking.
-class VendorLocationService extends ChangeNotifier {
-  VendorLocationService._();
-  static final instance = VendorLocationService._();
-  Timer? _timer;
-  Future<void>? _pending;
-  String? _vendorId;
-  int _generation = 0;
-  String? error;
-  bool get isSharing => _vendorId != null;
-
-  Future<void> _operations = Future<void>.value();
-  int _request = 0;
-
-  Future<void> start(String vendorId) {
-    final request = ++_request;
-    _operations = _operations.catchError((Object _) {}).then((_) async {
-      await _pause();
-      if (request != _request || FirebaseAuth.instance.currentUser?.uid != vendorId) { return; }
-      _vendorId = vendorId;
-      error = null;
-      final generation = ++_generation;
-      notifyListeners();
-      await _sample(vendorId, generation);
-    });
-    return _operations;
-  }
-
-  Future<void> pause() {
-    ++_request;
-    ++_generation;
-    _timer?.cancel();
-    _operations = _operations.catchError((Object _) {}).then((_) => _pause());
-    return _operations;
-  }
-
-  Future<void> _sample(String vendorId, int generation) async {
-    if (generation != _generation) { return; }
-    final work = _writePosition(vendorId, generation);
-    _pending = work;
-    await work;
-    if (generation != _generation) { return; }
-    _pending = null;
-    _timer = Timer(const Duration(seconds: 15), () {
-      unawaited(_sample(vendorId, generation));
-    });
-  }
-
-  Future<void> _writePosition(String vendorId, int generation) async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      ).timeout(const Duration(seconds: 12));
-      if (generation != _generation || FirebaseAuth.instance.currentUser?.uid != vendorId) { return; }
-      final ref = FirebaseFirestore.instance.collection('vendors').doc(vendorId);
-      // Do not reopen a stall closed by another screen/device.
-      await FirebaseFirestore.instance.runTransaction((tx) async {
-        final doc = await tx.get(ref);
-        if (generation != _generation || doc.data()?['isOpen'] != true) { return; }
-        tx.update(ref, {
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'locationUpdatedAt': FieldValue.serverTimestamp(),
-          'locationSharingActive': true,
-        });
-      }).timeout(const Duration(seconds: 8));
-      if (generation == _generation) { error = null; }
-    } catch (_) {
-      if (generation == _generation) {
-        error = 'Location could not update. Check GPS and your connection.';
-      }
-    }
-    if (generation == _generation) { notifyListeners(); }
-  }
-
-  Future<void> _pause() async {
-    ++_generation;
-    _timer?.cancel();
-    _timer = null;
-    final id = _vendorId;
-    _vendorId = null;
-    final pending = _pending;
-    _pending = null;
-    // Finish an in-flight transaction before writing the paused state.
-    if (pending != null) { await pending; }
-    if (id != null && FirebaseAuth.instance.currentUser?.uid == id) {
-      try {
-        await FirebaseFirestore.instance.collection('vendors').doc(id).update({
-          'locationSharingActive': false,
-        }).timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Customers also expire old timestamps if this device is offline/killed.
-      }
-    }
-    notifyListeners();
+  // Uploads a photo for one menu item. Named by itemId so each dish has
+  // its own file, and re-uploading a photo for the same dish overwrites it.
+  Future<String> uploadMenuItemImage(
+    String vendorId,
+    String itemId,
+    File imageFile,
+  ) async {
+    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
   }
 }
 ````
@@ -984,7 +1632,6 @@ class VendorLocationService extends ChangeNotifier {
 ## File: lib/features/customer/notifications/customer_notifications_screen.dart
 ````dart
 import 'package:flutter/cupertino.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/notification_model.dart';
@@ -1194,199 +1841,243 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
 }
 ````
 
-## File: lib/features/shared/about_screen.dart
+## File: lib/features/splash/splash_screen.dart
 ````dart
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+import '../auth/auth_wrapper.dart';
 
-class AboutScreen extends StatelessWidget {
-  const AboutScreen({super.key});
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AuthWrapper()),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('About StallSeeker')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 40,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primaryContainer,
-                  child: const Icon(Icons.storefront, size: 40),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'StallSeeker',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Version 1.0.0',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ],
+    return const Scaffold(
+      backgroundColor: AppColors.primary,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.storefront, size: 72, color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'StallSeeker',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+                fontFamily: 'Poppins', // Added Poppins font
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'StallSeeker connects food stall vendors with nearby customers. '
-            'Vendors can share their live location, opening hours, and menu '
-            'availability, while customers can discover open stalls nearby, '
-            'view menus in real time, and follow their favorite stalls.',
-            style: TextStyle(height: 1.5),
-          ),
-          const SizedBox(height: 24),
-          const Divider(),
-          const SizedBox(height: 12),
-          const Text(
-            'This app was developed as a Final Year Project.',
-            style: TextStyle(color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 ````
 
-## File: lib/core/constants/firestore_collections.dart
+## File: lib/firebase_options.dart
 ````dart
-class FirestoreCollections {
-  static const String users = 'users';
-  static const String vendors = 'vendors';
-  static const String menus = 'menus';
-  static const String follows = 'follows';
+// File generated by FlutterFire CLI.
+// ignore_for_file: type=lint
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+/// Default [FirebaseOptions] for use with your Firebase apps.
+///
+/// Example:
+/// ```dart
+/// import 'firebase_options.dart';
+/// // ...
+/// await Firebase.initializeApp(
+///   options: DefaultFirebaseOptions.currentPlatform,
+/// );
+/// ```
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) {
+      return web;
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+      case TargetPlatform.iOS:
+        return ios;
+      case TargetPlatform.macOS:
+        return macos;
+      case TargetPlatform.windows:
+        return windows;
+      case TargetPlatform.linux:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for linux - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
+      default:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions are not supported for this platform.',
+        );
+    }
+  }
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:e9cb5587fb777961911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-KEBYKY2P8P',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBzTEscU-ljvVtKgSVFs-KN3J3BtDre2Cs',
+    appId: '1:793011933510:android:7127576788f40c81911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+  );
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stallseeker',
+  );
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
+    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stallseeker',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
+    appId: '1:793011933510:web:b99eecd2060151e1911547',
+    messagingSenderId: '793011933510',
+    projectId: 'stallseeker-c2ffe',
+    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
+    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
+    measurementId: 'G-QFFLHPN0GT',
+  );
 }
 ````
 
-## File: lib/core/models/menu_item_model.dart
+## File: lib/core/services/vendor_service.dart
 ````dart
-class MenuItemModel {
-  final String itemId;
-  final String name;
-  final double price;
-  final String
-      status; // 'available' (Green), 'low_stock' (Yellow), 'out_of_stock' (Red)
-  final String imageUrl;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../models/vendor_model.dart';
 
-  MenuItemModel({
-    required this.itemId,
-    required this.name,
-    required this.price,
-    this.status = 'available',
-    this.imageUrl = '',
-  });
+class VendorService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Map<String, dynamic> toMap() {
-    return {
-      'itemId': itemId,
-      'name': name,
-      'price': price,
-      'status': status,
-      'imageUrl': imageUrl,
-    };
+  CollectionReference get _vendorsRef => _firestore.collection('vendors');
+
+  Future<VendorModel?> getVendorProfile(String vendorId) async {
+    try {
+      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
+      if (doc.exists && doc.data() != null) {
+        return VendorModel.fromMap(
+          doc.data() as Map<String, dynamic>,
+          doc.id,
+        );
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching vendor profile: $e');
+      return null;
+    }
   }
 
-  factory MenuItemModel.fromMap(Map<String, dynamic> map, String id) {
-    return MenuItemModel(
-      itemId: id,
-      name: map['name'] ?? '',
-      price: (map['price'] ?? 0.0).toDouble(),
-      status: map['status'] ?? 'available',
-      imageUrl: map['imageUrl'] ?? '',
-    );
-  }
-}
-````
-
-## File: lib/core/models/user_model.dart
-````dart
-class UserModel {
-  final String uid;
-  final String email;
-  final String fullName;
-  final String role; // 'customer' or 'vendor'
-  final DateTime createdAt;
-
-  UserModel({
-    required this.uid,
-    required this.email,
-    required this.fullName,
-    required this.role,
-    required this.createdAt,
-  });
-
-  // Convert Firestore Document to UserModel Object
-  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
-    return UserModel(
-      uid: docId,
-      email: map['email'] ?? '',
-      fullName: map['fullName'] ?? '',
-      role: map['role'] ?? 'customer',
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as dynamic).toDate()
-          : DateTime.now(),
-    );
+  Future<void> saveVendorProfile(VendorModel vendor) async {
+    try {
+      await _vendorsRef.doc(vendor.vendorId).set(
+            vendor.toProfileMap(),
+            SetOptions(merge: true),
+          );
+    } catch (e) {
+      debugPrint('Error saving vendor profile: $e');
+      rethrow;
+    }
   }
 
-  // Convert UserModel Object to Map for Firestore storage
-  Map<String, dynamic> toMap() {
-    return {
-      'uid': uid,
-      'email': email,
-      'fullName': fullName,
-      'role': role,
-      'createdAt': createdAt,
-    };
-  }
-}
-````
-
-## File: lib/core/services/storage_service.dart
-````dart
-import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
-
-class StorageService {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
-
-  // Opens the gallery picker. Returns null if the vendor backed out
-  // without choosing anything.
-  Future<File?> pickImage() async {
-    final XFile? picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1080,
-      imageQuality: 80,
-    );
-    if (picked == null) { return null; }
-    return File(picked.path);
+  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
+    try {
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
+        'isOpen': isOpen,
+        if (!isOpen) 'locationSharingActive': false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error toggling stall status: $e');
+      rethrow;
+    }
   }
 
-  // Uploads a stall's cover photo. Always uses the same file name per
-  // vendor, so re-uploading overwrites the old photo instead of leaving
-  // unused files in Storage.
-  Future<String> uploadStallImage(String vendorId, File imageFile) async {
-    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
-  }
-
-  // Uploads a photo for one menu item. Named by itemId so each dish has
-  // its own file, and re-uploading a photo for the same dish overwrites it.
-  Future<String> uploadMenuItemImage(
+  Future<void> updateVendorLocation(
     String vendorId,
-    String itemId,
-    File imageFile,
+    double latitude,
+    double longitude,
+    {bool sharingActive = true}
   ) async {
-    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
+    try {
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
+        'latitude': latitude,
+        'longitude': longitude,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+        'locationSharingActive': sharingActive,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating vendor location: $e');
+      rethrow;
+    }
+  }
+
+  Stream<VendorModel?> watchVendorProfile(String vendorId) {
+    return _vendorsRef.doc(vendorId).snapshots().map((doc) =>
+        doc.exists && doc.data() != null
+            ? VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)
+            : null);
+  }
+
+  Stream<List<VendorModel>> getOpenVendors() {
+    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
+        (snapshot) => snapshot.docs
+            .map((doc) =>
+                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList());
+  }
+
+  Stream<List<VendorModel>> getAllVendors() {
+    return _vendorsRef.snapshots().map((snapshot) => snapshot.docs
+        .map((doc) =>
+            VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+        .toList());
   }
 }
 ````
@@ -1583,6 +2274,7 @@ class ProfilePage extends StatelessWidget {
     required this.canChangePassword, required this.location,
     required this.isLoadingLocation, required this.onRefresh,
     required this.onLocation, required this.onEdit, required this.onPassword,
+    required this.onEmail,
     required this.onFaq, required this.onAbout, required this.onLogout,
     required this.onSignIn, required this.onNotificationSettings,
     required this.onPrivacyPolicy, required this.onTerms,
@@ -1600,6 +2292,7 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onLocation;
   final VoidCallback onEdit;
   final VoidCallback onPassword;
+  final VoidCallback onEmail;
   final VoidCallback onFaq;
   final VoidCallback onAbout;
   final VoidCallback onLogout;
@@ -1693,8 +2386,9 @@ class ProfilePage extends StatelessWidget {
         if (!isGuest) _group(isVendor ? 'ACCOUNT & STALL' : 'ACCOUNT', [
           _row(Icons.person_outline_rounded, 'Personal information', onPersonalInformation ?? onEdit),
           if (isVendor && onEditStall != null) _row(Icons.storefront_outlined, 'My stall', onEditStall!),
+          _row(Icons.alternate_email_rounded, 'Change email', onEmail),
           if (canChangePassword) _row(Icons.lock_outline_rounded, 'Change password', onPassword),
-          _row(Icons.notifications_none_rounded, 'Notification settings', onNotificationSettings),
+          if (!isVendor) _row(Icons.notifications_none_rounded, 'Notification settings', onNotificationSettings),
         ]),
         _group('ABOUT', [
           _row(Icons.help_outline_rounded, 'Help & FAQ', onFaq),
@@ -1718,486 +2412,6 @@ class ProfilePage extends StatelessWidget {
       ],
     )),
   );
-}
-````
-
-## File: lib/features/splash/splash_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../auth/auth_wrapper.dart';
-
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AuthWrapper()),
-        );
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: AppColors.primary,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.storefront, size: 72, color: Colors.white),
-            SizedBox(height: 16),
-            Text(
-              'StallSeeker',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
-                fontFamily: 'Poppins', // Added Poppins font
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-````
-
-## File: lib/firebase_options.dart
-````dart
-// File generated by FlutterFire CLI.
-// ignore_for_file: type=lint
-import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
-
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
-class DefaultFirebaseOptions {
-  static FirebaseOptions get currentPlatform {
-    if (kIsWeb) {
-      return web;
-    }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return android;
-      case TargetPlatform.iOS:
-        return ios;
-      case TargetPlatform.macOS:
-        return macos;
-      case TargetPlatform.windows:
-        return windows;
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      default:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions are not supported for this platform.',
-        );
-    }
-  }
-
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
-    appId: '1:793011933510:web:e9cb5587fb777961911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    measurementId: 'G-KEBYKY2P8P',
-  );
-
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBzTEscU-ljvVtKgSVFs-KN3J3BtDre2Cs',
-    appId: '1:793011933510:android:7127576788f40c81911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-  );
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
-    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
-    iosBundleId: 'com.example.stallseeker',
-  );
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCrE5vzUXqYDTN5UQrbVKzx8LBwiA18mrc',
-    appId: '1:793011933510:ios:29aa93bdf1ed90e6911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    iosClientId: '793011933510-gphe3f510j5v4u555g4uo4ls5bm7bnsm.apps.googleusercontent.com',
-    iosBundleId: 'com.example.stallseeker',
-  );
-
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBPTOZDnYDXxe9VNSzYLXPvso5nIiHTsPc',
-    appId: '1:793011933510:web:b99eecd2060151e1911547',
-    messagingSenderId: '793011933510',
-    projectId: 'stallseeker-c2ffe',
-    authDomain: 'stallseeker-c2ffe.firebaseapp.com',
-    storageBucket: 'stallseeker-c2ffe.firebasestorage.app',
-    measurementId: 'G-QFFLHPN0GT',
-  );
-}
-````
-
-## File: lib/core/services/notification_service.dart
-````dart
-import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import '../models/vendor_model.dart';
-import 'vendor_service.dart';
-import '../../features/customer/vendor_details/vendor_details_screen.dart';
-
-// Runs in its own isolate when a push arrives while the app is backgrounded
-// or fully closed. Android shows the system notification on its own from
-// the message's payload -- this only needs to exist so FCM has something
-// to call.
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
-
-class NotificationService {
-  NotificationService._internal();
-  static final NotificationService instance = NotificationService._internal();
-
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications =
-      FlutterLocalNotificationsPlugin();
-  final VendorService _vendorService = VendorService();
-
-  static const _channel = AndroidNotificationChannel(
-    'stallseeker_channel',
-    'StallSeeker Notifications',
-    description: 'Notifies you when a followed vendor starts selling.',
-    importance: Importance.high,
-  );
-
-  GlobalKey<NavigatorState>? _navigatorKey;
-  bool _initialized = false;
-  StreamSubscription<String>? _tokenSubscription;
-  String? _syncedUid;
-  String? _pendingVendorId;
-  bool _navigationReady = false;
-  Future<void> _tokenWork = Future<void>.value();
-
-  Future<void> _queueTokenSave(String uid, String token) {
-    _tokenWork = _tokenWork.catchError((Object _) {}).then((_) async {
-      if (_syncedUid == uid && FirebaseAuth.instance.currentUser?.uid == uid) {
-        await _saveToken(uid, token);
-      }
-    });
-    return _tokenWork;
-  }
-
-  void setNavigationReady(bool ready) {
-    _navigationReady = ready;
-    if (ready && _pendingVendorId != null) {
-      final id = _pendingVendorId!;
-      _pendingVendorId = null;
-      unawaited(_openVendorDetails(id));
-    }
-  }
-
-
-  // One-time setup: creates the notification channel, requests
-  // permission, and wires up listeners for taps in every app state
-  // (foreground, background, terminated). Safe to call more than once.
-  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
-    if (_initialized) { return; }
-
-    _navigatorKey = navigatorKey;
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
-
-    await _localNotifications.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-      onDidReceiveNotificationResponse: (response) {
-        final vendorId = response.payload;
-        if (vendorId != null) { _openVendorDetails(vendorId); }
-      },
-    );
-
-    await _messaging.requestPermission();
-    _initialized = true;
-
-    // FCM does not show a system notification by itself while the app is
-    // in the foreground, so display one manually using the same channel.
-    FirebaseMessaging.onMessage.listen((message) {
-      final notification = message.notification;
-      final vendorId = message.data['vendorId'];
-      if (notification != null) {
-        _localNotifications.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channel.id,
-              _channel.name,
-              channelDescription: _channel.description,
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-          payload: vendorId,
-        );
-      }
-    });
-
-    // App was backgrounded and the user tapped the notification.
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final vendorId = message.data['vendorId'];
-      if (vendorId != null) { _openVendorDetails(vendorId); }
-    });
-
-    // App was fully closed and got launched by tapping the notification.
-    final initialMessage = await _messaging.getInitialMessage();
-    final vendorId = initialMessage?.data['vendorId'];
-    if (vendorId != null) { _openVendorDetails(vendorId); }
-  }
-
-  // Fetches this device's FCM token and saves it on the logged-in user's
-  // Firestore record, and keeps it updated if it ever rotates. Call this
-  // once the user is known to be logged in.
-  Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
-    if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
-      await _removeCurrentDeviceToken(user);
-      return;
-    }
-    _syncedUid = user.uid;
-    await _tokenSubscription?.cancel();
-    _tokenSubscription = _messaging.onTokenRefresh.listen((token) {
-      final uid = _syncedUid;
-      if (uid != null) { unawaited(_queueTokenSave(uid, token).catchError((Object e) {
-        debugPrint('Could not refresh notification registration.');
-      })); }
-    });
-    try {
-      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
-      if (token != null) { await _queueTokenSave(user.uid, token); }
-    } catch (_) {
-      _syncedUid = null;
-      debugPrint('Notification registration unavailable.');
-    }
-  }
-
-  Future<bool> isEnabledForCurrentUser() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return false; }
-    final profile = await FirebaseFirestore.instance
-        .collection('users').doc(user.uid).get();
-    return profile.data()?['notificationsEnabled'] != false;
-  }
-
-  Future<String?> setEnabledForCurrentUser(bool enabled) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
-    try {
-      if (enabled) {
-        final settings = await _messaging.requestPermission();
-        if (settings.authorizationStatus == AuthorizationStatus.denied) {
-          return 'Notifications are blocked in your phone settings.';
-        }
-      }
-      await FirebaseFirestore.instance.collection('users').doc(user.uid)
-          .set({
-            'notificationsEnabled': enabled,
-            if (!enabled) 'fcmToken': FieldValue.delete(),
-          }, SetOptions(merge: true));
-      if (enabled) {
-        _syncedUid = null;
-        await syncTokenForCurrentUser(skipPreferenceCheck: true);
-      } else {
-        await _removeCurrentDeviceToken(user);
-        await _localNotifications.cancelAll();
-      }
-      return null;
-    } catch (_) {
-      return 'Could not update notification settings. Please try again.';
-    }
-  }
-
-  Future<void> _removeCurrentDeviceToken(User user) async {
-    _syncedUid = null;
-    await _tokenSubscription?.cancel();
-    _tokenSubscription = null;
-    await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
-    try {
-      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
-      if (token != null) {
-        final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        await FirebaseFirestore.instance.runTransaction((tx) async {
-          final doc = await tx.get(ref);
-          if (doc.data()?['fcmToken'] == token) {
-            tx.update(ref, {'fcmToken': FieldValue.delete()});
-          }
-        }).timeout(const Duration(seconds: 5));
-      }
-    } finally {
-      await _messaging.deleteToken().timeout(const Duration(seconds: 5)).catchError((Object _) {});
-    }
-  }
-
-  Future<void> clearCurrentDevice() async {
-    _navigationReady = false;
-    _pendingVendorId = null;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return; }
-    try {
-      await _removeCurrentDeviceToken(user);
-    } catch (_) {
-      debugPrint('Could not remove notification registration.');
-    } finally {
-      await _localNotifications.cancelAll();
-    }
-  }
-
-  Future<void> _saveToken(String uid, String token) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .set({'fcmToken': token}, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
-  }
-
-  Future<void> _openVendorDetails(String vendorId) async {
-    final navState = _navigatorKey?.currentState;
-    if (!_navigationReady || navState == null) {
-      _pendingVendorId = vendorId;
-      return;
-    }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-
-    final VendorModel? vendor = await _vendorService.getVendorProfile(vendorId);
-    if (vendor == null || !_navigationReady ||
-        FirebaseAuth.instance.currentUser?.uid != uid) { return; }
-
-    navState.push(
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
-    );
-  }
-}
-````
-
-## File: lib/core/services/vendor_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import '../models/vendor_model.dart';
-
-class VendorService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  CollectionReference get _vendorsRef => _firestore.collection('vendors');
-
-  Future<VendorModel?> getVendorProfile(String vendorId) async {
-    try {
-      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
-      if (doc.exists && doc.data() != null) {
-        return VendorModel.fromMap(
-          doc.data() as Map<String, dynamic>,
-          doc.id,
-        );
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error fetching vendor profile: $e');
-      return null;
-    }
-  }
-
-  Future<void> saveVendorProfile(VendorModel vendor) async {
-    try {
-      await _vendorsRef.doc(vendor.vendorId).set(
-            vendor.toProfileMap(),
-            SetOptions(merge: true),
-          );
-    } catch (e) {
-      debugPrint('Error saving vendor profile: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
-    try {
-      await _vendorsRef.doc(vendorId).set({
-        'vendorId': vendorId,
-        'isOpen': isOpen,
-        if (!isOpen) 'locationSharingActive': false,
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error toggling stall status: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> updateVendorLocation(
-    String vendorId,
-    double latitude,
-    double longitude,
-  ) async {
-    try {
-      await _vendorsRef.doc(vendorId).update({
-        'latitude': latitude,
-        'longitude': longitude,
-        'locationUpdatedAt': FieldValue.serverTimestamp(),
-        'locationSharingActive': true,
-      });
-    } catch (e) {
-      debugPrint('Error updating vendor location: $e');
-      rethrow;
-    }
-  }
-
-  Stream<VendorModel?> watchVendorProfile(String vendorId) {
-    return _vendorsRef.doc(vendorId).snapshots().map((doc) =>
-        doc.exists && doc.data() != null
-            ? VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)
-            : null);
-  }
-
-  Stream<List<VendorModel>> getOpenVendors() {
-    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
-        (snapshot) => snapshot.docs
-            .map((doc) =>
-                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-            .toList());
-  }
 }
 ````
 
@@ -2314,9 +2528,309 @@ class VendorModel {
 }
 ````
 
+## File: lib/core/services/notification_service.dart
+````dart
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../models/vendor_model.dart';
+import 'vendor_service.dart';
+import '../../features/customer/vendor_details/vendor_details_screen.dart';
+
+// Runs in its own isolate when a push arrives while the app is backgrounded
+// or fully closed. Android shows the system notification on its own from
+// the message's payload -- this only needs to exist so FCM has something
+// to call.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
+
+class NotificationService {
+  NotificationService._internal();
+  static final NotificationService instance = NotificationService._internal();
+
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+  final VendorService _vendorService = VendorService();
+
+  static const _channel = AndroidNotificationChannel(
+    'stallseeker_channel',
+    'StallSeeker Notifications',
+    description: 'Notifies you when a followed vendor starts selling.',
+    importance: Importance.high,
+  );
+
+  GlobalKey<NavigatorState>? _navigatorKey;
+  bool _initialized = false;
+  StreamSubscription<String>? _tokenSubscription;
+  String? _syncedUid;
+  String? _configuredUid;
+  String? _configuredRole;
+  String? _pendingVendorId;
+  bool _navigationReady = false;
+  Future<void> _tokenWork = Future<void>.value();
+
+  Future<void> _queueTokenSave(String uid, String token) {
+    _tokenWork = _tokenWork.catchError((Object _) {}).then((_) async {
+      if (_syncedUid == uid && FirebaseAuth.instance.currentUser?.uid == uid) {
+        await _saveToken(uid, token);
+      }
+    });
+    return _tokenWork;
+  }
+
+  void setNavigationReady(bool ready) {
+    _navigationReady = ready;
+    if (ready && _pendingVendorId != null) {
+      final id = _pendingVendorId!;
+      _pendingVendorId = null;
+      unawaited(_openVendorDetails(id));
+    }
+  }
+
+
+  // One-time setup: creates the notification channel and wires up listeners
+  // for taps in every app state. Permission is requested only after the
+  // signed-in account is confirmed to be a customer.
+  // (foreground, background, terminated). Safe to call more than once.
+  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
+    if (_initialized) { return; }
+
+    _navigatorKey = navigatorKey;
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
+
+    await _localNotifications.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (response) {
+        final vendorId = response.payload;
+        if (vendorId != null) { _openVendorDetails(vendorId); }
+      },
+    );
+
+    _initialized = true;
+
+    // FCM does not show a system notification by itself while the app is
+    // in the foreground, so display one manually using the same channel.
+    FirebaseMessaging.onMessage.listen((message) {
+      final notification = message.notification;
+      final vendorId = message.data['vendorId'];
+      if (notification != null) {
+        _localNotifications.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              _channel.id,
+              _channel.name,
+              channelDescription: _channel.description,
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          payload: vendorId,
+        );
+      }
+    });
+
+    // App was backgrounded and the user tapped the notification.
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final vendorId = message.data['vendorId'];
+      if (vendorId != null) { _openVendorDetails(vendorId); }
+    });
+
+    // App was fully closed and got launched by tapping the notification.
+    final initialMessage = await _messaging.getInitialMessage();
+    final vendorId = initialMessage?.data['vendorId'];
+    if (vendorId != null) { _openVendorDetails(vendorId); }
+  }
+
+  Future<void> configureForRole(String role) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return; }
+    if (_configuredUid == user.uid && _configuredRole == role) { return; }
+    _configuredUid = user.uid;
+    _configuredRole = role;
+
+    if (role != 'customer') {
+      _syncedUid = null;
+      await _tokenSubscription?.cancel();
+      _tokenSubscription = null;
+      await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid)
+            .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
+        await _messaging.deleteToken().timeout(const Duration(seconds: 5));
+        await _localNotifications.cancelAll();
+      } catch (_) {
+        debugPrint('Could not disable vendor notifications.');
+        _configuredUid = null;
+        _configuredRole = null;
+      }
+      return;
+    }
+
+    try {
+      if (!await isEnabledForCurrentUser()) {
+        await _removeCurrentDeviceToken(user);
+        return;
+      }
+      final settings = await _messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        await _removeCurrentDeviceToken(user);
+        return;
+      }
+      _syncedUid = null;
+      await syncTokenForCurrentUser(skipPreferenceCheck: true);
+    } catch (_) {
+      debugPrint('Could not configure customer notifications.');
+      _configuredUid = null;
+      _configuredRole = null;
+    }
+  }
+
+  // Fetches this device's FCM token and saves it on a customer account,
+  // and keeps it updated if it ever rotates.
+  Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
+    if (_configuredRole != null && _configuredRole != 'customer') { return; }
+    if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
+      await _removeCurrentDeviceToken(user);
+      return;
+    }
+    _syncedUid = user.uid;
+    await _tokenSubscription?.cancel();
+    _tokenSubscription = _messaging.onTokenRefresh.listen((token) {
+      final uid = _syncedUid;
+      if (uid != null) { unawaited(_queueTokenSave(uid, token).catchError((Object e) {
+        debugPrint('Could not refresh notification registration.');
+      })); }
+    });
+    try {
+      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
+      if (token != null) { await _queueTokenSave(user.uid, token); }
+    } catch (_) {
+      _syncedUid = null;
+      debugPrint('Notification registration unavailable.');
+    }
+  }
+
+  Future<bool> isEnabledForCurrentUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return false; }
+    final profile = await FirebaseFirestore.instance
+        .collection('users').doc(user.uid).get();
+    return profile.data()?['notificationsEnabled'] != false;
+  }
+
+  Future<String?> setEnabledForCurrentUser(bool enabled) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
+    if (_configuredRole != 'customer') {
+      return 'Notifications are only available for customer accounts.';
+    }
+    try {
+      if (enabled) {
+        final settings = await _messaging.requestPermission();
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          return 'Notifications are blocked in your phone settings.';
+        }
+      }
+      await FirebaseFirestore.instance.collection('users').doc(user.uid)
+          .set({
+            'notificationsEnabled': enabled,
+            if (!enabled) 'fcmToken': FieldValue.delete(),
+          }, SetOptions(merge: true));
+      if (enabled) {
+        _syncedUid = null;
+        await syncTokenForCurrentUser(skipPreferenceCheck: true);
+      } else {
+        await _removeCurrentDeviceToken(user);
+        await _localNotifications.cancelAll();
+      }
+      return null;
+    } catch (_) {
+      return 'Could not update notification settings. Please try again.';
+    }
+  }
+
+  Future<void> _removeCurrentDeviceToken(User user) async {
+    _syncedUid = null;
+    await _tokenSubscription?.cancel();
+    _tokenSubscription = null;
+    await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
+    try {
+      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
+      if (token != null) {
+        final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        await FirebaseFirestore.instance.runTransaction((tx) async {
+          final doc = await tx.get(ref);
+          if (doc.data()?['fcmToken'] == token) {
+            tx.update(ref, {'fcmToken': FieldValue.delete()});
+          }
+        }).timeout(const Duration(seconds: 5));
+      }
+    } finally {
+      await _messaging.deleteToken().timeout(const Duration(seconds: 5)).catchError((Object _) {});
+    }
+  }
+
+  Future<void> clearCurrentDevice() async {
+    _navigationReady = false;
+    _pendingVendorId = null;
+    _configuredUid = null;
+    _configuredRole = null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) { return; }
+    try {
+      await _removeCurrentDeviceToken(user);
+    } catch (_) {
+      debugPrint('Could not remove notification registration.');
+    } finally {
+      await _localNotifications.cancelAll();
+    }
+  }
+
+  Future<void> _saveToken(String uid, String token) async {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set({'fcmToken': token}, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+  }
+
+  Future<void> _openVendorDetails(String vendorId) async {
+    final navState = _navigatorKey?.currentState;
+    if (!_navigationReady || navState == null) {
+      _pendingVendorId = vendorId;
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    final VendorModel? vendor = await _vendorService.getVendorProfile(vendorId);
+    if (vendor == null || !_navigationReady ||
+        FirebaseAuth.instance.currentUser?.uid != uid) { return; }
+
+    navState.push(
+      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
+    );
+  }
+}
+````
+
 ## File: lib/features/customer/vendor_details/vendor_details_screen.dart
 ````dart
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -2440,17 +2954,52 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   }
 
   Future<void> _openNavigation() async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${_vendor.latitude},${_vendor.longitude}',
+    final coordinates = '${_vendor.latitude},${_vendor.longitude}';
+    final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    final googleMapsUri = isApplePlatform
+        ? Uri.parse('comgooglemaps://?daddr=$coordinates&directionsmode=driving')
+        : Uri.parse('google.navigation:q=$coordinates&mode=d');
+    final wazeUri = Uri.parse('waze://?ll=$coordinates&navigate=yes');
+    final browserUri = Uri.https(
+      'www.google.com', '/maps/dir/', {'api': '1', 'destination': coordinates},
     );
-    try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) { throw StateError('No maps application'); }
-    } catch (_) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open directions. Please retry.')),
-      ); }
+    var googleMapsAvailable = false;
+    var wazeAvailable = false;
+    if (!kIsWeb) {
+      try {
+        googleMapsAvailable = await canLaunchUrl(googleMapsUri);
+        wazeAvailable = await canLaunchUrl(wazeUri);
+      } catch (_) {
+        // The browser fallback remains available when app detection fails.
+      }
     }
+    if (!mounted) { return; }
+
+    Future<void> launchNavigation(Uri uri) async {
+      Navigator.pop(context);
+      var launched = false;
+      try { launched = await launchUrl(uri, mode: LaunchMode.externalApplication); }
+      catch (_) { launched = false; }
+      if (!launched && mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open that navigation app.'))); }
+    }
+
+    await showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(title: const Text('Choose navigation app'),
+          subtitle: Text(_vendor.stallName.isEmpty ? 'Stall location' : _vendor.stallName)),
+        if (googleMapsAvailable) ListTile(leading: const Icon(Icons.map_outlined),
+          title: const Text('Google Maps'), onTap: () => launchNavigation(googleMapsUri)),
+        if (wazeAvailable) ListTile(leading: const Icon(Icons.navigation_outlined),
+          title: const Text('Waze'), onTap: () => launchNavigation(wazeUri)),
+        ListTile(leading: const Icon(Icons.open_in_browser),
+          title: const Text('Google Maps in browser'), onTap: () => launchNavigation(browserUri)),
+        if (!googleMapsAvailable && !wazeAvailable) const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text('Google Maps and Waze were not detected. Browser directions are still available.',
+            style: TextStyle(color: Colors.grey))),
+      ])));
   }
 
   void _showLoginRequiredDialog(BuildContext context) {
@@ -3161,327 +3710,6 @@ class AppTheme {
 }
 ````
 
-## File: lib/features/auth/screens/register_screen.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _auth = AuthService();
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  final _confirm = TextEditingController();
-  String _role = 'customer';
-  bool _busy = false;
-  bool _hidePassword = true;
-
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _busy = true);
-    final error = await _auth.signUp(email: _email.text.trim(), password: _password.text,
-      fullName: _name.text.trim(), role: _role);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (error == null) {
-      Navigator.maybePop(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(error), backgroundColor: const Color(0xFFB3261E)));
-    }
-  }
-
-  Future<void> _guest() async {
-    if (_busy) return;
-    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
-      Navigator.maybePop(context); return;
-    }
-    setState(() => _busy = true);
-    final error = await _auth.signInAsGuest();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (error == null) Navigator.maybePop(context); else ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error), backgroundColor: const Color(0xFFB3261E)));
-  }
-
-  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
-    labelText: label, suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
-    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: Color(0xFFB3261E))),
-  );
-
-  @override
-  void dispose() { _name.dispose(); _email.dispose(); _password.dispose(); _confirm.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.white,
-    body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
-      child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Align(alignment: Alignment.centerRight, child: IconButton(
-            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
-            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF0F0F2)),
-            icon: const Icon(Icons.close_rounded, color: Color(0xFF6E6E73)))),
-          const SizedBox(height: 18),
-          const Icon(Icons.storefront_rounded, size: 46, color: AppColors.primary),
-          const SizedBox(height: 14),
-          const Text('Create your account', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 27, fontWeight: FontWeight.w600, letterSpacing: -.4)),
-          const SizedBox(height: 7),
-          const Text('Save favourite stalls and receive live updates.', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF707078))),
-          const SizedBox(height: 28),
-          TextFormField(controller: _name, textInputAction: TextInputAction.next,
-            decoration: _field('Full name'),
-            validator: (v) => v == null || v.trim().isEmpty ? 'Enter your name.' : null),
-          const SizedBox(height: 12),
-          TextFormField(controller: _email, keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next, decoration: _field('Email address'),
-            validator: (v) => v == null || !v.trim().contains('@') ? 'Enter a valid email address.' : null),
-          const SizedBox(height: 12),
-          TextFormField(controller: _password, obscureText: _hidePassword,
-            textInputAction: TextInputAction.next,
-            decoration: _field('Password', suffix: IconButton(
-              onPressed: () => setState(() => _hidePassword = !_hidePassword),
-              icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined))),
-            validator: (v) => v == null || v.length < 6 ? 'Use at least 6 characters.' : null),
-          const SizedBox(height: 12),
-          TextFormField(controller: _confirm, obscureText: _hidePassword,
-            textInputAction: TextInputAction.done, decoration: _field('Confirm password'),
-            validator: (v) => v != _password.text ? 'Passwords do not match.' : null),
-          const SizedBox(height: 18),
-          const Text('Account type', style: TextStyle(fontSize: 13, color: Color(0xFF707078))),
-          const SizedBox(height: 8),
-          SegmentedButton<String>(segments: const [
-            ButtonSegment(value: 'customer', icon: Icon(Icons.person_outline), label: Text('Customer')),
-            ButtonSegment(value: 'vendor', icon: Icon(Icons.storefront_outlined), label: Text('Vendor')),
-          ], selected: {_role}, onSelectionChanged: _busy ? null : (v) => setState(() => _role = v.first),
-            style: ButtonStyle(shape: WidgetStatePropertyAll(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))))),
-          const SizedBox(height: 24),
-          SizedBox(height: 56, child: FilledButton(onPressed: _busy ? null : _register,
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
-            child: _busy ? const SizedBox(width: 22, height: 22,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('Create account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)))),
-          const SizedBox(height: 18),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Text('Already have an account? ', style: TextStyle(color: Color(0xFF707078))),
-            TextButton(onPressed: _busy ? null : () => Navigator.pushReplacement(context,
-              MaterialPageRoute(builder: (_) => const LoginScreen())),
-              child: const Text('Sign in', style: TextStyle(color: AppColors.primary,
-                fontWeight: FontWeight.w600))),
-          ]),
-        ]))),
-    ))));
-}
-````
-
-## File: lib/features/auth/screens/welcome_screen.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import 'login_screen.dart';
-import 'register_screen.dart';
-
-class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  final _authService = AuthService();
-  bool _isLoading = false;
-
-  Future<void> _continueWithGoogle() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInWithGoogle();
-    if (mounted) { setState(() => _isLoading = false); }
-
-    if (error != null && error != 'cancelled' && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(error), backgroundColor: const Color(0xFFFF6B56)),
-      );
-    }
-  }
-
-  Future<void> _continueAsGuest() async {
-    setState(() => _isLoading = true);
-    final error = await _authService.signInAsGuest();
-    if (mounted) { setState(() => _isLoading = false); }
-
-    if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  void _goToRegister() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-    );
-  }
-
-  void _goToLogin() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(
-                Icons.storefront,
-                size: 64,
-                color: Color(0xFFFF6E41), // removed const (was unnecessary)
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'StallSeeker',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                  fontFamily: 'Poppins',
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Find nearby food stalls, live.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade600,
-                  fontFamily: 'Poppins',
-                ),
-              ),
-              const SizedBox(height: 40),
-              _buildActionButton(
-                icon: Image.asset('assets/google_logo.png', height: 20),
-                label: 'Continue with Google',
-                backgroundColor: const Color(0xFFF1F3F4),
-                foregroundColor: Colors.black,
-                onPressed: _isLoading ? null : _continueWithGoogle,
-              ),
-              const SizedBox(height: 10),
-              _buildActionButton(
-                icon: const Icon(Icons.email_outlined, size: 24),
-                label: 'Continue with Email',
-                backgroundColor: const Color(0xFFFF6E41),
-                foregroundColor: Colors.white,
-                onPressed: _isLoading ? null : _goToRegister,
-              ),
-              const SizedBox(height: 10),
-              _buildActionButton(
-                icon: const Icon(Icons.person_outline, size: 24),
-                label: 'Continue as Guest',
-                backgroundColor: const Color(0xFF1C1C1E),
-                foregroundColor: Colors.white,
-                onPressed: _isLoading ? null : _continueAsGuest,
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: TextButton(
-                  onPressed: _isLoading ? null : _goToLogin,
-                  child: RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                      children: const [
-                        TextSpan(text: 'Already have an account? '),
-                        TextSpan(
-                          text: 'Sign In',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (_isLoading) ...[
-                const SizedBox(height: 16),
-                const Center(child: CircularProgressIndicator()),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required Widget icon,
-    required String label,
-    required Color backgroundColor,
-    required Color foregroundColor,
-    VoidCallback? onPressed,
-  }) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: backgroundColor,
-        foregroundColor: foregroundColor,
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(vertical: 22),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50),
-        ),
-        textStyle: const TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w500, fontFamily: 'Poppins'),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          icon,
-          const SizedBox(width: 12),
-          Text(label),
-        ],
-      ),
-    );
-  }
-}
-````
-
 ## File: lib/features/customer/following/customer_following_screen.dart
 ````dart
 import 'dart:async';
@@ -3748,6 +3976,249 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
 }
 ````
 
+## File: lib/features/auth/screens/register_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _auth = AuthService();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  String _role = 'customer';
+  bool _busy = false;
+  bool _hidePassword = true;
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final error = await _auth.signUp(email: _email.text.trim(), password: _password.text,
+      fullName: _name.text.trim(), role: _role);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error), backgroundColor: const Color(0xFFB3261E)));
+    }
+  }
+
+  Future<void> _guest() async {
+    if (_busy) return;
+    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+      Navigator.maybePop(context); return;
+    }
+    setState(() => _busy = true);
+    final error = await _auth.signInAsGuest();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      Navigator.maybePop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error), backgroundColor: const Color(0xFFB3261E)));
+    }
+  }
+
+  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+    labelText: label, suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: Color(0xFFB3261E))),
+  );
+
+  @override
+  void dispose() { _name.dispose(); _email.dispose(); _password.dispose(); _confirm.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.white,
+    body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
+      child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Align(alignment: Alignment.centerRight, child: IconButton(
+            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
+            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF0F0F2)),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF6E6E73)))),
+          const SizedBox(height: 18),
+          const Icon(Icons.storefront_rounded, size: 46, color: AppColors.primary),
+          const SizedBox(height: 14),
+          const Text('Create your account', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 27, fontWeight: FontWeight.w600, letterSpacing: -.4)),
+          const SizedBox(height: 7),
+          const Text('Save favourite stalls and receive live updates.', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF707078))),
+          const SizedBox(height: 28),
+          TextFormField(controller: _name, textInputAction: TextInputAction.next,
+            decoration: _field('Full name'),
+            validator: (v) => v == null || v.trim().isEmpty ? 'Enter your name.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _email, keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next, decoration: _field('Email address'),
+            validator: (v) => v == null || !v.trim().contains('@') ? 'Enter a valid email address.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _password, obscureText: _hidePassword,
+            textInputAction: TextInputAction.next,
+            decoration: _field('Password', suffix: IconButton(
+              onPressed: () => setState(() => _hidePassword = !_hidePassword),
+              icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined))),
+            validator: (v) => v == null || v.length < 6 ? 'Use at least 6 characters.' : null),
+          const SizedBox(height: 12),
+          TextFormField(controller: _confirm, obscureText: _hidePassword,
+            textInputAction: TextInputAction.done, decoration: _field('Confirm password'),
+            validator: (v) => v != _password.text ? 'Passwords do not match.' : null),
+          const SizedBox(height: 18),
+          const Text('Account type', style: TextStyle(fontSize: 13, color: Color(0xFF707078))),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(segments: const [
+            ButtonSegment(value: 'customer', icon: Icon(Icons.person_outline), label: Text('Customer')),
+            ButtonSegment(value: 'vendor', icon: Icon(Icons.storefront_outlined), label: Text('Vendor')),
+          ], selected: {_role}, onSelectionChanged: _busy ? null : (v) => setState(() => _role = v.first),
+            style: ButtonStyle(shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))))),
+          const SizedBox(height: 24),
+          SizedBox(height: 56, child: FilledButton(onPressed: _busy ? null : _register,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+            child: _busy ? const SizedBox(width: 22, height: 22,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Create account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)))),
+          const SizedBox(height: 18),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text('Already have an account? ', style: TextStyle(color: Color(0xFF707078))),
+            TextButton(onPressed: _busy ? null : () => Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const LoginScreen())),
+              child: const Text('Sign in', style: TextStyle(color: AppColors.primary,
+                fontWeight: FontWeight.w600))),
+          ]),
+        ]))),
+    ))));
+}
+````
+
+## File: lib/features/auth/screens/welcome_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import 'login_screen.dart';
+
+class WelcomeScreen extends StatefulWidget {
+  const WelcomeScreen({super.key});
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final _auth = AuthService();
+  bool _busy = false;
+  bool _loginOpen = false;
+
+  Future<void> _google() async {
+    setState(() => _busy = true);
+    final error = await _auth.signInWithGoogle();
+    if (!mounted) { return; }
+    setState(() => _busy = false);
+    if (error != null && error != 'cancelled') { _showError(error); }
+  }
+
+  Future<void> _guest() async {
+    if (_busy) { return; }
+    setState(() => _busy = true);
+    final error = await _auth.signInAsGuest();
+    if (!mounted) { return; }
+    setState(() => _busy = false);
+    if (error != null) { _showError(error); }
+  }
+
+  void _showError(String message) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message), backgroundColor: const Color(0xFFB3261E)));
+
+  Future<void> _openLogin() async {
+    setState(() => _loginOpen = true);
+    await showLoginSheet(context);
+    if (mounted) { setState(() => _loginOpen = false); }
+  }
+
+  Widget _button({required Widget icon, required String label, required Color color,
+    required Color textColor, required VoidCallback? onPressed}) => SizedBox(
+    height: 58,
+    child: FilledButton(onPressed: onPressed,
+      style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: textColor,
+        disabledBackgroundColor: color.withValues(alpha: .65),
+        disabledForegroundColor: textColor.withValues(alpha: .88),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        icon, const SizedBox(width: 12),
+        Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      ])),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF18181A),
+    body: Stack(children: [
+      Positioned.fill(child: ColoredBox(color: Colors.white,
+        child: SafeArea(bottom: false, child: Stack(children: [
+          if (!_loginOpen) Positioned(top: 12, right: 18, child: IconButton(
+            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
+            style: IconButton.styleFrom(backgroundColor: const Color(0xFFEAEAEC)),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF73737A)))),
+          Center(child: Transform.translate(offset: const Offset(0, 26),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('StallSeeker', style: TextStyle(fontSize: 34,
+                  fontWeight: FontWeight.w700, color: AppColors.textDark, letterSpacing: -1.1)),
+                const SizedBox(width: 8),
+                Container(width: 34, height: 34,
+                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.storefront_rounded, size: 21, color: Colors.white)),
+              ]),
+              const SizedBox(height: 12),
+              const Text('Find nearby food stalls, live.',
+                style: TextStyle(fontSize: 15, color: Color(0xFF77777E))),
+            ]))),
+        ])))),
+      Positioned(left: 0, right: 0, bottom: 0, child: Container(
+        padding: EdgeInsets.fromLTRB(24, 28, 24, MediaQuery.paddingOf(context).bottom + 20),
+        decoration: const BoxDecoration(color: Color(0xFF18181A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(40))),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _button(icon: Image.asset('assets/google_logo.png', width: 21, height: 21),
+            label: 'Continue with Google', color: Colors.white, textColor: Colors.black,
+            onPressed: _busy ? null : _google),
+          const SizedBox(height: 12),
+          _button(icon: const Icon(Icons.mail_outline_rounded, size: 22),
+            label: 'Log in or sign up', color: const Color(0xFF2D2D30), textColor: Colors.white,
+            onPressed: _busy ? null : _openLogin),
+          if (_busy) ...[
+            const SizedBox(height: 16),
+            const SizedBox(width: 22, height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+          ],
+        ]))),
+    ]),
+  );
+}
+````
+
 ## File: lib/features/vendor/menu/vendor_menu_screen.dart
 ````dart
 import 'dart:io';
@@ -3988,6 +4459,7 @@ import '../../shared/notification_settings_screen.dart';
 import '../../shared/legal_screen.dart';
 import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
+import '../../auth/screens/change_email_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geocoding/geocoding.dart';
@@ -4135,6 +4607,12 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
   }
 
+  Future<void> _changeEmail() async {
+    final changed = await Navigator.push<bool>(context,
+      MaterialPageRoute(builder: (_) => const ChangeEmailScreen()));
+    if (changed == true && mounted) { await _loadUserData(); }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
@@ -4153,6 +4631,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       onEdit: _editProfile,
       onPersonalInformation: _personalInformation,
       onPassword: _changePassword,
+      onEmail: _changeEmail,
       onFaq: () => Navigator.push(context,
         MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
       onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
@@ -4172,330 +4651,19 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 }
 ````
 
-## File: lib/core/services/auth_service.dart
-````dart
-import 'notification_service.dart';
-import 'vendor_location_service.dart';
-import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import '../models/user_model.dart';
-import '../constants/firestore_collections.dart';
-
-class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  bool _googleSignInReady = false;
-
-  // google_sign_in v7 requires an explicit initialize() call, exactly
-  // once, before authenticate()/signOut() are used. Cheap to call
-  // repeatedly since it's guarded by the flag below.
-  Future<void> _ensureGoogleSignInReady() async {
-    if (_googleSignInReady) { return; }
-    await _googleSignIn.initialize(
-      serverClientId:
-          '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
-    );
-    _googleSignInReady = true;
-  }
-
-  // Stream of auth state changes (logged in / logged out)
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Get current Firebase user
-  User? get currentUser => _auth.currentUser;
-
-  // Register user with Email, Password, Name & Role
-  Future<String?> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String role,
-  }) async {
-    try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-
-      if (credential.user != null) {
-        UserModel newUser = UserModel(
-          uid: credential.user!.uid,
-          email: email.trim(),
-          fullName: fullName.trim(),
-          role: role,
-          createdAt: DateTime.now(),
-        );
-
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(credential.user!.uid)
-            .set(newUser.toMap());
-
-        return null;
-      }
-      return "User creation failed.";
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Login user with Email & Password
-  Future<String?> login({
-    required String email,
-    required String password,
-  }) async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
-      );
-      return null;
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "An authentication error occurred.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Google sign-in. Offered as a quick customer entry point -- a
-  // brand-new Google user is created as role 'customer' automatically,
-  // using their Google account's display name as fullName. Vendors
-  // still register with email/password since a stall account needs the
-  // role picker anyway.
-  //
-  // A 25-second timeout is applied to the account picker step. Without
-  // this, a misconfigured SHA-1 fingerprint (the most common cause of
-  // this failing) makes the picker hang indefinitely with no error and
-  // no way forward for the user -- the timeout turns that into a clear
-  // message instead of a frozen screen.
-  Future<String?> signInWithGoogle() async {
-    try {
-      await _ensureGoogleSignInReady();
-
-      final GoogleSignInAccount googleUser = await _googleSignIn
-          .authenticate()
-          .timeout(const Duration(seconds: 25));
-
-      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await _auth
-          .signInWithCredential(credential)
-          .timeout(const Duration(seconds: 25));
-      final user = userCredential.user;
-
-      if (user != null &&
-          (userCredential.additionalUserInfo?.isNewUser ?? false)) {
-        final newUser = UserModel(
-          uid: user.uid,
-          email: user.email ?? '',
-          fullName: user.displayName ?? '',
-          role: 'customer',
-          createdAt: DateTime.now(),
-        );
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(user.uid)
-            .set(newUser.toMap());
-      }
-
-      return null;
-    } on TimeoutException {
-      return "Google sign-in timed out. Check your connection and try again, "
-          "or sign in with email.";
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        return "cancelled"; // user closed the picker without choosing
-      }
-      return e.description ?? "Google sign-in failed.";
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'account-exists-with-different-credential') {
-        return "An account already exists with this email. Log in with your email and password instead.";
-      }
-      return e.message ?? "Google sign-in failed.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Guest mode: signs in anonymously so a customer can browse without
-  // creating an account. Anonymous users skip the Firestore users/
-  // document entirely (see AuthWrapper) and can't follow vendors --
-  // following requires converting to a real account.
-  Future<String?> signInAsGuest() async {
-    try {
-      await _auth.signInAnonymously();
-      return null;
-    } on FirebaseAuthException catch (e) {
-      return e.message ?? "Could not start guest session.";
-    } catch (e) {
-      return e.toString();
-    }
-  }
-
-  // Fetch current user's data from Firestore
-  Future<UserModel?> getUserData(String uid) async {
-    try {
-      DocumentSnapshot doc = await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      }
-      return null;
-    } catch (e) {
-      debugPrint("Error fetching user data: $e");
-      return null;
-    }
-  }
-
-  // Sign Out
-  Future<void> signOut() async {
-    await VendorLocationService.instance.pause();
-    try {
-      await NotificationService.instance.clearCurrentDevice();
-    } catch (_) {
-      debugPrint('Notification cleanup could not finish.');
-    }
-    try {
-      if (_googleSignInReady) { await _googleSignIn.signOut(); }
-    } finally {
-      await _auth.signOut();
-    }
-  }
-
-  Future<String?> resetPassword({required String email}) async {
-    try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
-      return null;
-    } on FirebaseAuthException catch (e) {
-      // Give the same result for unknown accounts to avoid exposing sign-ups.
-      if (e.code == 'user-not-found') { return null; }
-      if (e.code == 'invalid-email') { return 'Enter a valid email address.'; }
-      if (e.code == 'too-many-requests') { return 'Too many requests. Please wait and try again.'; }
-      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
-      return 'Could not send the reset link. Please try again.';
-    } catch (_) {
-      return 'Could not send the reset link. Please try again.';
-    }
-  }
-
-  Future<String?> changePassword(String newPassword, {String? currentPassword}) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) { return "No user is currently logged in."; }
-      if (currentPassword != null) {
-        if (user.email == null || !user.providerData.any((p) => p.providerId == 'password')) {
-          return 'Manage your password with your sign-in provider.';
-        }
-        final credential = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
-        await user.reauthenticateWithCredential(credential);
-      }
-      await user.updatePassword(newPassword);
-      return null;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        return 'Your current password is incorrect. Please try again.';
-      }
-      if (e.code == 'too-many-requests') { return 'Too many attempts. Please wait and try again.'; }
-      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
-      if (e.code == 'requires-recent-login') {
-        return "For security, please log out and log back in before changing your password.";
-      }
-      return e.message ?? "Could not change password.";
-    } catch (_) {
-      return 'Could not update your password. Please try again.';
-    }
-  }
-
-  Future<String?> updateFullName(String uid, String newName) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null || user.isAnonymous || user.uid != uid) { return 'Please sign in to edit your profile.'; }
-      final name = newName.trim();
-      if (name.isEmpty || name.length > 80) { return 'Enter a name between 1 and 80 characters.'; }
-      await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(uid)
-          .update({'fullName': name});
-      // Firestore is the app's profile source. Sync Auth's display name as well.
-      try { await user.updateDisplayName(name); }
-      catch (_) { debugPrint('Profile saved; Auth display-name sync is unavailable.'); }
-      return null;
-    } catch (_) {
-      return 'Could not save your profile. Please try again.';
-    }
-  }
-
-  Future<String?> deleteAccount({String? currentPassword}) async {
-    final user = _auth.currentUser;
-    if (user == null || user.isAnonymous) { return 'Sign in before deleting your account.'; }
-    try {
-      final providers = user.providerData.map((provider) => provider.providerId).toSet();
-      if (providers.contains('password')) {
-        if (currentPassword == null || currentPassword.isEmpty || user.email == null) {
-          return 'Enter your current password.';
-        }
-        await user.reauthenticateWithCredential(EmailAuthProvider.credential(
-          email: user.email!, password: currentPassword));
-      } else if (providers.contains('google.com')) {
-        await _ensureGoogleSignInReady();
-        final googleUser = await _googleSignIn.authenticate();
-        final googleAuth = googleUser.authentication;
-        await user.reauthenticateWithCredential(
-          GoogleAuthProvider.credential(idToken: googleAuth.idToken));
-      } else {
-        return 'Log out, sign in again, then retry account deletion.';
-      }
-
-      await NotificationService.instance.clearCurrentDevice();
-      await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
-      await _auth.signOut();
-      return null;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        return 'Your current password is incorrect.';
-      }
-      if (e.code == 'requires-recent-login') {
-        return 'Log out, sign in again, then retry account deletion.';
-      }
-      return e.message ?? 'Could not verify your account.';
-    } on FirebaseFunctionsException catch (e) {
-      if (e.code == 'unauthenticated') { return 'Your session expired. Sign in and try again.'; }
-      if (e.code == 'failed-precondition') {
-        return 'Confirm your sign-in, then retry account deletion.';
-      }
-      return 'Could not finish account deletion. Please retry.';
-    } catch (_) {
-      return 'Could not delete your account. Please try again.';
-    }
-  }
-}
-````
-
 ## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
 ````dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/vendor_location_service.dart';
 import '../profile/edit_stall_screen.dart';
 import '../menu/vendor_menu_screen.dart';
+import '../../shared/manual_location_dialog.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
   const VendorDashboardScreen({super.key});
@@ -4598,16 +4766,39 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen>
     setState(() => _saving = true);
     try {
       if (open) {
-        final position = await _position();
+        double? latitude;
+        double? longitude;
+        var manualLocation = false;
+        try {
+          final position = await _position();
+          latitude = position.latitude;
+          longitude = position.longitude;
+        } catch (_) {
+          if (!mounted) { return; }
+          final existing = _vendor?.hasValidLocation == true
+              ? LatLng(_vendor!.latitude, _vendor!.longitude) : null;
+          final location = await showManualLocationDialog(context,
+            initialLocation: existing,
+            title: 'Set Stall Location Manually');
+          if (location == null || !mounted) { return; }
+          latitude = location.latitude;
+          longitude = location.longitude;
+          manualLocation = true;
+        }
         if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) { return; }
-        await _vendorService.updateVendorLocation(uid, position.latitude, position.longitude);
+        await _vendorService.updateVendorLocation(uid, latitude, longitude,
+          sharingActive: !manualLocation);
         await _vendorService.toggleStallStatus(uid, true);
-        if (mounted && _foreground) { await _location.start(uid); }
+        if (!manualLocation && mounted && _foreground) { await _location.start(uid); }
+        if (manualLocation) {
+          _message('Your stall is open using the manually entered location.');
+        }
       } else {
         await _location.pause();
         await _vendorService.toggleStallStatus(uid, false);
       }
-      _message(open ? 'Your stall is open.' : 'Your stall is closed.');
+      if (!open) { _message('Your stall is closed.'); }
+      if (open && _location.isSharing) { _message('Your stall is open.'); }
     } catch (_) {
       _message('Could not update your stall. Check GPS, location permission, and connection, then retry.');
     } finally {
@@ -4684,6 +4875,359 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen>
 }
 ````
 
+## File: lib/core/services/auth_service.dart
+````dart
+import 'notification_service.dart';
+import 'vendor_location_service.dart';
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../models/user_model.dart';
+import '../constants/firestore_collections.dart';
+
+class AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  static bool _googleSignInReady = false;
+
+  // google_sign_in v7 requires an explicit initialize() call, exactly
+  // once, before authenticate()/signOut() are used. Cheap to call
+  // repeatedly since it's guarded by the flag below.
+  Future<void> _ensureGoogleSignInReady() async {
+    if (_googleSignInReady) { return; }
+    await _googleSignIn.initialize(
+      serverClientId:
+          '793011933510-ljrpbsf089fjdmjk58tfo7o1dmg1bmov.apps.googleusercontent.com',
+    );
+    _googleSignInReady = true;
+  }
+
+  // Stream of auth state changes (logged in / logged out)
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Get current Firebase user
+  User? get currentUser => _auth.currentUser;
+
+  // Register user with Email, Password, Name & Role
+  Future<String?> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+    required String role,
+  }) async {
+    try {
+      UserCredential credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      if (credential.user != null) {
+        UserModel newUser = UserModel(
+          uid: credential.user!.uid,
+          email: email.trim(),
+          fullName: fullName.trim(),
+          role: role,
+          createdAt: DateTime.now(),
+        );
+
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(credential.user!.uid)
+            .set({...newUser.toMap(), 'emailVerified': false});
+
+        return null;
+      }
+      return "User creation failed.";
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Login user with Email & Password
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "An authentication error occurred.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Google sign-in. Offered as a quick customer entry point -- a
+  // brand-new Google user is created as role 'customer' automatically,
+  // using their Google account's display name as fullName. Vendors
+  // still register with email/password since a stall account needs the
+  // role picker anyway.
+  //
+  // A 25-second timeout is applied to the account picker step. Without
+  // this, a misconfigured SHA-1 fingerprint (the most common cause of
+  // this failing) makes the picker hang indefinitely with no error and
+  // no way forward for the user -- the timeout turns that into a clear
+  // message instead of a frozen screen.
+  Future<String?> signInWithGoogle() async {
+    try {
+      await _ensureGoogleSignInReady();
+
+      final GoogleSignInAccount googleUser = await _googleSignIn
+          .authenticate()
+          .timeout(const Duration(seconds: 25));
+
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await _auth
+          .signInWithCredential(credential)
+          .timeout(const Duration(seconds: 25));
+      final user = userCredential.user;
+
+      if (user != null &&
+          (userCredential.additionalUserInfo?.isNewUser ?? false)) {
+        final newUser = UserModel(
+          uid: user.uid,
+          email: user.email ?? '',
+          fullName: user.displayName ?? '',
+          role: 'customer',
+          createdAt: DateTime.now(),
+        );
+        await _firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .set({...newUser.toMap(), 'emailVerified': true});
+      }
+
+      return null;
+    } on TimeoutException {
+      return "Google sign-in timed out. Check your connection and try again, "
+          "or sign in with email.";
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return "cancelled"; // user closed the picker without choosing
+      }
+      return e.description ?? "Google sign-in failed.";
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        return "An account already exists with this email. Log in with your email and password instead.";
+      }
+      return e.message ?? "Google sign-in failed.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Guest mode: signs in anonymously so a customer can browse without
+  // creating an account. Anonymous users skip the Firestore users/
+  // document entirely (see AuthWrapper) and can't follow vendors --
+  // following requires converting to a real account.
+  Future<String?> signInAsGuest() async {
+    try {
+      await _auth.signInAnonymously();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? "Could not start guest session.";
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // Fetch current user's data from Firestore
+  Future<UserModel?> getUserData(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      }
+      return null;
+    } catch (e) {
+      debugPrint("Error fetching user data: $e");
+      return null;
+    }
+  }
+
+  // Sign Out
+  Future<void> signOut() async {
+    await VendorLocationService.instance.pause();
+    try {
+      await NotificationService.instance.clearCurrentDevice();
+    } catch (_) {
+      debugPrint('Notification cleanup could not finish.');
+    }
+    try {
+      if (_googleSignInReady) { await _googleSignIn.signOut(); }
+    } finally {
+      await _auth.signOut();
+    }
+  }
+
+  Future<String?> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return null;
+    } on FirebaseAuthException catch (e) {
+      // Give the same result for unknown accounts to avoid exposing sign-ups.
+      if (e.code == 'user-not-found') { return null; }
+      if (e.code == 'invalid-email') { return 'Enter a valid email address.'; }
+      if (e.code == 'too-many-requests') { return 'Too many requests. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      return 'Could not send the reset link. Please try again.';
+    } catch (_) {
+      return 'Could not send the reset link. Please try again.';
+    }
+  }
+
+  Future<String?> requestEmailVerificationCode({String? newEmail}) async {
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('requestEmailVerificationCode');
+      await callable.call(<String, dynamic>{
+        'purpose': newEmail == null ? 'registration' : 'email_change',
+        if (newEmail != null) 'newEmail': newEmail.trim(),
+      });
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'Could not send the verification code.';
+    } catch (_) {
+      return 'Could not send the verification code. Please try again.';
+    }
+  }
+
+  Future<String?> confirmEmailVerificationCode({
+    required String code,
+    String? newEmail,
+  }) async {
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('confirmEmailVerificationCode');
+      await callable.call(<String, dynamic>{
+        'purpose': newEmail == null ? 'registration' : 'email_change',
+        'code': code.trim(),
+        if (newEmail != null) 'newEmail': newEmail.trim(),
+      });
+      await _auth.currentUser?.reload();
+      await _auth.currentUser?.getIdToken(true);
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      return e.message ?? 'The verification code could not be confirmed.';
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'The account could not be refreshed.';
+    } catch (_) {
+      return 'The verification code could not be confirmed. Please try again.';
+    }
+  }
+
+  Future<String?> changePassword(String newPassword, {String? currentPassword}) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) { return "No user is currently logged in."; }
+      if (currentPassword != null) {
+        if (user.email == null || !user.providerData.any((p) => p.providerId == 'password')) {
+          return 'Manage your password with your sign-in provider.';
+        }
+        final credential = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+        await user.reauthenticateWithCredential(credential);
+      }
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect. Please try again.';
+      }
+      if (e.code == 'too-many-requests') { return 'Too many attempts. Please wait and try again.'; }
+      if (e.code == 'network-request-failed') { return 'Could not connect. Check your network and retry.'; }
+      if (e.code == 'requires-recent-login') {
+        return "For security, please log out and log back in before changing your password.";
+      }
+      return e.message ?? "Could not change password.";
+    } catch (_) {
+      return 'Could not update your password. Please try again.';
+    }
+  }
+
+  Future<String?> updateFullName(String uid, String newName) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.isAnonymous || user.uid != uid) { return 'Please sign in to edit your profile.'; }
+      final name = newName.trim();
+      if (name.isEmpty || name.length > 80) { return 'Enter a name between 1 and 80 characters.'; }
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(uid)
+          .update({'fullName': name});
+      // Firestore is the app's profile source. Sync Auth's display name as well.
+      try { await user.updateDisplayName(name); }
+      catch (_) { debugPrint('Profile saved; Auth display-name sync is unavailable.'); }
+      return null;
+    } catch (_) {
+      return 'Could not save your profile. Please try again.';
+    }
+  }
+
+  Future<String?> deleteAccount({String? currentPassword}) async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) { return 'Sign in before deleting your account.'; }
+    try {
+      final providers = user.providerData.map((provider) => provider.providerId).toSet();
+      if (providers.contains('password')) {
+        if (currentPassword == null || currentPassword.isEmpty || user.email == null) {
+          return 'Enter your current password.';
+        }
+        await user.reauthenticateWithCredential(EmailAuthProvider.credential(
+          email: user.email!, password: currentPassword));
+      } else if (providers.contains('google.com')) {
+        await _ensureGoogleSignInReady();
+        final googleUser = await _googleSignIn.authenticate();
+        final googleAuth = googleUser.authentication;
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+      } else {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
+
+      await NotificationService.instance.clearCurrentDevice();
+      await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
+      await _auth.signOut();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Your current password is incorrect.';
+      }
+      if (e.code == 'requires-recent-login') {
+        return 'Log out, sign in again, then retry account deletion.';
+      }
+      return e.message ?? 'Could not verify your account.';
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unauthenticated') { return 'Your session expired. Sign in and try again.'; }
+      if (e.code == 'failed-precondition') {
+        return 'Confirm your sign-in, then retry account deletion.';
+      }
+      return 'Could not finish account deletion. Please retry.';
+    } catch (_) {
+      return 'Could not delete your account. Please try again.';
+    }
+  }
+}
+````
+
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
 import 'dart:async';
@@ -4694,8 +5238,40 @@ import '../../../core/services/auth_service.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
 
+Future<void> showLoginSheet(BuildContext context) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: false,
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: .28),
+      builder: (sheetContext) => AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: .90,
+          minChildSize: .55,
+          maxChildSize: .96,
+          snap: true,
+          snapSizes: const [.55, .90],
+          builder: (_, controller) => LoginScreen(
+            embeddedInSheet: true,
+            scrollController: controller,
+          ),
+        ),
+      ),
+    );
+
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen(
+      {super.key, this.embeddedInSheet = false, this.scrollController});
+  final bool embeddedInSheet;
+  final ScrollController? scrollController;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -4713,114 +5289,381 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null && !user.isAnonymous && mounted && Navigator.canPop(context)) {
+      if (user != null &&
+          !user.isAnonymous &&
+          user.emailVerified &&
+          mounted &&
+          Navigator.canPop(context)) {
         Navigator.pop(context);
       }
     });
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _busy = true);
-    final error = await _auth.login(email: _email.text.trim(), password: _password.text);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (error != null) _error(error);
-  }
-
-  Future<void> _guest() async {
-    if (_busy) return;
-    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
-      Navigator.maybePop(context);
+    if (!_formKey.currentState!.validate()) {
       return;
     }
     setState(() => _busy = true);
-    final error = await _auth.signInAsGuest();
-    if (!mounted) return;
+    final error =
+        await _auth.login(email: _email.text.trim(), password: _password.text);
+    if (!mounted) {
+      return;
+    }
     setState(() => _busy = false);
-    if (error == null) Navigator.maybePop(context); else _error(error);
+    if (error != null) {
+      _showError(error);
+    } else if (FirebaseAuth.instance.currentUser?.emailVerified == false) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
-  void _error(String message) => ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: const Color(0xFFB3261E)));
+  Future<void> _google() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    final error = await _auth.signInWithGoogle();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busy = false);
+    if (error != null && error != 'cancelled') {
+      _showError(error);
+    }
+  }
 
-  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
-    labelText: label, suffixIcon: suffix, filled: true, fillColor: const Color(0xFFF5F5F7),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
-    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: Color(0xFFB3261E))),
-  );
+  void _close() {
+    if (!_busy) {
+      Navigator.maybePop(context);
+    }
+  }
+
+  void _showError(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(message), backgroundColor: const Color(0xFFB3261E)));
 
   @override
   void dispose() {
-    _authSub?.cancel(); _email.dispose(); _password.dispose(); super.dispose();
+    _authSub?.cancel();
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+        labelText: label,
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD5D5D8))),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD5D5D8))),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+        errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFB3261E))),
+      );
+
+  Widget _divider() => const Row(children: [
+        Expanded(child: Divider(color: Color(0xFFE3E3E5))),
+        Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14),
+            child: Text('OR',
+                style: TextStyle(fontSize: 13, color: Color(0xFF77777E)))),
+        Expanded(child: Divider(color: Color(0xFFE3E3E5))),
+      ]);
+
+  Widget _panel(BuildContext context) => Material(
+        color: Colors.white,
+        borderRadius: widget.embeddedInSheet
+            ? const BorderRadius.vertical(top: Radius.circular(28))
+            : BorderRadius.zero,
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          if (widget.embeddedInSheet) ...[
+            const SizedBox(height: 10),
+            Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                    color: const Color(0xFFD2D2D5),
+                    borderRadius: BorderRadius.circular(3))),
+          ],
+          Expanded(
+              child: SingleChildScrollView(
+            controller: widget.scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(24, widget.embeddedInSheet ? 6 : 18,
+                24, MediaQuery.paddingOf(context).bottom + 28),
+            child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                            tooltip: 'Close',
+                            onPressed: _busy ? null : _close,
+                            style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFFEAEAEC)),
+                            icon: const Icon(Icons.close_rounded,
+                                color: Color(0xFF73737A)))),
+                    const Icon(Icons.storefront_rounded,
+                        size: 42, color: AppColors.primary),
+                    const SizedBox(height: 10),
+                    const Text('Log in or sign up',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 27,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -.4)),
+                    const SizedBox(height: 8),
+                    const Text(
+                        'Follow favourite stalls and receive live updates.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: Color(0xFF707078))),
+                    const SizedBox(height: 28),
+                    TextFormField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: _field('Email address'),
+                        validator: (value) =>
+                            value == null || !value.trim().contains('@')
+                                ? 'Enter a valid email address.'
+                                : null),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _password,
+                        obscureText: _hidePassword,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.password],
+                        onFieldSubmitted: (_) => _login(),
+                        decoration: _field('Password',
+                            suffix: IconButton(
+                                onPressed: () => setState(
+                                    () => _hidePassword = !_hidePassword),
+                                icon: Icon(_hidePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined))),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Enter your password.'
+                            : null),
+                    Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => ForgotPasswordScreen(
+                                            initialEmail: _email.text.trim()))),
+                            child: const Text('Forgot password?',
+                                style: TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600)))),
+                    SizedBox(
+                        height: 56,
+                        child: FilledButton(
+                            onPressed: _busy ? null : _login,
+                            style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(28))),
+                            child: _busy
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))
+                                : const Text('Continue',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)))),
+                    const SizedBox(height: 22),
+                    _divider(),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                        height: 56,
+                        child: OutlinedButton(
+                            onPressed: _busy ? null : _google,
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.black,
+                                side:
+                                    const BorderSide(color: Color(0xFFD5D5D8)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(28))),
+                            child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset('assets/google_logo.png',
+                                      width: 21, height: 21),
+                                  const SizedBox(width: 12),
+                                  const Text('Continue with Google',
+                                      style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600)),
+                                ]))),
+                    const SizedBox(height: 16),
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      const Text("Don't have an account? ",
+                          style: TextStyle(color: Color(0xFF707078))),
+                      TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const RegisterScreen())),
+                          child: const Text('Sign up',
+                              style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600))),
+                    ]),
+                  ],
+                )),
+          )),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embeddedInSheet) {
+      return _panel(context);
+    }
+    return Scaffold(
+        backgroundColor: Colors.white, body: SafeArea(child: _panel(context)));
+  }
+}
+````
+
+## File: lib/features/auth/auth_wrapper.dart
+````dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stallseeker/features/auth/screens/welcome_screen.dart';
+import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
+import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
+import 'package:stallseeker/core/services/notification_service.dart';
+import 'package:stallseeker/core/services/auth_service.dart';
+import 'package:stallseeker/features/auth/screens/email_verification_screen.dart';
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  final _authStream = FirebaseAuth.instance.userChanges();
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(stream: _authStream, builder: (context, snapshot) {
+      if (snapshot.hasError) { return const _AccountRecovery(message: 'Could not check your session. Please sign in again.'); }
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      final user = snapshot.data;
+      if (user == null) { return const WelcomeScreen(); }
+      if (user.isAnonymous) { return const CustomerHomeScreen(); }
+      if (!user.emailVerified) { return const EmailVerificationScreen(); }
+      return _AccountGate(key: ValueKey(user.uid), user: user);
+    });
+  }
+}
+
+class _AccountGate extends StatefulWidget {
+  const _AccountGate({super.key, required this.user});
+  final User user;
+  @override
+  State<_AccountGate> createState() => _AccountGateState();
+}
+
+class _AccountGateState extends State<_AccountGate> {
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _profile;
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  void _listen() {
+    _profile = FirebaseFirestore.instance.collection('users').doc(widget.user.uid).snapshots();
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    body: SafeArea(child: Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
-      child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Form(key: _formKey, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Align(alignment: Alignment.centerRight, child: IconButton(
-            tooltip: 'Continue as guest', onPressed: _busy ? null : _guest,
-            style: IconButton.styleFrom(backgroundColor: const Color(0xFFF0F0F2)),
-            icon: const Icon(Icons.close_rounded, color: Color(0xFF6E6E73)))),
-          const SizedBox(height: 42),
-          Container(width: 64, height: 64, alignment: Alignment.center,
-            decoration: const BoxDecoration(color: Color(0xFFFFF0E9), shape: BoxShape.circle),
-            child: const Icon(Icons.storefront_rounded, size: 32, color: AppColors.primary)),
-          const SizedBox(height: 20),
-          const Text('Welcome back', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -.4)),
-          const SizedBox(height: 8),
-          const Text('Sign in to follow stalls and receive live updates.', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF707078))),
-          const SizedBox(height: 36),
-          TextFormField(controller: _email, keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next, autofillHints: const [AutofillHints.email],
-            decoration: _field('Email address'),
-            validator: (v) => v == null || !v.trim().contains('@') ? 'Enter a valid email address.' : null),
-          const SizedBox(height: 14),
-          TextFormField(controller: _password, obscureText: _hidePassword,
-            textInputAction: TextInputAction.done, autofillHints: const [AutofillHints.password],
-            onFieldSubmitted: (_) => _login(),
-            decoration: _field('Password', suffix: IconButton(
-              onPressed: () => setState(() => _hidePassword = !_hidePassword),
-              icon: Icon(_hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined))),
-            validator: (v) => v == null || v.isEmpty ? 'Enter your password.' : null),
-          Align(alignment: Alignment.centerRight, child: TextButton(
-            onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ForgotPasswordScreen(initialEmail: _email.text.trim()))),
-            child: const Text('Forgot password?', style: TextStyle(
-              color: AppColors.primary, fontWeight: FontWeight.w600)))),
-          const SizedBox(height: 8),
-          SizedBox(height: 56, child: FilledButton(
-            onPressed: _busy ? null : _login,
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
-            child: _busy ? const SizedBox(width: 22, height: 22,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('Sign in', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)))),
-          const SizedBox(height: 18),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Text("Don't have an account? ", style: TextStyle(color: Color(0xFF707078))),
-            TextButton(onPressed: _busy ? null : () => Navigator.pushReplacement(context,
-              MaterialPageRoute(builder: (_) => const RegisterScreen())),
-              child: const Text('Sign up', style: TextStyle(color: AppColors.primary,
-                fontWeight: FontWeight.w600))),
-          ]),
-          TextButton.icon(onPressed: _busy ? null : _guest,
-            icon: const Icon(Icons.person_outline_rounded), label: const Text('Continue as guest'),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFF52525A))),
-        ]))),
-    ))),
-  );
+  void dispose() {
+    NotificationService.instance.setNavigationReady(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _profile,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final role = snapshot.data?.data()?['role'];
+        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists ||
+            (role != 'vendor' && role != 'customer')) {
+          NotificationService.instance.setNavigationReady(false);
+          return _AccountRecovery(
+            message: snapshot.hasError
+                ? 'Could not load your account. Check your connection and retry.'
+                : 'Your account setup is incomplete. Retry, or sign out and contact support.',
+            retry: () => setState(_listen),
+          );
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            NotificationService.instance.setNavigationReady(role == 'customer');
+            unawaited(NotificationService.instance.configureForRole(role));
+          }
+        });
+        return role == 'vendor' ? const VendorMainScreen() : const CustomerHomeScreen();
+      },
+    );
+  }
+}
+
+class _AccountRecovery extends StatelessWidget {
+  const _AccountRecovery({required this.message, this.retry});
+  final String message;
+  final VoidCallback? retry;
+  @override
+  Widget build(BuildContext context) => Scaffold(body: Center(child: Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.cloud_off_outlined, size: 40),
+      const SizedBox(height: 16),
+      Text(message, textAlign: TextAlign.center),
+      if (retry != null) TextButton(onPressed: retry, child: const Text('Retry')),
+      TextButton(onPressed: () async {
+        try { await AuthService().signOut(); }
+        catch (_) {
+          if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not sign out. Please retry.'))); }
+        }
+      }, child: const Text('Sign out')),
+    ]),
+  )));
 }
 ````
 
@@ -4834,6 +5677,7 @@ import '../../shared/notification_settings_screen.dart';
 import '../../shared/legal_screen.dart';
 import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
+import '../../auth/screens/change_email_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geocoding/geocoding.dart';
@@ -4979,6 +5823,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         email: _userModel?.email ?? FirebaseAuth.instance.currentUser?.email ?? '')));
   }
 
+  Future<void> _changeEmail() async {
+    final changed = await Navigator.push<bool>(context,
+      MaterialPageRoute(builder: (_) => const ChangeEmailScreen()));
+    if (changed == true && mounted) { await _loadUserData(); }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) { return const Center(child: CircularProgressIndicator()); }
@@ -4997,6 +5847,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       onEdit: _editProfile,
       onPersonalInformation: _personalInformation,
       onPassword: _changePassword,
+      onEmail: _changeEmail,
       onFaq: () => Navigator.push(context,
         MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),
       onAbout: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen())),
@@ -5013,119 +5864,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       
     );
   }
-}
-````
-
-## File: lib/features/auth/auth_wrapper.dart
-````dart
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stallseeker/features/auth/screens/welcome_screen.dart';
-import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
-import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
-import 'package:stallseeker/core/services/notification_service.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
-  @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  final _authStream = FirebaseAuth.instance.authStateChanges();
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(stream: _authStream, builder: (context, snapshot) {
-      if (snapshot.hasError) { return const _AccountRecovery(message: 'Could not check your session. Please sign in again.'); }
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
-      }
-      final user = snapshot.data;
-      if (user == null) { return const WelcomeScreen(); }
-      if (user.isAnonymous) { return const CustomerHomeScreen(); }
-      return _AccountGate(key: ValueKey(user.uid), user: user);
-    });
-  }
-}
-
-class _AccountGate extends StatefulWidget {
-  const _AccountGate({super.key, required this.user});
-  final User user;
-  @override
-  State<_AccountGate> createState() => _AccountGateState();
-}
-
-class _AccountGateState extends State<_AccountGate> {
-  late Stream<DocumentSnapshot<Map<String, dynamic>>> _profile;
-  @override
-  void initState() {
-    super.initState();
-    _listen();
-    unawaited(NotificationService.instance.syncTokenForCurrentUser());
-  }
-
-  void _listen() {
-    _profile = FirebaseFirestore.instance.collection('users').doc(widget.user.uid).snapshots();
-  }
-
-  @override
-  void dispose() {
-    NotificationService.instance.setNavigationReady(false);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _profile,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        final role = snapshot.data?.data()?['role'];
-        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists ||
-            (role != 'vendor' && role != 'customer')) {
-          NotificationService.instance.setNavigationReady(false);
-          return _AccountRecovery(
-            message: snapshot.hasError
-                ? 'Could not load your account. Check your connection and retry.'
-                : 'Your account setup is incomplete. Retry, or sign out and contact support.',
-            retry: () => setState(_listen),
-          );
-        }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) { NotificationService.instance.setNavigationReady(role == 'customer'); }
-        });
-        return role == 'vendor' ? const VendorMainScreen() : const CustomerHomeScreen();
-      },
-    );
-  }
-}
-
-class _AccountRecovery extends StatelessWidget {
-  const _AccountRecovery({required this.message, this.retry});
-  final String message;
-  final VoidCallback? retry;
-  @override
-  Widget build(BuildContext context) => Scaffold(body: Center(child: Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.cloud_off_outlined, size: 40),
-      const SizedBox(height: 16),
-      Text(message, textAlign: TextAlign.center),
-      if (retry != null) TextButton(onPressed: retry, child: const Text('Retry')),
-      TextButton(onPressed: () async {
-        try { await AuthService().signOut(); }
-        catch (_) {
-          if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not sign out. Please retry.'))); }
-        }
-      }, child: const Text('Sign out')),
-    ]),
-  )));
 }
 ````
 
@@ -5222,6 +5960,7 @@ import '../../../core/services/vendor_service.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
+import '../../shared/manual_location_dialog.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -5240,6 +5979,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String _searchQuery = '';
   GoogleMapController? _mapController;
   LatLng? _customerPosition;
+  bool _usesManualLocation = false;
+  double _searchRadiusKm = 5;
 
   // NEW: Track the visible map area to filter vendors
   LatLngBounds? _visibleBounds;
@@ -5267,7 +6008,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _vendors = _vendorService.getOpenVendors();
+    _vendors = _vendorService.getAllVendors();
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && !user.isAnonymous) {
       _unreadCount = NotificationHistoryService().watchUnreadCount(user.uid);
@@ -5328,8 +6069,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             : 'Location access denied. You can still browse the map.');
       }
 
-      if (mounted) { setState(() => _locationPermissionGranted = true); }
-
       final position = await Geolocator.getCurrentPosition(
         locationSettings:
             const LocationSettings(accuracy: LocationAccuracy.high),
@@ -5338,6 +6077,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
       setState(() {
         _customerPosition = LatLng(position.latitude, position.longitude);
+        _locationPermissionGranted = true;
+        _usesManualLocation = false;
+        _locationError = null;
       });
 
       _mapController?.animateCamera(
@@ -5353,6 +6095,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (mounted) {
         setState(() => _isLocatingCustomer = false);
       }
+    }
+  }
+
+  Future<void> _enterCustomerLocationManually() async {
+    final location = await showManualLocationDialog(context,
+      initialLocation: _customerPosition ?? _defaultPosition.target,
+      title: 'Set Search Location');
+    if (location == null || !mounted) { return; }
+    setState(() {
+      _customerPosition = location;
+      _usesManualLocation = true;
+      _locationPermissionGranted = false;
+      _locationError = null;
+    });
+    await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(location, 13.5));
+  }
+
+  void _expandSearchArea() {
+    const radii = [5.0, 10.0, 25.0, 50.0];
+    final index = radii.indexOf(_searchRadiusKm);
+    if (index < 0 || index == radii.length - 1) { return; }
+    setState(() => _searchRadiusKm = radii[index + 1]);
+    final zoom = switch (_searchRadiusKm) {
+      <= 10 => 12.5,
+      <= 25 => 11.0,
+      _ => 10.0,
+    };
+    final position = _customerPosition;
+    if (position != null) {
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(position, zoom));
     }
   }
 
@@ -5495,13 +6267,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             (_category == null || v.category == _category)).toList();
 
         final query = _searchQuery.trim().toLowerCase();
-        final filteredVendors = query.isEmpty
-            ? allVendors
-            : allVendors
-                .where((v) =>
-                    v.stallName.toLowerCase().contains(query) ||
-                    v.category.toLowerCase().contains(query))
-                .toList();
+        final matchingVendors = allVendors.where((vendor) {
+          final nameMatches = vendor.stallName.toLowerCase().contains(query);
+          final categoryMatches = vendor.category.toLowerCase().contains(query);
+          if (query.isEmpty) { return vendor.isOpen; }
+          if (vendor.isOpen) { return nameMatches || categoryMatches; }
+          return nameMatches;
+        });
+        final filteredVendors = matchingVendors.where((vendor) {
+          final position = _customerPosition;
+          if (position == null) { return true; }
+          return Geolocator.distanceBetween(position.latitude, position.longitude,
+                vendor.latitude, vendor.longitude) <= _searchRadiusKm * 1000;
+        }).toList();
 
         // NEW: Filter to only vendors that are physically inside the current map view
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
@@ -5550,7 +6328,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 infoWindow: InfoWindow(
                   title: v.stallName,
-                  snippet: v.category,
+                  snippet: '${v.category} · ${v.isOpen ? "Open" : "Closed"}',
                   onTap: () => _openVendorDetails(v),
                 ),
                 consumeTapEvents: true,
@@ -5558,6 +6336,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             )
             .toSet();
+
+        if (_usesManualLocation && _customerPosition != null) {
+          markers.add(Marker(markerId: const MarkerId('customer_manual_location'),
+            position: _customerPosition!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+            infoWindow: const InfoWindow(title: 'Your search location')));
+        }
 
         return LayoutBuilder(builder: (context, constraints) {
           // The panel is a sibling below the map, never an overlay. It cannot
@@ -5618,14 +6403,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                   ),
                 )),
-              if (!shortViewport && (_locationError != null || _isLocatingCustomer || _category != null))
-                Positioned(top: 76, left: 12, right: 68,
+              if (_customerPosition != null)
+                Positioned(top: 76, left: 12, child: ActionChip(
+                  avatar: const Icon(Icons.radar, size: 18),
+                  label: Text(_searchRadiusKm < 50
+                      ? '${_searchRadiusKm.toStringAsFixed(0)} km · Expand area'
+                      : '50 km search area'),
+                  onPressed: _searchRadiusKm < 50 ? _expandSearchArea : null)),
+              if (_locationError != null)
+                Positioned(top: _customerPosition == null ? 76 : 126, left: 12, right: 68,
                   child: Material(color: Colors.white, borderRadius: BorderRadius.circular(12),
                     child: Padding(padding: const EdgeInsets.all(10),
-                      child: Text(_locationError ?? (_isLocatingCustomer ? 'Finding your location…' : 'Category: $_category'),
-                        maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                      child: Row(children: [
+                        Expanded(child: Text(_locationError!, maxLines: 3,
+                          overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                        TextButton(onPressed: _enterCustomerLocationManually,
+                          child: const Text('Enter manually')),
+                      ]),
                     ),
-                  )),
+                  ))
+              else if (!shortViewport && (_isLocatingCustomer || _category != null))
+                Positioned(top: _customerPosition == null ? 76 : 126, left: 12, right: 68,
+                  child: Material(color: Colors.white, borderRadius: BorderRadius.circular(12),
+                    child: Padding(padding: const EdgeInsets.all(10),
+                      child: Text(_isLocatingCustomer ? 'Finding your location…' : 'Category: $_category',
+                        maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))))),
               Positioned(right: 12, bottom: 12,
                 child: FloatingActionButton.small(
                   heroTag: 'recenter_button', tooltip: 'My location',
@@ -5643,11 +6445,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   child: Row(children: [
                     Expanded(child: Text(snapshot.hasError ? 'Could not load stalls'
                         : snapshot.connectionState == ConnectionState.waiting ? 'Finding stalls…'
-                        : '${onScreenVendors.length} open stalls in this area',
+                        : query.isEmpty ? '${onScreenVendors.length} open stalls in this area'
+                            : '${onScreenVendors.length} matching stalls in this area',
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
                     TextButton(onPressed: snapshot.hasError
-                        ? () => setState(() => _vendors = _vendorService.getOpenVendors())
+                        ? () => setState(() => _vendors = _vendorService.getAllVendors())
                         : onScreenVendors.isEmpty ? null : () => _showAllStalls(onScreenVendors),
                       child: Text(snapshot.hasError ? 'Retry' : 'View all')),
                   ]),
@@ -5657,7 +6460,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     : onScreenVendors.isEmpty
                         ? Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: Text(snapshot.hasError ? 'Check your connection and retry.'
-                                : 'Move the map, zoom out, or clear your filters.', textAlign: TextAlign.center,
+                                : _customerPosition != null && _searchRadiusKm < 50
+                                    ? 'No stalls found within ${_searchRadiusKm.toStringAsFixed(0)} km. Try Expand area.'
+                                    : 'Move the map, zoom out, or clear your filters.', textAlign: TextAlign.center,
                                 style: const TextStyle(color: Color(0xFF64748B), fontSize: 13))))
                         : ListView.builder(
                             controller: _stallScrollController,
@@ -5709,7 +6514,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 Text(vendor.stallName, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 3),
-                Text([vendor.category, if (_distanceTo(vendor) != null) _distanceTo(vendor)!].join(' · '),
+                Text([vendor.category, vendor.isOpen ? 'Open' : 'Closed',
+                  if (_distanceTo(vendor) != null) _distanceTo(vendor)!].join(' · '),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
               ])),
@@ -5741,7 +6547,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => SizedBox(height: MediaQuery.of(context).size.height * .6,
         child: Column(children: [
-          ListTile(title: const Text('Open stalls in this area', style: TextStyle(fontWeight: FontWeight.w700)),
+          ListTile(title: const Text('Stalls in this area', style: TextStyle(fontWeight: FontWeight.w700)),
             subtitle: const Text('Choose a stall to find it on the map'),
             trailing: IconButton(tooltip: 'Close list', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))),
           const Divider(height: 1),
@@ -5751,7 +6557,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               final vendor = vendors[index];
               return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 leading: _stallPhoto(vendor), title: Text(vendor.stallName),
-                subtitle: Text([vendor.category, if (_distanceTo(vendor) != null) _distanceTo(vendor)!].join(' · ')),
+                subtitle: Text([vendor.category, vendor.isOpen ? 'Open' : 'Closed',
+                  if (_distanceTo(vendor) != null) _distanceTo(vendor)!].join(' · ')),
                 trailing: const Icon(Icons.near_me_outlined, color: AppColors.primary),
                 onTap: () => Navigator.pop(context, vendor));
             },

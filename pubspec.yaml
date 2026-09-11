@@ -40,10 +40,17 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+# Flutter 3.44 runs AGP 9 in legacy-Kotlin compatibility mode. Version 7.2.9
+# introduced a Kotlin-to-Java helper that is not visible to javac in this mode;
+# 7.2.7 is the last published version before that change.
+dependency_overrides:
+  google_sign_in_android: 7.2.7
+
 flutter:
   uses-material-design: true
 
   assets:
+    - assets/app_logo.png
     - assets/google_logo.png
 
   fonts:

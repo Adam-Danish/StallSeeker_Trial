@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -122,17 +123,52 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   }
 
   Future<void> _openNavigation() async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${_vendor.latitude},${_vendor.longitude}',
+    final coordinates = '${_vendor.latitude},${_vendor.longitude}';
+    final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    final googleMapsUri = isApplePlatform
+        ? Uri.parse('comgooglemaps://?daddr=$coordinates&directionsmode=driving')
+        : Uri.parse('google.navigation:q=$coordinates&mode=d');
+    final wazeUri = Uri.parse('waze://?ll=$coordinates&navigate=yes');
+    final browserUri = Uri.https(
+      'www.google.com', '/maps/dir/', {'api': '1', 'destination': coordinates},
     );
-    try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) { throw StateError('No maps application'); }
-    } catch (_) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open directions. Please retry.')),
-      ); }
+    var googleMapsAvailable = false;
+    var wazeAvailable = false;
+    if (!kIsWeb) {
+      try {
+        googleMapsAvailable = await canLaunchUrl(googleMapsUri);
+        wazeAvailable = await canLaunchUrl(wazeUri);
+      } catch (_) {
+        // The browser fallback remains available when app detection fails.
+      }
     }
+    if (!mounted) { return; }
+
+    Future<void> launchNavigation(Uri uri) async {
+      Navigator.pop(context);
+      var launched = false;
+      try { launched = await launchUrl(uri, mode: LaunchMode.externalApplication); }
+      catch (_) { launched = false; }
+      if (!launched && mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open that navigation app.'))); }
+    }
+
+    await showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(title: const Text('Choose navigation app'),
+          subtitle: Text(_vendor.stallName.isEmpty ? 'Stall location' : _vendor.stallName)),
+        if (googleMapsAvailable) ListTile(leading: const Icon(Icons.map_outlined),
+          title: const Text('Google Maps'), onTap: () => launchNavigation(googleMapsUri)),
+        if (wazeAvailable) ListTile(leading: const Icon(Icons.navigation_outlined),
+          title: const Text('Waze'), onTap: () => launchNavigation(wazeUri)),
+        ListTile(leading: const Icon(Icons.open_in_browser),
+          title: const Text('Google Maps in browser'), onTap: () => launchNavigation(browserUri)),
+        if (!googleMapsAvailable && !wazeAvailable) const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text('Google Maps and Waze were not detected. Browser directions are still available.',
+            style: TextStyle(color: Colors.grey))),
+      ])));
   }
 
   void _showLoginRequiredDialog(BuildContext context) {

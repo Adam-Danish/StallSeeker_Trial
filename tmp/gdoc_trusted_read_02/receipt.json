@@ -1,0 +1,19 @@
+{
+  "bridgeVersion": "3.6",
+  "kind": "google-docs-trusted-read-receipt",
+  "status": "failed",
+  "target": {
+    "documentId": null,
+    "documentUrl": "https://docs.google.com/document/d/1gqqrbs-K-bGdC4tZGWOdjescG0o1Az-b/edit",
+    "selectedTabId": null
+  },
+  "dropdownMetadata": null,
+  "controlAwareness": null,
+  "warnings": [],
+  "error": {
+    "name": "TrustedReadError",
+    "message": "Connector returned isError=true",
+    "operation": null
+  }
+}
+

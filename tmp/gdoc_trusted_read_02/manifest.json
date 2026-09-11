@@ -1,0 +1,27 @@
+{
+  "bridgeVersion": "3.6",
+  "kind": "google-docs-trusted-read",
+  "status": "failed",
+  "outputDir": "/C:/Others/SE/Flutter Projects/StallSeeker_Trial/tmp/gdoc_trusted_read_02",
+  "target": {
+    "documentId": null,
+    "documentUrl": "https://docs.google.com/document/d/1gqqrbs-K-bGdC4tZGWOdjescG0o1Az-b/edit",
+    "selectedTabId": null
+  },
+  "dropdownMetadata": null,
+  "controlAwareness": null,
+  "warnings": [],
+  "files": {
+    "receipt": {
+      "path": "/C:/Others/SE/Flutter Projects/StallSeeker_Trial/tmp/gdoc_trusted_read_02/receipt.json",
+      "bytes": 458,
+      "sha256": "fb3650a5f4f47fb380389b5dd1d4a63c767d49cac4653bb23c37afd34ac69327"
+    }
+  },
+  "error": {
+    "name": "TrustedReadError",
+    "message": "Connector returned isError=true",
+    "operation": null
+  }
+}
+

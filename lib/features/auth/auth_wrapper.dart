@@ -15,19 +15,36 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  final _authStream = FirebaseAuth.instance.authStateChanges();
+  final _authStream = FirebaseAuth.instance.userChanges();
+  bool _guestAccessGranted = false;
+
+  void _grantGuestAccess() {
+    if (!mounted) return;
+    setState(() => _guestAccessGranted = true);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(stream: _authStream, builder: (context, snapshot) {
-      if (snapshot.hasError) { return const _AccountRecovery(message: 'Could not check your session. Please sign in again.'); }
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
-      }
-      final user = snapshot.data;
-      if (user == null) { return const WelcomeScreen(); }
-      if (user.isAnonymous) { return const CustomerHomeScreen(); }
-      return _AccountGate(key: ValueKey(user.uid), user: user);
-    });
+    return StreamBuilder<User?>(
+        stream: _authStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const _AccountRecovery(
+                message: 'Could not check your session. Please sign in again.');
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+                body: Center(child: CircularProgressIndicator()));
+          }
+          final user = snapshot.data;
+          if (user == null || (user.isAnonymous && !_guestAccessGranted)) {
+            return WelcomeScreen(onGuestAccessGranted: _grantGuestAccess);
+          }
+          if (user.isAnonymous) {
+            return const CustomerHomeScreen();
+          }
+          return _AccountGate(key: ValueKey(user.uid), user: user);
+        });
   }
 }
 
@@ -44,11 +61,16 @@ class _AccountGateState extends State<_AccountGate> {
   void initState() {
     super.initState();
     _listen();
-    unawaited(NotificationService.instance.syncTokenForCurrentUser());
   }
 
   void _listen() {
-    _profile = FirebaseFirestore.instance.collection('users').doc(widget.user.uid).snapshots();
+    _profile = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .snapshots();
+    unawaited(AuthService().repairCurrentUserProfile().catchError(
+          (Object error) => debugPrint('Account profile repair failed: $error'),
+        ));
   }
 
   @override
@@ -63,10 +85,13 @@ class _AccountGateState extends State<_AccountGate> {
       stream: _profile,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final role = snapshot.data?.data()?['role'];
-        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists ||
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            !snapshot.data!.exists ||
             (role != 'vendor' && role != 'customer')) {
           NotificationService.instance.setNavigationReady(false);
           return _AccountRecovery(
@@ -77,9 +102,14 @@ class _AccountGateState extends State<_AccountGate> {
           );
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) { NotificationService.instance.setNavigationReady(role == 'customer'); }
+          if (mounted) {
+            NotificationService.instance.setNavigationReady(role == 'customer');
+            unawaited(NotificationService.instance.configureForRole(role));
+          }
         });
-        return role == 'vendor' ? const VendorMainScreen() : const CustomerHomeScreen();
+        return role == 'vendor'
+            ? const VendorMainScreen()
+            : const CustomerHomeScreen();
       },
     );
   }
@@ -90,20 +120,28 @@ class _AccountRecovery extends StatelessWidget {
   final String message;
   final VoidCallback? retry;
   @override
-  Widget build(BuildContext context) => Scaffold(body: Center(child: Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.cloud_off_outlined, size: 40),
-      const SizedBox(height: 16),
-      Text(message, textAlign: TextAlign.center),
-      if (retry != null) TextButton(onPressed: retry, child: const Text('Retry')),
-      TextButton(onPressed: () async {
-        try { await AuthService().signOut(); }
-        catch (_) {
-          if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not sign out. Please retry.'))); }
-        }
-      }, child: const Text('Sign out')),
-    ]),
-  )));
+  Widget build(BuildContext context) => Scaffold(
+          body: Center(
+              child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cloud_off_outlined, size: 40),
+          const SizedBox(height: 16),
+          Text(message, textAlign: TextAlign.center),
+          if (retry != null)
+            TextButton(onPressed: retry, child: const Text('Retry')),
+          TextButton(
+              onPressed: () async {
+                try {
+                  await AuthService().signOut();
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Could not sign out. Please retry.')));
+                  }
+                }
+              },
+              child: const Text('Sign out')),
+        ]),
+      )));
 }

@@ -1,0 +1,118 @@
+{
+  "input": "C:\\GMi\\SEM 5\\FYP 2\\Task Checklist Template (1).docx",
+  "fonts_by_char_count": {
+    "Arial": 687
+  },
+  "direct_run_formatting_runs": 53,
+  "direct_paragraph_formatting_paragraphs": 0,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "FYP2 TASK CHECKLIST",
+      "style": "Normal"
+    },
+    {
+      "para_index": 5,
+      "text": "(LIST YOUR TASKS AS DETAIL AS POSSIBLE, REFER TO YOUR GANTT CHART)",
+      "style": "Normal"
+    },
+    {
+      "para_index": 19,
+      "text": "TASK",
+      "style": "Normal"
+    },
+    {
+      "para_index": 20,
+      "text": "DATE(s)",
+      "style": "Normal"
+    },
+    {
+      "para_index": 21,
+      "text": "PERSON IN CHARGE",
+      "style": "Normal"
+    },
+    {
+      "para_index": 22,
+      "text": "TICK / ONCE DONE",
+      "style": "Normal"
+    },
+    {
+      "para_index": 24,
+      "text": "INFORMATION GATHERING",
+      "style": "Normal"
+    },
+    {
+      "para_index": 39,
+      "text": "DEVELOPMENT",
+      "style": "Normal"
+    },
+    {
+      "para_index": 64,
+      "text": "DOCUMENTATION",
+      "style": "Normal"
+    },
+    {
+      "para_index": 69,
+      "text": "Chapter 1, 2, 3 ",
+      "style": "Normal"
+    },
+    {
+      "para_index": 74,
+      "text": "PROGRESS PRESENTATION #1",
+      "style": "Normal"
+    },
+    {
+      "para_index": 79,
+      "text": "TESTING",
+      "style": "Normal"
+    },
+    {
+      "para_index": 94,
+      "text": "PROGRESS PRESENTATION #2",
+      "style": "Normal"
+    },
+    {
+      "para_index": 109,
+      "text": "INTERNAL PRESENTATION",
+      "style": "Normal"
+    },
+    {
+      "para_index": 124,
+      "text": "EXTERNAL PRESENTATION",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "FYP2 TASK CHECKLIST",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "(LIST YOUR TASKS AS DETAIL AS POSSIBLE, REFER TO YOUR GANTT CHART)",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "run_text": "GROUP CODE:",
+        "style": "Normal"
+      },
+      {
+        "para_index": 7,
+        "run_text": "SET",
+        "style": "Normal"
+      },
+      {
+        "para_index": 7,
+        "run_text": "/XX/XXX",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

@@ -29,7 +29,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (error == null) {
-      Navigator.maybePop(context);
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(error), backgroundColor: const Color(0xFFB3261E)));
