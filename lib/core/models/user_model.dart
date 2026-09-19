@@ -1,13 +1,13 @@
-class UserModel {
+class UserModel { // represent 1 registered user
   final String uid;
   final String email;
   final String fullName;
   final String role; // 'customer' or 'vendor'
   final DateTime createdAt;
-  final double? customerLatitude;
-  final double? customerLongitude;
-  final String? customerLocationLabel;
-  final bool customerLocationIsManual;
+  final double? customerLatitude; // ni yang save custtomer location
+  final double? customerLongitude; // ni jugak
+  final String? customerLocationLabel; // dan ini
+  final bool customerLocationIsManual;  //ini kalau manual / xletak apa2 (nu;ll)
 
   UserModel({
     required this.uid,
@@ -21,7 +21,7 @@ class UserModel {
     this.customerLocationIsManual = false,
   });
 
-  bool get hasCustomerLocation =>
+  bool get hasCustomerLocation => // check cust location valid or tak
       customerLatitude != null &&
       customerLongitude != null &&
       customerLatitude!.isFinite &&

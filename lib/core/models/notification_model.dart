@@ -24,3 +24,5 @@ class NotificationModel {
     );
   }
 }
+
+// represent saved notifcation

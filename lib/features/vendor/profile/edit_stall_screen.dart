@@ -2,8 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/models/stall_schedule.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/utils/vendor_phone.dart';
+import 'stall_schedule_editor.dart';
 
 class EditStallScreen extends StatefulWidget {
   const EditStallScreen({super.key});
@@ -21,6 +24,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
   final _stallNameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _openingHoursController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   String _selectedCategory = 'Beverages';
   final List<String> _categories = [
@@ -36,6 +40,8 @@ class _EditStallScreenState extends State<EditStallScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isOpen = false;
+  Map<int, List<StallHoursInterval>> _weeklyHours = {};
+  List<TemporaryClosure> _temporaryClosures = [];
 
   // Existing photo URL loaded from Firestore, and a newly picked local
   // file (not yet uploaded) if the vendor chose a new photo this session.
@@ -57,6 +63,9 @@ class _EditStallScreenState extends State<EditStallScreen> {
         _stallNameController.text = vendor.stallName;
         _descriptionController.text = vendor.description;
         _openingHoursController.text = vendor.openingHours;
+        _weeklyHours = vendor.weeklyHours;
+        _temporaryClosures = vendor.temporaryClosures;
+        _phoneController.text = vendor.phoneNumber;
         _isOpen = vendor.isOpen;
         _existingImageUrl = vendor.imageUrl;
         if (_categories.contains(vendor.category)) {
@@ -106,6 +115,9 @@ class _EditStallScreenState extends State<EditStallScreen> {
         openingHours: _openingHoursController.text.trim(),
         isOpen: _isOpen,
         imageUrl: imageUrl,
+        phoneNumber: normalizeVendorPhone(_phoneController.text) ?? '',
+        weeklyHours: _weeklyHours,
+        temporaryClosures: _temporaryClosures,
       );
 
       await _vendorService.saveVendorProfile(vendor);
@@ -136,6 +148,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
     _stallNameController.dispose();
     _descriptionController.dispose();
     _openingHoursController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -253,17 +266,26 @@ class _EditStallScreenState extends State<EditStallScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Operating Hours
+                    if (_openingHoursController.text.isNotEmpty && _weeklyHours.isEmpty)
+                      Padding(padding: const EdgeInsets.only(bottom: 12),
+                        child: Text('Previous hours: ${_openingHoursController.text}. Set your weekly hours below.')),
+                    StallScheduleEditor(hours: _weeklyHours,
+                      closures: _temporaryClosures,
+                      onChanged: (hours, closures) => setState(() {
+                        _weeklyHours = hours;
+                        _temporaryClosures = closures;
+                      })),
+                    const SizedBox(height: 16),
                     TextFormField(
-                      controller: _openingHoursController,
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        labelText: 'Opening Hours',
-                        hintText: 'e.g. 8:00 AM - 5:00 PM',
+                        labelText: 'Business phone number',
+                        hintText: 'e.g. 012-345 6789',
                         border: OutlineInputBorder(),
                       ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter opening hours'
-                          : null,
+                      validator: (value) => normalizeVendorPhone(value ?? '') == null
+                          ? 'Enter a valid Malaysian phone number.' : null,
                     ),
                     const SizedBox(height: 24),
 

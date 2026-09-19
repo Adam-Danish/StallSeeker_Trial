@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null
+          && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function ownsVendor(vendorId) {
+      return signedIn()
+          && request.auth.uid == vendorId
+          && getAfter(/databases/$(database)/documents/users/$(vendorId))
+              .data.role == 'vendor';
+    }
+
+    function validReviewPhotoUrls(urls) {
+      return urls is list && urls.size() <= 5
+          && (urls.size() < 1 || (urls[0] is string && urls[0].size() <= 2048))
+          && (urls.size() < 2 || (urls[1] is string && urls[1].size() <= 2048))
+          && (urls.size() < 3 || (urls[2] is string && urls[2].size() <= 2048))
+          && (urls.size() < 4 || (urls[3] is string && urls[3].size() <= 2048))
+          && (urls.size() < 5 || (urls[4] is string && urls[4].size() <= 2048));
+    }
+
+    match /_connection_test_/{docId} {
+      allow read, write: if true;
+    }
+
+    match /reports/{reportId} {
+      allow read, write: if true;
+    }
+
+    match /stalls/{stallId} {
+      allow read, write: if true;
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if true;
+      allow create, update: if ownsVendor(vendorId)
+          && request.resource.data.vendorId == vendorId;
+      allow delete: if false;
+
+      match /menu/{itemId} {
+        allow read: if true;
+        allow create, update, delete: if ownsVendor(vendorId);
+      }
+    }
+
+    match /stallReviews/{vendorId}/entries/{customerId} {
+        allow read: if true;
+        allow create, update: if signedIn()
+            && request.auth.uid == customerId
+            && customerId != vendorId
+            && get(/databases/$(database)/documents/users/$(customerId)).data.role == 'customer'
+            && request.resource.data.keys().hasOnly([
+                'customerId', 'customerName', 'rating', 'text',
+                'photoUrls', 'updatedAt'
+              ])
+            && request.resource.data.customerId == customerId
+            && request.resource.data.customerName is string
+            && request.resource.data.customerName.size() <= 80
+            && request.resource.data.rating is int
+            && request.resource.data.rating >= 1
+            && request.resource.data.rating <= 5
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 1000
+            && validReviewPhotoUrls(request.resource.data.photoUrls)
+            && request.resource.data.updatedAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if signedIn() && request.auth.uid == userId
+          && request.resource.data.role in ['customer', 'vendor'];
+      allow update: if signedIn() && request.auth.uid == userId
+          && request.resource.data.role == resource.data.role;
+
+      match /notifications/{notificationId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow update: if signedIn() && request.auth.uid == userId
+            && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly(['isRead'])
+            && request.resource.data.isRead == true;
+        allow create, delete: if false;
+      }
+    }
+
+    match /follows/{followId} {
+      allow read: if request.auth != null
+          && request.auth.uid == resource.data.customerId;
+      allow create: if signedIn()
+          && request.auth.uid == request.resource.data.customerId;
+      allow delete: if request.auth != null
+          && request.auth.uid == resource.data.customerId;
+    }
+  }
+}

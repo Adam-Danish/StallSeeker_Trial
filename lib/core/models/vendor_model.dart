@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'stall_schedule.dart';
 
-class VendorModel {
+class VendorModel { // file ni represent 1 stall
   final String vendorId;
   final String stallName;
   final String description;
@@ -10,19 +11,37 @@ class VendorModel {
   final double latitude;
   final double longitude;
   final String imageUrl;
+  final String phoneNumber;
   final DateTime? locationUpdatedAt;
   final bool locationSharingActive;
+  final Map<int, List<StallHoursInterval>> weeklyHours;
+  final List<TemporaryClosure> temporaryClosures;
+
+  bool get isTemporarilyClosed => temporaryClosures.any((c) => c.contains(DateTime.now()));
+  bool get isOpenNow => isOpen && !isTemporarilyClosed;
+
+  String get hoursToday {
+    final nowInMalaysia = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final intervals = weeklyHours[nowInMalaysia.weekday] ?? [];
+    if (weeklyHours.isEmpty) return openingHours;
+    if (intervals.isEmpty) return 'Closed today';
+    return intervals.map((i) => '${formatStallTime(i.openMinute)} – '
+        '${formatStallTime(i.closeMinute)}${i.closeMinute < i.openMinute ? ' (next day)' : ''}')
+        .join(', ');
+  }
 
   bool get hasValidLocation => latitude.isFinite && longitude.isFinite &&
       latitude.abs() <= 90 && longitude.abs() <= 180 &&
       !(latitude == 0 && longitude == 0);
 
-  bool get hasFreshLocation {
+  bool get hasFreshLocation { // check kalau stall ada usable coordinates
     final updated = locationUpdatedAt;
     if (!locationSharingActive || updated == null) { return false; }
     final age = DateTime.now().difference(updated);
     return !age.isNegative && age < const Duration(minutes: 2);
   }
+
+  // location update setiap 15sec, tapi kalau vendor punya gps fail/phone off lebih dua minit stall tutup
 
 
   VendorModel({
@@ -35,8 +54,11 @@ class VendorModel {
     this.latitude = 0.0,
     this.longitude = 0.0,
     this.imageUrl = '',
+    this.phoneNumber = '',
     this.locationUpdatedAt,
     this.locationSharingActive = false,
+    this.weeklyHours = const {},
+    this.temporaryClosures = const [],
   });
 
   /// Editable information only. Operational state belongs to the selling session.
@@ -47,6 +69,9 @@ class VendorModel {
     'category': category,
     'openingHours': openingHours,
     'imageUrl': imageUrl,
+    'phoneNumber': phoneNumber,
+    'weeklyHours': serializeWeeklyHours(weeklyHours),
+    'temporaryClosures': temporaryClosures.map((c) => c.toMap()).toList(),
   };
 
   // Convert VendorModel to Map for Firestore
@@ -61,6 +86,9 @@ class VendorModel {
       'latitude': latitude,
       'longitude': longitude,
       'imageUrl': imageUrl,
+      'phoneNumber': phoneNumber,
+      'weeklyHours': serializeWeeklyHours(weeklyHours),
+      'temporaryClosures': temporaryClosures.map((c) => c.toMap()).toList(),
     };
   }
 
@@ -76,6 +104,11 @@ class VendorModel {
       latitude: (map['latitude'] ?? 0.0).toDouble(),
       longitude: (map['longitude'] ?? 0.0).toDouble(),
       imageUrl: map['imageUrl'] ?? '',
+      phoneNumber: map['phoneNumber'] ?? '',
+      weeklyHours: parseWeeklyHours(map['weeklyHours']),
+      temporaryClosures: (map['temporaryClosures'] is List
+          ? map['temporaryClosures'] as List : const [])
+          .map(TemporaryClosure.fromMap).whereType<TemporaryClosure>().toList(),
       locationUpdatedAt: (map['locationUpdatedAt'] as Timestamp?)?.toDate(),
       locationSharingActive: map['locationSharingActive'] == true,
     );
@@ -91,6 +124,9 @@ class VendorModel {
     double? latitude,
     double? longitude,
     String? imageUrl,
+    String? phoneNumber,
+    Map<int, List<StallHoursInterval>>? weeklyHours,
+    List<TemporaryClosure>? temporaryClosures,
   }) {
     return VendorModel(
       vendorId: vendorId,
@@ -102,6 +138,9 @@ class VendorModel {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       imageUrl: imageUrl ?? this.imageUrl,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      weeklyHours: weeklyHours ?? this.weeklyHours,
+      temporaryClosures: temporaryClosures ?? this.temporaryClosures,
       locationUpdatedAt: locationUpdatedAt,
       locationSharingActive: locationSharingActive,
     );

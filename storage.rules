@@ -1,0 +1,24 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /stall_images/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+          && request.auth.uid == fileName.replace('.jpg', '');
+    }
+    match /menu_images/{vendorId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == vendorId;
+    }
+    match /review_images/{vendorId}/{customerId}/{fileName} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+          && request.auth.token.firebase.sign_in_provider != 'anonymous'
+          && request.auth.uid == customerId
+          && request.resource.size < 5 * 1024 * 1024
+          && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null
+          && request.auth.uid == customerId;
+    }
+  }
+}

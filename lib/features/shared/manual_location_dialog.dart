@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 
 class LocationSelection {
   const LocationSelection({required this.coordinates, required this.label});
@@ -117,15 +119,81 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
       });
     }
     try {
+      final suggestions = await _searchPlaces(query);
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _isSearching = false;
+        _suggestions = suggestions;
+        if (suggestions.isEmpty) {
+          _errorText = 'No matching locations were found. Please refine your search.';
+        }
+      });
+    } catch (_) {
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _isSearching = false;
+        _suggestions = const [];
+        _errorText = 'Unable to search for locations. Please check your connection and try again.';
+      });
+    }
+  }
+
+  Future<List<LocationSelection>> _searchPlaces(String query) async {
+    try {
+      final origin = widget.initialLocation;
+      final uri = Uri.https('photon.komoot.io', '/api', {
+        'q': query, 'countrycode': 'MY', 'limit': '10',
+        if (origin != null) 'lat': origin.latitude.toString(),
+        if (origin != null) 'lon': origin.longitude.toString(),
+      });
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final features = body['features'];
+        final results = <LocationSelection>[];
+        final seen = <String>{};
+        if (features is List) {
+          for (final feature in features) {
+            if (feature is! Map) continue;
+            final geometry = feature['geometry'];
+            final properties = feature['properties'];
+            if (geometry is! Map || properties is! Map) continue;
+            final coordinates = geometry['coordinates'];
+            if (coordinates is! List || coordinates.length < 2 ||
+                coordinates[0] is! num || coordinates[1] is! num) {
+              continue;
+            }
+            final parts = <String>[];
+            for (final key in ['name', 'street', 'district', 'city', 'county', 'state', 'postcode']) {
+              final value = properties[key];
+              if (value is String && value.trim().isNotEmpty &&
+                  !parts.contains(value.trim())) {
+                parts.add(value.trim());
+              }
+            }
+            if (parts.isEmpty) { continue; }
+            final label = parts.join(', ');
+            final point = LatLng((coordinates[1] as num).toDouble(),
+                (coordinates[0] as num).toDouble());
+            final key = '${point.latitude.toStringAsFixed(5)},${point.longitude.toStringAsFixed(5)}';
+            if (seen.add(key)) {
+              results.add(LocationSelection(coordinates: point, label: label));
+            }
+          }
+        }
+        if (results.isNotEmpty) return results.take(8).toList();
+      }
+    } catch (_) {
+      // Keep the device geocoder available if the place search is offline.
+    }
+
+    // Device geocoding is a fallback and may return only one result.
+    {
       final searchQuery =
           query.toLowerCase().contains('malaysia') ? query : '$query, Malaysia';
       final locations = await Geocoding()
           .locationFromAddress(searchQuery)
           .timeout(const Duration(seconds: 10));
-      if (!mounted || requestId != _requestId) {
-        return;
-      }
-
       final ordered = List<Location>.from(locations);
       final origin = widget.initialLocation;
       if (origin != null) {
@@ -139,9 +207,6 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
       final suggestions = <LocationSelection>[];
       final labels = <String>{};
       for (final location in ordered.take(6)) {
-        if (!mounted || requestId != _requestId) {
-          return;
-        }
         final coordinates = LatLng(location.latitude, location.longitude);
         String label;
         try {
@@ -156,27 +221,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
         }
       }
 
-      if (!mounted || requestId != _requestId) {
-        return;
-      }
-      setState(() {
-        _isSearching = false;
-        _suggestions = suggestions;
-        if (suggestions.isEmpty) {
-          _errorText =
-              'No matching locations were found. Please refine your search.';
-        }
-      });
-    } catch (_) {
-      if (!mounted || requestId != _requestId) {
-        return;
-      }
-      setState(() {
-        _isSearching = false;
-        _suggestions = const [];
-        _errorText =
-            'Unable to search for locations. Please check your connection and try again.';
-      });
+      return suggestions;
     }
   }
 
@@ -285,6 +330,9 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
               ),
             ),
           ],
+          const Padding(padding: EdgeInsets.only(top: 10),
+            child: Text('Place search data © OpenStreetMap contributors',
+              style: TextStyle(fontSize: 10, color: Colors.grey))),
         ]),
       ),
       actions: [

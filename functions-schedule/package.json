@@ -1,0 +1,12 @@
+{
+  "name": "stallseeker-schedule",
+  "description": "Scheduled stall closures for StallSeeker",
+  "engines": {"node": "22"},
+  "main": "index.js",
+  "scripts": {"test": "node --test closure-core.test.cjs"},
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1"
+  },
+  "private": true
+}

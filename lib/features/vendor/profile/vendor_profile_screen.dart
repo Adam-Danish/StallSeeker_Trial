@@ -13,6 +13,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/vendor_service.dart';
 import '../../shared/faq_screen.dart';
 import '../../shared/about_screen.dart';
 import '../../shared/logout_helper.dart';
@@ -29,6 +30,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _geocoding = Geocoding();
 
   UserModel? _userModel;
+  String _phoneNumber = '';
   bool _isLoading = true;
 
   // Current Location section state -- shows the vendor's live GPS
@@ -47,9 +49,11 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       final userData = await _authService.getUserData(user.uid);
+      final vendor = await VendorService().getVendorProfile(user.uid);
       if (mounted) {
         setState(() {
           _userModel = userData;
+          _phoneNumber = vendor?.phoneNumber ?? '';
           _isLoading = false;
         });
       }
@@ -192,6 +196,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       name: name,
       email: guest ? '' : _userModel?.email ?? user?.email ?? '',
       photoUrl: guest ? null : user?.photoURL,
+      phoneNumber: guest ? null : _phoneNumber,
       isVendor: true,
       isGuest: guest,
       canChangePassword: user?.providerData

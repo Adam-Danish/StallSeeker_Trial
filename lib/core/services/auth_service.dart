@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import '../constants/firestore_collections.dart';
+import '../utils/vendor_phone.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -41,8 +42,14 @@ class AuthService {
     required String password,
     required String fullName,
     required String role,
+    String? vendorPhone,
   }) async {
     try {
+      final normalizedPhone = role == 'vendor'
+          ? normalizeVendorPhone(vendorPhone ?? '') : null;
+      if (role == 'vendor' && normalizedPhone == null) {
+        return 'Enter a valid Malaysian business phone number.';
+      }
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
@@ -57,10 +64,18 @@ class AuthService {
           createdAt: DateTime.now(),
         );
 
-        await _firestore
-            .collection(FirestoreCollections.users)
-            .doc(credential.user!.uid)
-            .set(newUser.toMap());
+        final batch = _firestore.batch();
+        batch.set(_firestore.collection(FirestoreCollections.users)
+            .doc(credential.user!.uid), newUser.toMap());
+        if (role == 'vendor') {
+          batch.set(_firestore.collection(FirestoreCollections.vendors)
+              .doc(credential.user!.uid), {
+            'vendorId': credential.user!.uid,
+            'phoneNumber': normalizedPhone,
+            'isOpen': false,
+          });
+        }
+        await batch.commit();
 
         return null;
       }

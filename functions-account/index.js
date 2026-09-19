@@ -34,9 +34,11 @@ exports.deleteAccount = onCall(async (request) => {
 
   const db = getFirestore();
   const targets = new Map();
+  const customerReviewVendorIds = new Set();
   const directTargets = [
     db.collection('users').doc(uid),
     db.collection('vendors').doc(uid),
+    db.collection('stallReviews').doc(uid),
     db.collection('stalls').doc(uid),
     db.collection('_emailVerificationCodes').doc(`${uid}_registration`),
     db.collection('_emailVerificationCodes').doc(`${uid}_email_change`),
@@ -60,6 +62,14 @@ exports.deleteAccount = onCall(async (request) => {
     ),
   ]);
 
+  const customerReviews = await db.collectionGroup('entries')
+      .where('customerId', '==', uid).get();
+  for (const review of customerReviews.docs) {
+    targets.set(review.ref.path, review.ref);
+    const vendorId = review.ref.parent.parent?.id;
+    if (vendorId) customerReviewVendorIds.add(vendorId);
+  }
+
   try {
     for (const reference of targets.values()) {
       await db.recursiveDelete(reference);
@@ -69,6 +79,9 @@ exports.deleteAccount = onCall(async (request) => {
     await Promise.all([
       bucket.file(`stall_images/${uid}.jpg`).delete({ignoreNotFound: true}),
       bucket.deleteFiles({prefix: `menu_images/${uid}/`, force: true}),
+      bucket.deleteFiles({prefix: `review_images/${uid}/`, force: true}),
+      ...[...customerReviewVendorIds].map((vendorId) =>
+        bucket.deleteFiles({prefix: `review_images/${vendorId}/${uid}/`, force: true})),
     ]);
 
     await getAuth().deleteUser(uid);

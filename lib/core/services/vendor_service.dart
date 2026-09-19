@@ -7,6 +7,7 @@ class VendorService {
 
   CollectionReference get _vendorsRef => _firestore.collection('vendors');
 
+// read store id
   Future<VendorModel?> getVendorProfile(String vendorId) async {
     try {
       DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
@@ -23,6 +24,7 @@ class VendorService {
     }
   }
 
+// update stall infroamtion
   Future<void> saveVendorProfile(VendorModel vendor) async {
     try {
       await _vendorsRef.doc(vendor.vendorId).set(
@@ -35,6 +37,7 @@ class VendorService {
     }
   }
 
+// open/closed
   Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
     try {
       await _vendorsRef.doc(vendorId).set({
@@ -48,6 +51,7 @@ class VendorService {
     }
   }
 
+// update location
   Future<void> updateVendorLocation(
     String vendorId,
     double latitude,

@@ -98,8 +98,8 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
       final comparison = a.stallName.toLowerCase().compareTo(b.stallName.toLowerCase());
       return _ascending ? comparison : -comparison;
     });
-    final open = sorted.where((vendor) => vendor.isOpen).toList();
-    final closed = sorted.where((vendor) => !vendor.isOpen).toList();
+    final open = sorted.where((vendor) => vendor.isOpenNow).toList();
+    final closed = sorted.where((vendor) => !vendor.isOpenNow).toList();
     return ColoredBox(color: const Color(0xFFF2F2F7), child: SafeArea(top: false, bottom: false,
       child: RefreshIndicator(onRefresh: _listen, child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -159,14 +159,14 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
   Widget _stallRow(VendorModel vendor) => ListTile(
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     leading: Icon(Icons.storefront_outlined, size: 24,
-      color: vendor.isOpen ? const Color(0xFFFF6E41) : const Color(0xFF8E8E93)),
+      color: vendor.isOpenNow ? const Color(0xFFFF6E41) : const Color(0xFF8E8E93)),
     title: Text(vendor.stallName.isEmpty ? 'Unnamed stall' : vendor.stallName,
       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
     subtitle: Padding(padding: const EdgeInsets.only(top: 4),
       child: Text(vendor.category, style: const TextStyle(fontSize: 14, color: Color(0xFF8E8E93), letterSpacing: 0))),
     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-      Text(vendor.isOpen ? 'Open' : 'Closed', style: TextStyle(fontSize: 12,
-        color: vendor.isOpen ? const Color(0xFF15803D) : const Color(0xFF8E8E93))),
+      Text(vendor.isOpenNow ? 'Open' : 'Closed', style: TextStyle(fontSize: 12,
+        color: vendor.isOpenNow ? const Color(0xFF15803D) : const Color(0xFF8E8E93))),
       const SizedBox(width: 6), const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2), size: 20),
     ]),
     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor))),

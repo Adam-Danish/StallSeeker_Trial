@@ -7,6 +7,7 @@ class ProfilePage extends StatelessWidget {
       required this.name,
       required this.email,
       this.photoUrl,
+      this.phoneNumber,
       required this.isVendor,
       required this.isGuest,
       required this.canChangePassword,
@@ -30,6 +31,7 @@ class ProfilePage extends StatelessWidget {
   final String name;
   final String email;
   final String? photoUrl;
+  final String? phoneNumber;
   final bool isVendor;
   final bool isGuest;
   final bool canChangePassword;
@@ -159,6 +161,10 @@ class ProfilePage extends StatelessWidget {
                                       fontSize: 14,
                                       color: _muted,
                                       letterSpacing: 0)),
+                            ],
+                            if (isVendor && phoneNumber?.isNotEmpty == true) ...[
+                              const SizedBox(height: 4),
+                              Text(phoneNumber!, style: const TextStyle(fontSize: 14, color: _muted)),
                             ],
                             const SizedBox(height: 8),
                             TextButton(

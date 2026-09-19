@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/utils/vendor_phone.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _phone = TextEditingController();
   String _role = 'customer';
   bool _busy = false;
   bool _hidePassword = true;
@@ -25,7 +27,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     final error = await _auth.signUp(email: _email.text.trim(), password: _password.text,
-      fullName: _name.text.trim(), role: _role);
+      fullName: _name.text.trim(), role: _role,
+      vendorPhone: _role == 'vendor' ? _phone.text : null);
     if (!mounted) return;
     setState(() => _busy = false);
     if (error == null) {
@@ -65,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   );
 
   @override
-  void dispose() { _name.dispose(); _email.dispose(); _password.dispose(); _confirm.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _email.dispose(); _password.dispose(); _confirm.dispose(); _phone.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.white,
@@ -113,6 +116,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ], selected: {_role}, onSelectionChanged: _busy ? null : (v) => setState(() => _role = v.first),
             style: ButtonStyle(shape: WidgetStatePropertyAll(
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))))),
+          if (_role == 'vendor') ...[
+            const SizedBox(height: 12),
+            TextFormField(controller: _phone,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              decoration: _field('Business phone number'),
+              validator: (value) => normalizeVendorPhone(value ?? '') == null
+                  ? 'Enter a valid Malaysian phone number.' : null),
+            const Padding(padding: EdgeInsets.only(top: 6),
+              child: Text('Customers can see and call this number from your stall listing.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF707078)))),
+          ],
           const SizedBox(height: 24),
           SizedBox(height: 56, child: FilledButton(onPressed: _busy ? null : _register,
             style: FilledButton.styleFrom(backgroundColor: AppColors.primary,

@@ -103,6 +103,7 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(item.name, style: Theme.of(context).textTheme.titleMedium),
                   Text('RM ${item.price.toStringAsFixed(2)}'),
+                  Text(item.section, style: Theme.of(context).textTheme.bodySmall),
                 ])),
                 PopupMenuButton<String>(enabled: !busy, tooltip: 'Dish options', onSelected: (value) {
                   if (value == 'edit') { _edit(item); } else { _delete(item); }
@@ -140,6 +141,7 @@ class _MenuEditorState extends State<_MenuEditor> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _price;
+  late final TextEditingController _section;
   late final String _itemId;
   File? _image;
   bool _saving = false;
@@ -149,11 +151,12 @@ class _MenuEditorState extends State<_MenuEditor> {
     super.initState();
     _name = TextEditingController(text: widget.item?.name ?? '');
     _price = TextEditingController(text: widget.item?.price.toStringAsFixed(2) ?? '');
+    _section = TextEditingController(text: widget.item?.section ?? 'Main menu');
     // Reuse the same ID on retries so an uncertain network result cannot duplicate a dish.
     _itemId = widget.item?.itemId ?? widget.menu.newMenuItemId(widget.uid);
   }
   @override
-  void dispose() { _name.dispose(); _price.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _price.dispose(); _section.dispose(); super.dispose(); }
 
   Future<void> _pick() async {
     try {
@@ -172,9 +175,9 @@ class _MenuEditorState extends State<_MenuEditor> {
       if (_image != null) { imageUrl = await widget.storage.uploadMenuItemImage(widget.uid, _itemId, _image!); }
       if (widget.item == null) {
         await widget.menu.addMenuItem(widget.uid, _name.text.trim(), double.parse(_price.text.trim()),
-            itemId: _itemId, imageUrl: imageUrl);
+            itemId: _itemId, imageUrl: imageUrl, section: _section.text.trim());
       } else {
-        await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(), double.parse(_price.text.trim()), imageUrl: imageUrl);
+        await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(), double.parse(_price.text.trim()), imageUrl: imageUrl, section: _section.text.trim());
       }
       if (mounted) {
         setState(() => _saving = false);
@@ -201,6 +204,9 @@ class _MenuEditorState extends State<_MenuEditor> {
         TextFormField(controller: _name, enabled: !_saving, maxLength: 80,
           decoration: const InputDecoration(labelText: 'Dish name'),
           validator: (value) => value == null || value.trim().isEmpty ? 'Enter a dish name.' : null),
+        TextFormField(controller: _section, enabled: !_saving, maxLength: 40,
+          decoration: const InputDecoration(labelText: 'Menu section', hintText: 'e.g. Drinks, Mains, Desserts'),
+          validator: (value) => value == null || value.trim().isEmpty ? 'Enter a menu section.' : null),
         const SizedBox(height: 12),
         TextFormField(controller: _price, enabled: !_saving,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),

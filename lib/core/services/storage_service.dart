@@ -38,4 +38,26 @@ class StorageService {
     await ref.putFile(imageFile);
     return await ref.getDownloadURL();
   }
+
+  Future<List<File>> pickReviewImages(int remaining) async {
+    final picked = await _picker.pickMultiImage(maxWidth: 1080, imageQuality: 75);
+    return picked.take(remaining.clamp(0, 5))
+        .map((image) => File(image.path)).toList();
+  }
+
+  Future<String> uploadReviewImage(String vendorId, String customerId,
+      String imageId, File imageFile) async {
+    final ref = _storage.ref().child('review_images/$vendorId/$customerId/$imageId.jpg');
+    await ref.putFile(imageFile);
+    return ref.getDownloadURL();
+  }
+
+  Future<void> deleteReviewImageUrl(String vendorId, String customerId,
+      String url) async {
+    final ref = _storage.refFromURL(url);
+    if (!ref.fullPath.startsWith('review_images/$vendorId/$customerId/')) {
+      throw ArgumentError('Review photo does not belong to this customer.');
+    }
+    await ref.delete();
+  }
 }

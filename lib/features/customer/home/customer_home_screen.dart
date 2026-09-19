@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
@@ -52,6 +53,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _locationPermissionGranted = false;
   String? _locationError;
   String? _category;
+  String _statusFilter = 'Open';
   Timer? _freshnessTimer;
   late Stream<List<VendorModel>> _vendors;
   final ScrollController _stallScrollController = ScrollController();
@@ -259,6 +261,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _applyCustomerLocation(selection, true);
   }
 
+  void _setSearchRadius(double radius) {
+    setState(() => _searchRadiusKm = radius);
+    final center = _customerPosition;
+    if (center != null) {
+      final zoom = switch (radius) {
+        <= 5 => 13.5,
+        <= 10 => 12.5,
+        <= 25 => 11.0,
+        _ => 10.0,
+      };
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(center, zoom));
+    }
+  }
+
   // ui for set location, enter manually button
   Future<void> _chooseLocationSource() async {
     FocusScope.of(context).unfocus();
@@ -302,25 +318,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       await _getCustomerLocation();
     } else {
       await _enterCustomerLocationManually();
-    }
-  }
-
-  void _expandSearchArea() {
-    // expand area
-    const radii = [5.0, 10.0, 25.0, 50.0];
-    final index = radii.indexOf(_searchRadiusKm);
-    if (index < 0 || index == radii.length - 1) {
-      return;
-    }
-    setState(() => _searchRadiusKm = radii[index + 1]);
-    final zoom = switch (_searchRadiusKm) {
-      <= 10 => 12.5,
-      <= 25 => 11.0,
-      _ => 10.0,
-    };
-    final position = _customerPosition;
-    if (position != null) {
-      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(position, zoom));
     }
   }
 
@@ -499,13 +496,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         final matchingVendors = allVendors.where((vendor) {
           final nameMatches = vendor.stallName.toLowerCase().contains(query);
           final categoryMatches = vendor.category.toLowerCase().contains(query);
-          if (query.isEmpty) {
-            return vendor.isOpen;
-          }
-          if (vendor.isOpen) {
-            return nameMatches || categoryMatches;
-          }
-          return nameMatches;
+          if (_statusFilter == 'Open' && !vendor.isOpenNow) return false;
+          if (_statusFilter == 'Closed' && vendor.isOpenNow) return false;
+          return query.isEmpty || nameMatches || categoryMatches;
         });
         final filteredVendors = matchingVendors.where((vendor) {
           final position = _customerPosition;
@@ -566,7 +559,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 infoWindow: InfoWindow(
                   title: v.stallName,
-                  snippet: '${v.category} · ${v.isOpen ? "Open" : "Closed"}',
+                  snippet: '${v.category} · ${v.isOpenNow ? "Open now" : "Closed"}',
                   onTap: () => _openVendorDetails(v),
                 ),
                 consumeTapEvents: true,
@@ -606,7 +599,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 zoomControlsEnabled: false,
                 mapToolbarEnabled: false,
                 compassEnabled: true,
-                padding: const EdgeInsets.fromLTRB(12, 76, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 132, 12, 12),
                 onMapCreated: (controller) {
                   _mapController = controller;
                   if (_customerPosition != null) {
@@ -691,22 +684,47 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               size: 18),
                           label: const Text('Set location'),
                           onPressed: _chooseLocationSource),
+                      const SizedBox(width: 8),
+                      PopupMenuButton<String>(
+                        tooltip: 'Choose stall status',
+                        onSelected: (status) => setState(() => _statusFilter = status),
+                        itemBuilder: (_) => ['Open', 'Closed', 'All']
+                            .map((status) => PopupMenuItem(value: status,
+                              child: Text(status == 'Open' ? 'Open now' : status == 'Closed' ? 'Closed' : 'All stalls'))).toList(),
+                        child: Chip(avatar: Icon(_statusFilter == 'Open' ? Icons.storefront :
+                          _statusFilter == 'Closed' ? Icons.store_mall_directory_outlined : Icons.filter_alt_outlined,
+                          size: 18),
+                          label: Text(_statusFilter == 'Open' ? 'Open now' :
+                            _statusFilter == 'Closed' ? 'Closed' : 'All stalls')),
+                      ),
+                      const SizedBox(width: 8),
+                      PopupMenuButton<String>(
+                        tooltip: 'Choose category',
+                        onSelected: (value) => setState(() => _category = value == 'All' ? null : value),
+                        itemBuilder: (_) => [
+                          'All', 'Beverages', 'Snacks & Desserts', 'Malay Food',
+                          'Chinese Food', 'Indian Food', 'Western', 'Noodles',
+                        ].map((value) => PopupMenuItem(value: value, child: Text(value))).toList(),
+                        child: Chip(label: Text(_category ?? 'All categories'),
+                          avatar: const Icon(Icons.category_outlined, size: 18)),
+                      ),
                       if (_customerPosition != null) ...[
                         const SizedBox(width: 8),
-                        ActionChip(
-                            avatar: const Icon(Icons.radar, size: 18),
-                            label: Text(_searchRadiusKm < 50
-                                ? '${_searchRadiusKm.toStringAsFixed(0)} km · Expand area'
-                                : '50 km search area'),
-                            onPressed: _searchRadiusKm < 50
-                                ? _expandSearchArea
-                                : null),
+                        PopupMenuButton<double>(
+                          tooltip: 'Choose distance',
+                          onSelected: _setSearchRadius,
+                          itemBuilder: (_) => [5.0, 10.0, 25.0, 50.0]
+                              .map((radius) => PopupMenuItem(value: radius,
+                                child: Text('Within ${radius.toStringAsFixed(0)} km'))).toList(),
+                          child: Chip(avatar: const Icon(Icons.radar, size: 18),
+                            label: Text('Within ${_searchRadiusKm.toStringAsFixed(0)} km')),
+                        ),
                       ],
                     ]),
                   )),
               if (_locationError != null)
                 Positioned(
-                    top: _customerPosition == null ? 76 : 126,
+                    top: 132,
                     left: 12,
                     right: 68,
                     child: Material(
@@ -726,10 +744,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ]),
                       ),
                     ))
-              else if (!shortViewport &&
-                  (_isLocatingCustomer || _category != null))
+              else if (!shortViewport && _isLocatingCustomer)
                 Positioned(
-                    top: _customerPosition == null ? 76 : 126,
+                    top: 132,
                     left: 12,
                     right: 68,
                     child: Material(
@@ -738,9 +755,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         child: Padding(
                             padding: const EdgeInsets.all(10),
                             child: Text(
-                                _isLocatingCustomer
-                                    ? 'Finding your location…'
-                                    : 'Category: $_category',
+                                'Finding your location…',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 12))))),
@@ -779,7 +794,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                                 ConnectionState.waiting
                                             ? 'Finding stalls…'
                                             : query.isEmpty
-                                                ? '${onScreenVendors.length} open stalls in this area'
+                                                ? '${onScreenVendors.length} stalls in this area'
                                                 : '${onScreenVendors.length} matching stalls in this area',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -896,7 +911,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     Text(
                         [
                           vendor.category,
-                          vendor.isOpen ? 'Open' : 'Closed',
+                          vendor.isOpenNow ? 'Open now' : 'Closed',
                           if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                         ].join(' · '),
                         maxLines: 1,
@@ -929,6 +944,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 10, color: Color(0xFF64748B)))),
+              if (vendor.phoneNumber.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => launchUrl(Uri(scheme: 'tel', path: vendor.phoneNumber)),
+                  icon: const Icon(Icons.call_outlined, size: 14),
+                  label: Text(vendor.phoneNumber, style: const TextStyle(fontSize: 10)),
+                ),
               TextButton(
                   onPressed: () => _openVendorDetails(vendor),
                   style: TextButton.styleFrom(
@@ -976,7 +997,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   title: Text(vendor.stallName),
                   subtitle: Text([
                     vendor.category,
-                    vendor.isOpen ? 'Open' : 'Closed',
+                    vendor.isOpenNow ? 'Open now' : 'Closed',
                     if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                   ].join(' · ')),
                   trailing: const Icon(Icons.near_me_outlined,

@@ -1,5 +1,7 @@
 # StallSeeker Test Plan
 
+For the September 2026 discovery, schedule, phone, menu, location, and review changes, run the focused [Recent Changes Test Plan](Recent%20Changes%20Test%20Plan.md) alongside this regression plan. Some cases and the baseline below describe the older release.
+
 | Field | Value |
 | --- | --- |
 | Product | StallSeeker |
@@ -39,7 +41,7 @@ The release quality goals are:
 
 ### Out of scope
 
-- Payments, ordering, chat, ratings, and administration features, because they are not present in this version.
+- Payments, ordering, chat, and administration features, because they are not present in this version.
 - Correctness of routing inside Google Maps or Waze after StallSeeker hands off the coordinates.
 - Internal availability guarantees of Google, Firebase, SMTP, or mobile operating-system services. StallSeeker's handling of their success and failure responses remains in scope.
 - Desktop platforms unless they are added to the release target. Web receives a compatibility smoke pass only until its native location, map, image, and notification expectations are formally defined.

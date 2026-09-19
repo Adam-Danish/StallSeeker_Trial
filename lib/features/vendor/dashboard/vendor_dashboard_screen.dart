@@ -9,6 +9,7 @@ import '../../../core/services/vendor_location_service.dart';
 import '../profile/edit_stall_screen.dart';
 import '../menu/vendor_menu_screen.dart';
 import '../../shared/manual_location_dialog.dart';
+import '../../../core/utils/vendor_phone.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
   const VendorDashboardScreen({super.key});
@@ -104,6 +105,14 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
     if (open && (_vendor?.stallName.trim().isEmpty ?? true)) {
       _message('Set up your stall name before opening.');
+      return;
+    }
+    if (open && normalizeVendorPhone(_vendor?.phoneNumber ?? '') == null) {
+      _message('Add a business phone number in My stall before opening.');
+      return;
+    }
+    if (open && (_vendor?.isTemporarilyClosed ?? false)) {
+      _message('Remove the active temporary closure before opening.');
       return;
     }
     if (open) {
@@ -243,9 +252,12 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                         children: [
                           SwitchListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(open ? 'Stall open' : 'Stall closed'),
-                              subtitle: const Text(
-                                  'Control whether customers can find you on the live map'),
+                              title: Text(_vendor?.isTemporarilyClosed == true
+                                  ? 'Temporary closure active'
+                                  : open ? 'Stall open' : 'Stall closed'),
+                              subtitle: Text(_vendor?.isTemporarilyClosed == true
+                                  ? 'Customers see your stall as closed. The Open switch will turn off shortly.'
+                                  : 'Control whether customers can find you on the live map'),
                               value: open,
                               onChanged: _saving ? null : _toggle),
                           if (_saving) const LinearProgressIndicator(),
@@ -281,7 +293,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 8),
                           Text(_vendor?.category ?? 'Choose a food category'),
-                          Text(_vendor?.openingHours ??
+                          Text(_vendor?.hoursToday ??
                               'Add your opening hours'),
                           const SizedBox(height: 8),
                           Text(_vendor?.description ??
