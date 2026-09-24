@@ -1,6 +1,7 @@
 import '../../../core/services/notification_history_service.dart';
 import '../notifications/customer_notifications_screen.dart';
 import 'dart:async'; // bawak time, future dan unawaited
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,6 +9,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/stall_categories.dart';
+import '../../../core/models/stall_schedule.dart';
+import 'open_at_picker.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
@@ -34,11 +38,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   GoogleMapController? _mapController; // move the map dan zoom
   LatLng? _customerPosition;
   String? _customerLocationLabel;
-  bool _usesManualLocation = false;
   double _searchRadiusKm = 5;
 
   // NEW: Track the visible map area to filter vendors
   LatLngBounds? _visibleBounds;
+  LatLngBounds? _pendingBounds;
+  LatLng? _mapCenter;
+  CameraPosition? _lastCameraPosition;
+  final ValueNotifier<double> _mapBearing = ValueNotifier(0);
+  LatLng? _searchCenter;
+  bool _showSearchArea = false;
+  bool _programmaticCameraMove = false;
+  OpeningTimeFilter? _openingTime;
 
   final List<String> _tabTitles = [
     'Home',
@@ -90,6 +101,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void dispose() {
     _searchController.dispose();
     _mapController?.dispose();
+    _mapBearing.dispose();
     _stallScrollController.dispose();
     _freshnessTimer?.cancel();
     super.dispose();
@@ -158,8 +170,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() {
       // default
       _customerPosition = selection.coordinates;
+      _searchCenter = selection.coordinates;
+      _visibleBounds = null;
+      _showSearchArea = false;
       _customerLocationLabel = selection.label;
-      _usesManualLocation = isManual;
       _locationPermissionGranted = !isManual;
       _locationError = null; // buang error
     });
@@ -263,7 +277,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   void _setSearchRadius(double radius) {
     setState(() => _searchRadiusKm = radius);
-    final center = _customerPosition;
+    final center = _searchCenter ?? _customerPosition;
+    _visibleBounds = null;
     if (center != null) {
       final zoom = switch (radius) {
         <= 5 => 13.5,
@@ -328,6 +343,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     FocusScope.of(context).unfocus();
     final request = ++_cameraRequest;
     setState(() => _selectedVendorId = vendor.vendorId);
+    _programmaticCameraMove = true;
     _revealSelectedCard();
     final controller = _mapController;
     if (controller == null) {
@@ -380,13 +396,100 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     try {
       final bounds = await _mapController!.getVisibleRegion();
       if (mounted) {
-        setState(() => _visibleBounds = bounds);
+        setState(() {
+          _pendingBounds = bounds;
+          if (_visibleBounds == null) {
+            _visibleBounds = bounds;
+            _showSearchArea = false;
+          } else if (!_programmaticCameraMove) {
+            final previous = _visibleBounds!;
+            _showSearchArea =
+                (previous.southwest.latitude - bounds.southwest.latitude)
+                            .abs() >
+                        0.0001 ||
+                    (previous.southwest.longitude - bounds.southwest.longitude)
+                            .abs() >
+                        0.0001 ||
+                    (previous.northeast.latitude - bounds.northeast.latitude)
+                            .abs() >
+                        0.0001 ||
+                    (previous.northeast.longitude - bounds.northeast.longitude)
+                            .abs() >
+                        0.0001;
+          }
+          _programmaticCameraMove = false;
+        });
         _revealSelectedCard();
       }
     } catch (_) {
       // Controller may have been disposed during navigation.
     }
   }
+
+  void _searchThisArea() {
+    if (_pendingBounds == null || _mapCenter == null) return;
+    setState(() {
+      _visibleBounds = _pendingBounds;
+      _searchCenter = _mapCenter;
+      _showSearchArea = false;
+      _selectedVendorId = null;
+    });
+    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
+  }
+
+  Future<void> _resetCompass() async {
+    final controller = _mapController;
+    if (controller == null) return;
+
+    try {
+      final camera = _lastCameraPosition;
+      final zoom = camera?.zoom ?? await controller.getZoomLevel();
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: camera?.target ??
+                _mapCenter ??
+                _searchCenter ??
+                _customerPosition ??
+                _defaultPosition.target,
+            zoom: zoom,
+            bearing: 0,
+            tilt: 0,
+          ),
+        ),
+      );
+    } catch (_) {
+      // The map may be disposed while the user changes screens.
+    }
+  }
+
+  Future<void> _chooseOpeningTime() async {
+    final result = await showOpeningTimePicker(context);
+    if (result == null || !mounted) return;
+    setState(() {
+      _openingTime = result;
+      _statusFilter = 'All';
+    });
+  }
+
+  bool _matchesOpening(VendorModel vendor) {
+    final filter = _openingTime;
+    if (filter != null) {
+      return filter.end == null
+          ? vendor.isScheduledOpenAt(filter.start)
+          : hasScheduledOpening(filter.start, filter.end!, vendor.weeklyHours,
+              vendor.temporaryClosures);
+    }
+    if (_statusFilter == 'Open') return vendor.isOpenNow;
+    if (_statusFilter == 'Closed') return !vendor.isOpenNow;
+    return true;
+  }
+
+  String _stallStatus(VendorModel vendor) => _openingTime != null
+      ? 'Scheduled open'
+      : vendor.isOpenNow
+          ? 'Open now'
+          : 'Closed';
 
   String _formatDistance(double meters) {
     if (meters < 1000) {
@@ -496,12 +599,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         final matchingVendors = allVendors.where((vendor) {
           final nameMatches = vendor.stallName.toLowerCase().contains(query);
           final categoryMatches = vendor.category.toLowerCase().contains(query);
-          if (_statusFilter == 'Open' && !vendor.isOpenNow) return false;
-          if (_statusFilter == 'Closed' && vendor.isOpenNow) return false;
+          if (!_matchesOpening(vendor)) return false;
           return query.isEmpty || nameMatches || categoryMatches;
         });
         final filteredVendors = matchingVendors.where((vendor) {
-          final position = _customerPosition;
+          final position = _searchCenter ?? _customerPosition;
           if (position == null) {
             return true;
           }
@@ -527,18 +629,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
         // Sort by distance for easier viewing
         onScreenVendors.sort((a, b) {
-          if (_customerPosition == null) {
+          final sortCenter = _searchCenter ?? _customerPosition;
+          if (sortCenter == null) {
             return 0;
           }
           final distA = Geolocator.distanceBetween(
-            _customerPosition!.latitude,
-            _customerPosition!.longitude,
+            sortCenter.latitude,
+            sortCenter.longitude,
             a.latitude,
             a.longitude,
           );
           final distB = Geolocator.distanceBetween(
-            _customerPosition!.latitude,
-            _customerPosition!.longitude,
+            sortCenter.latitude,
+            sortCenter.longitude,
             b.latitude,
             b.longitude,
           );
@@ -559,7 +662,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 infoWindow: InfoWindow(
                   title: v.stallName,
-                  snippet: '${v.category} · ${v.isOpenNow ? "Open now" : "Closed"}',
+                  snippet: '${v.category} · ${_stallStatus(v)}',
                   onTap: () => _openVendorDetails(v),
                 ),
                 consumeTapEvents: true,
@@ -567,15 +670,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             )
             .toSet();
-
-        if (_usesManualLocation && _customerPosition != null) {
-          markers.add(Marker(
-              markerId: const MarkerId('customer_manual_location'),
-              position: _customerPosition!,
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueAzure),
-              infoWindow: const InfoWindow(title: 'Your search location')));
-        }
 
         return LayoutBuilder(builder: (context, constraints) {
           // The panel is a sibling below the map, never an overlay. It cannot
@@ -598,7 +692,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
                 mapToolbarEnabled: false,
-                compassEnabled: true,
+                compassEnabled: false,
                 padding: const EdgeInsets.fromLTRB(12, 132, 12, 12),
                 onMapCreated: (controller) {
                   _mapController = controller;
@@ -607,6 +701,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         CameraUpdate.newLatLngZoom(_customerPosition!, 15));
                   }
                   _updateVisibleBounds();
+                },
+                onCameraMove: (position) {
+                  _mapCenter = position.target;
+                  _lastCameraPosition = position;
+                  if ((_mapBearing.value - position.bearing).abs() > .1) {
+                    _mapBearing.value = position.bearing;
+                  }
                 },
                 onCameraIdle: _updateVisibleBounds,
                 onTap: (_) {
@@ -646,16 +747,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             _category = value == 'All' ? null : value;
                             _selectedVendorId = null;
                           }),
-                          itemBuilder: (_) => [
-                            'All',
-                            'Beverages',
-                            'Snacks & Desserts',
-                            'Malay Food',
-                            'Chinese Food',
-                            'Indian Food',
-                            'Western',
-                            'Noodles'
-                          ]
+                          itemBuilder: (_) => ['All', ...stallCategories]
                               .map((value) => PopupMenuItem(
                                   value: value, child: Text(value)))
                               .toList(),
@@ -687,44 +779,99 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       const SizedBox(width: 8),
                       PopupMenuButton<String>(
                         tooltip: 'Choose stall status',
-                        onSelected: (status) => setState(() => _statusFilter = status),
+                        onSelected: (status) => setState(() {
+                          _statusFilter = status;
+                          _openingTime = null;
+                        }),
                         itemBuilder: (_) => ['Open', 'Closed', 'All']
-                            .map((status) => PopupMenuItem(value: status,
-                              child: Text(status == 'Open' ? 'Open now' : status == 'Closed' ? 'Closed' : 'All stalls'))).toList(),
-                        child: Chip(avatar: Icon(_statusFilter == 'Open' ? Icons.storefront :
-                          _statusFilter == 'Closed' ? Icons.store_mall_directory_outlined : Icons.filter_alt_outlined,
-                          size: 18),
-                          label: Text(_statusFilter == 'Open' ? 'Open now' :
-                            _statusFilter == 'Closed' ? 'Closed' : 'All stalls')),
+                            .map((status) => PopupMenuItem(
+                                value: status,
+                                child: Text(status == 'Open'
+                                    ? 'Open now'
+                                    : status == 'Closed'
+                                        ? 'Closed'
+                                        : 'All stalls')))
+                            .toList(),
+                        child: Chip(
+                            avatar: Icon(
+                                _statusFilter == 'Open'
+                                    ? Icons.storefront
+                                    : _statusFilter == 'Closed'
+                                        ? Icons.store_mall_directory_outlined
+                                        : Icons.filter_alt_outlined,
+                                size: 18),
+                            label: Text(_openingTime != null
+                                ? 'Scheduled'
+                                : _statusFilter == 'Open'
+                                    ? 'Open now'
+                                    : _statusFilter == 'Closed'
+                                        ? 'Closed'
+                                        : 'All stalls')),
                       ),
                       const SizedBox(width: 8),
                       PopupMenuButton<String>(
                         tooltip: 'Choose category',
-                        onSelected: (value) => setState(() => _category = value == 'All' ? null : value),
-                        itemBuilder: (_) => [
-                          'All', 'Beverages', 'Snacks & Desserts', 'Malay Food',
-                          'Chinese Food', 'Indian Food', 'Western', 'Noodles',
-                        ].map((value) => PopupMenuItem(value: value, child: Text(value))).toList(),
-                        child: Chip(label: Text(_category ?? 'All categories'),
-                          avatar: const Icon(Icons.category_outlined, size: 18)),
+                        onSelected: (value) => setState(
+                            () => _category = value == 'All' ? null : value),
+                        itemBuilder: (_) => ['All', ...stallCategories]
+                            .map((value) =>
+                                PopupMenuItem(value: value, child: Text(value)))
+                            .toList(),
+                        child: Chip(
+                            label: Text(_category ?? 'All categories'),
+                            avatar:
+                                const Icon(Icons.category_outlined, size: 18)),
                       ),
-                      if (_customerPosition != null) ...[
+                      const SizedBox(width: 8),
+                      InputChip(
+                        avatar: const Icon(Icons.schedule, size: 18),
+                        label: Text(_openingTime?.label ?? 'Open at…'),
+                        onPressed: _chooseOpeningTime,
+                        onDeleted: _openingTime == null
+                            ? null
+                            : () => setState(() {
+                                  _openingTime = null;
+                                  _statusFilter = 'Open';
+                                }),
+                      ),
+                      if (_searchCenter != null ||
+                          _customerPosition != null) ...[
                         const SizedBox(width: 8),
                         PopupMenuButton<double>(
                           tooltip: 'Choose distance',
                           onSelected: _setSearchRadius,
                           itemBuilder: (_) => [5.0, 10.0, 25.0, 50.0]
-                              .map((radius) => PopupMenuItem(value: radius,
-                                child: Text('Within ${radius.toStringAsFixed(0)} km'))).toList(),
-                          child: Chip(avatar: const Icon(Icons.radar, size: 18),
-                            label: Text('Within ${_searchRadiusKm.toStringAsFixed(0)} km')),
+                              .map((radius) => PopupMenuItem(
+                                  value: radius,
+                                  child: Text(
+                                      'Within ${radius.toStringAsFixed(0)} km')))
+                              .toList(),
+                          child: Chip(
+                              avatar: const Icon(Icons.radar, size: 18),
+                              label: Text(
+                                  'Within ${_searchRadiusKm.toStringAsFixed(0)} km')),
                         ),
                       ],
                     ]),
                   )),
+              if (_showSearchArea)
+                Positioned(
+                    top: 126,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                        child: ElevatedButton.icon(
+                      onPressed: _searchThisArea,
+                      icon: const Icon(Icons.search, size: 18),
+                      label: const Text('Search this area'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF1967D2),
+                          elevation: 3),
+                    ))),
               if (_locationError != null)
                 Positioned(
-                    top: 132,
+                    top: _showSearchArea ? 180 : 132,
                     left: 12,
                     right: 68,
                     child: Material(
@@ -754,27 +901,44 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Padding(
                             padding: const EdgeInsets.all(10),
-                            child: Text(
-                                'Finding your location…',
+                            child: Text('Finding your location…',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 12))))),
               Positioned(
                   right: 12,
                   bottom: 12,
-                  child: FloatingActionButton.small(
-                    heroTag: 'recenter_button',
-                    tooltip: 'My location',
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppColors.textDark,
-                    onPressed: _getCustomerLocation,
-                    child: _isLocatingCustomer
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.my_location_rounded),
-                  )),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    FloatingActionButton.small(
+                      heroTag: 'compass_button',
+                      tooltip: 'Reset compass',
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.textDark,
+                      onPressed: _resetCompass,
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _mapBearing,
+                        child: const Icon(Icons.navigation_rounded),
+                        builder: (context, bearing, child) => Transform.rotate(
+                          angle: -bearing * math.pi / 180,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FloatingActionButton.small(
+                      heroTag: 'recenter_button',
+                      tooltip: 'My location',
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.textDark,
+                      onPressed: _getCustomerLocation,
+                      child: _isLocatingCustomer
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.my_location_rounded),
+                    ),
+                  ])),
             ])),
             SizedBox(
                 height: panelHeight,
@@ -891,6 +1055,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _selectVendor(vendor),
+        onDoubleTap: () => _openVendorDetails(vendor),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(12, 10, 8, 4),
           child:
@@ -911,7 +1076,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     Text(
                         [
                           vendor.category,
-                          vendor.isOpenNow ? 'Open now' : 'Closed',
+                          _stallStatus(vendor),
                           if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                         ].join(' · '),
                         maxLines: 1,
@@ -946,9 +1111,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           fontSize: 10, color: Color(0xFF64748B)))),
               if (vendor.phoneNumber.isNotEmpty)
                 TextButton.icon(
-                  onPressed: () => launchUrl(Uri(scheme: 'tel', path: vendor.phoneNumber)),
+                  onPressed: () =>
+                      launchUrl(Uri(scheme: 'tel', path: vendor.phoneNumber)),
                   icon: const Icon(Icons.call_outlined, size: 14),
-                  label: Text(vendor.phoneNumber, style: const TextStyle(fontSize: 10)),
+                  label: Text(vendor.phoneNumber,
+                      style: const TextStyle(fontSize: 10)),
                 ),
               TextButton(
                   onPressed: () => _openVendorDetails(vendor),
@@ -997,7 +1164,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   title: Text(vendor.stallName),
                   subtitle: Text([
                     vendor.category,
-                    vendor.isOpenNow ? 'Open now' : 'Closed',
+                    _stallStatus(vendor),
                     if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                   ].join(' · ')),
                   trailing: const Icon(Icons.near_me_outlined,

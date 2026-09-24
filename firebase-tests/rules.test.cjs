@@ -13,8 +13,9 @@ const root = path.join(__dirname, '..');
 const projectId = 'demo-stallseeker-rules';
 let env;
 
-function client(uid) {
+function client(uid, verified = true) {
   return env.authenticatedContext(uid, {
+    email_verified: verified,
     firebase: {sign_in_provider: 'password'},
   });
 }
@@ -37,6 +38,20 @@ before(async () => {
     firestore: {rules: fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8')},
     storage: {rules: fs.readFileSync(path.join(root, 'storage.rules'), 'utf8')},
   });
+});
+
+test('unverified accounts cannot publish stalls, menus, reviews or photos', async () => {
+  const vendor = client('vendor-a', false).firestore();
+  await assertSucceeds(setDoc(doc(vendor, 'vendors/vendor-a'),
+      {vendorId: 'vendor-a', phoneNumber: '+60123456789', isOpen: false}));
+  await assertFails(updateDoc(doc(vendor, 'vendors/vendor-a'), {isOpen: true}));
+  await assertFails(setDoc(doc(vendor, 'vendors/vendor-a/menu/test'), {name: 'Burger'}));
+  const customer = client('customer-a', false);
+  await assertFails(setDoc(doc(customer.firestore(), 'stallReviews/vendor-a/entries/customer-a'), reviewData('customer-a')));
+  await assertFails(setDoc(doc(customer.firestore(), 'follows/unverified'), {customerId: 'customer-a', vendorId: 'vendor-a'}));
+  await assertFails(uploadBytes(ref(customer.storage(), 'review_images/vendor-a/customer-a/test.jpg'),
+      new Uint8Array([1, 2, 3]), {contentType: 'image/jpeg'}));
+  await assertFails(setDoc(doc(customer.firestore(), '_emailVerificationCodes/customer-a_registration'), {attempts: 0}));
 });
 
 beforeEach(async () => {

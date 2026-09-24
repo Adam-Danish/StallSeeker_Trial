@@ -132,7 +132,7 @@ Then invite questions.
 
 Keep these ready for questions or a longer demo:
 
-- Registration, Google sign-in, password reset, verification code, and role routing.
+- Registration, Google sign-in, password reset, Firebase email verification link, and role routing.
 - Manual location search and permission-denied recovery.
 - Adding/deleting menu items and uploading images.
 - Profile editing, notification settings, FAQ, privacy, and terms.
@@ -166,7 +166,7 @@ Use names and images with strong visual differences. Avoid very long stall or di
 
 - Install the exact release-candidate build on both phones.
 - Confirm both phones point to the staging Firebase project.
-- Verify Google Maps key restrictions, OAuth fingerprints, Cloud Functions, SMTP, Firestore indexes/rules, Storage, FCM, and APNs if using iOS.
+- Verify Google Maps key restrictions, OAuth fingerprints, Cloud Functions, Firebase Authentication email templates, Firestore indexes/rules, Storage, FCM, and APNs if using iOS.
 - Run the 12-case release smoke suite in the test plan.
 - Confirm account credentials and disable password-manager popups that could cover the screen.
 - Record a clean backup video of the complete 3-minute core journey.

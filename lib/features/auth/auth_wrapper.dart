@@ -7,6 +7,7 @@ import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
 import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
 import 'package:stallseeker/core/services/notification_service.dart';
 import 'package:stallseeker/core/services/auth_service.dart';
+import 'screens/email_verification_screen.dart';
 
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
@@ -42,6 +43,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
           }
           if (user.isAnonymous) {
             return const CustomerHomeScreen();
+          }
+          if (!user.emailVerified) {
+            NotificationService.instance.setNavigationReady(false);
+            return EmailVerificationScreen(key: ValueKey('verify-${user.uid}'));
           }
           return _AccountGate(key: ValueKey(user.uid), user: user);
         });

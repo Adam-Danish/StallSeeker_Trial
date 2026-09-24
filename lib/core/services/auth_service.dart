@@ -1,3 +1,6 @@
+// MANAGE ACCOUNT
+// - signup, login, signin with google, signinasguest, getuserdata, save cust location, signout, resetpassword, req email verfiy, confir email verify, change password, update anem, delete account
+
 import 'notification_service.dart';
 import 'vendor_location_service.dart';
 import 'dart:async';
@@ -11,14 +14,13 @@ import '../constants/firestore_collections.dart';
 import '../utils/vendor_phone.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance; // connect to firebase auth
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance; // connect to firestore db
+  final GoogleSignIn _googleSignIn =
+      GoogleSignIn.instance; // connect to google login
   static bool _googleSignInReady = false;
 
-  // google_sign_in v7 requires an explicit initialize() call, exactly
-  // once, before authenticate()/signOut() are used. Cheap to call
-  // repeatedly since it's guarded by the flag below.
   Future<void> _ensureGoogleSignInReady() async {
     if (_googleSignInReady) {
       return;
@@ -36,6 +38,40 @@ class AuthService {
   // Get current Firebase user
   User? get currentUser => _auth.currentUser;
 
+  // repair current user profile
+  Future<void> repairCurrentUserProfile() async {
+    final user = _auth.currentUser;
+
+    if (user == null || user.isAnonymous) {
+      return;
+    }
+
+    final userRef =
+        _firestore.collection(FirestoreCollections.users).doc(user.uid);
+
+    final userSnapshot = await userRef.get();
+    final existingData = userSnapshot.data();
+    final existingRole = existingData?['role'];
+
+    if (existingRole == 'customer' || existingRole == 'vendor') {
+      return;
+    }
+
+    final vendorSnapshot = await _firestore
+        .collection(FirestoreCollections.vendors)
+        .doc(user.uid)
+        .get();
+
+    await userRef.set({
+      'uid': user.uid,
+      'email': user.email ?? '',
+      'fullName': user.displayName ?? '',
+      'role': vendorSnapshot.exists ? 'vendor' : 'customer',
+      if (existingData?['createdAt'] == null)
+        'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   // Register user with Email, Password, Name & Role
   Future<String?> signUp({
     required String email,
@@ -45,8 +81,8 @@ class AuthService {
     String? vendorPhone,
   }) async {
     try {
-      final normalizedPhone = role == 'vendor'
-          ? normalizeVendorPhone(vendorPhone ?? '') : null;
+      final normalizedPhone =
+          role == 'vendor' ? normalizeVendorPhone(vendorPhone ?? '') : null;
       if (role == 'vendor' && normalizedPhone == null) {
         return 'Enter a valid Malaysian business phone number.';
       }
@@ -65,15 +101,21 @@ class AuthService {
         );
 
         final batch = _firestore.batch();
-        batch.set(_firestore.collection(FirestoreCollections.users)
-            .doc(credential.user!.uid), newUser.toMap());
+        batch.set(
+            _firestore
+                .collection(FirestoreCollections.users)
+                .doc(credential.user!.uid),
+            newUser.toMap());
         if (role == 'vendor') {
-          batch.set(_firestore.collection(FirestoreCollections.vendors)
-              .doc(credential.user!.uid), {
-            'vendorId': credential.user!.uid,
-            'phoneNumber': normalizedPhone,
-            'isOpen': false,
-          });
+          batch.set(
+              _firestore
+                  .collection(FirestoreCollections.vendors)
+                  .doc(credential.user!.uid),
+              {
+                'vendorId': credential.user!.uid,
+                'phoneNumber': normalizedPhone,
+                'isOpen': false,
+              });
         }
         await batch.commit();
 
@@ -93,37 +135,18 @@ class AuthService {
     required String password,
   }) async {
     try {
-      final credential = await _auth.signInWithEmailAndPassword(
+      await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
-      final user = credential.user;
-      if (user != null) {
-        await _ensureUserProfile(user);
-      }
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? "An authentication error occurred.";
-    } on FirebaseException {
-      await _discardFailedSignIn();
-      return 'Your account profile could not be restored. Check your connection and try again.';
     } catch (e) {
-      await _discardFailedSignIn();
       return e.toString();
     }
   }
 
-  // Google sign-in. Offered as a quick customer entry point -- a
-  // brand-new Google user is created as role 'customer' automatically,
-  // using their Google account's display name as fullName. Vendors
-  // still register with email/password since a stall account needs the
-  // role picker anyway.
-  //
-  // A 25-second timeout is applied to the account picker step. Without
-  // this, a misconfigured SHA-1 fingerprint (the most common cause of
-  // this failing) makes the picker hang indefinitely with no error and
-  // no way forward for the user -- the timeout turns that into a clear
-  // message instead of a frozen screen.
   Future<String?> signInWithGoogle() async {
     try {
       await _ensureGoogleSignInReady();
@@ -140,11 +163,24 @@ class AuthService {
 
       final userCredential = await _auth
           .signInWithCredential(credential)
-          .timeout(const Duration(seconds: 25));
+          .timeout(const Duration(
+              seconds:
+                  25)); // cancel google sign in kalau lebih 25 sec  xbuat apa2
       final user = userCredential.user;
 
-      if (user != null) {
-        await _ensureUserProfile(user);
+      if (user != null &&
+          (userCredential.additionalUserInfo?.isNewUser ?? false)) {
+        final newUser = UserModel(
+          uid: user.uid,
+          email: user.email ?? '',
+          fullName: user.displayName ?? '',
+          role: 'customer',
+          createdAt: DateTime.now(),
+        );
+        await _firestore // save profile dalam firestore
+            .collection(FirestoreCollections.users)
+            .doc(user.uid)
+            .set(newUser.toMap());
       }
 
       return null;
@@ -161,80 +197,12 @@ class AuthService {
         return "An account already exists with this email. Log in with your email and password instead.";
       }
       return e.message ?? "Google sign-in failed.";
-    } on FirebaseException {
-      await _discardFailedSignIn(includeGoogle: true);
-      return 'Your account profile could not be restored. Check your connection and try again.';
     } catch (e) {
-      await _discardFailedSignIn(includeGoogle: true);
       return e.toString();
     }
   }
 
-  Future<void> _discardFailedSignIn({bool includeGoogle = false}) async {
-    if (includeGoogle) {
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {
-        // Continue clearing Firebase Auth even if Google cannot sign out.
-      }
-    }
-    try {
-      await _auth.signOut();
-    } catch (_) {
-      // The original sign-in/profile error is the useful error to return.
-    }
-  }
-
-  /// Repairs the split account model after a profile document was removed
-  /// while the Firebase Authentication account was left intact.
-  ///
-  /// A surviving vendor document is the only reliable evidence that the
-  /// account was a vendor. Otherwise a recovered account is treated as a
-  /// customer, matching the existing Google sign-in default.
-  Future<void> _ensureUserProfile(User user) async {
-    final userRef =
-        _firestore.collection(FirestoreCollections.users).doc(user.uid);
-    final profile = await userRef.get();
-    final existing = profile.data();
-    final existingRole = existing?['role'];
-    if (existingRole == 'customer' || existingRole == 'vendor') {
-      return;
-    }
-
-    final vendor = await _firestore
-        .collection(FirestoreCollections.vendors)
-        .doc(user.uid)
-        .get();
-    final recoveredRole = vendor.exists ? 'vendor' : 'customer';
-    final savedEmail = existing?['email'];
-    final savedName = existing?['fullName'];
-
-    await userRef.set({
-      'uid': user.uid,
-      'email': savedEmail is String && savedEmail.trim().isNotEmpty
-          ? savedEmail
-          : user.email ?? '',
-      'fullName': savedName is String && savedName.trim().isNotEmpty
-          ? savedName
-          : user.displayName ?? '',
-      'role': recoveredRole,
-      if (existing?['createdAt'] == null)
-        'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
-  Future<void> repairCurrentUserProfile() async {
-    final user = _auth.currentUser;
-    if (user == null || user.isAnonymous) {
-      return;
-    }
-    await _ensureUserProfile(user);
-  }
-
-  // Guest mode: signs in anonymously so a customer can browse without
-  // creating an account. Anonymous users skip the Firestore users/
-  // document entirely (see AuthWrapper) and can't follow vendors --
-  // following requires converting to a real account.
+// Guest mode
   Future<String?> signInAsGuest() async {
     try {
       await _auth.signInAnonymously();
@@ -246,7 +214,7 @@ class AuthService {
     }
   }
 
-  // Fetch current user's data from Firestore
+  // Fetch current user's data from Firestore                   //  read user id
   Future<UserModel?> getUserData(String uid) async {
     try {
       DocumentSnapshot doc = await _firestore
@@ -264,6 +232,7 @@ class AuthService {
     }
   }
 
+// stores customer location
   Future<String?> saveCustomerLocation({
     required double latitude,
     required double longitude,
@@ -294,6 +263,7 @@ class AuthService {
   }
 
   // Sign Out
+  // stop vendor location service
   Future<void> signOut() async {
     await VendorLocationService.instance.pause();
     try {
@@ -310,6 +280,7 @@ class AuthService {
     }
   }
 
+// reset password
   Future<String?> resetPassword({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
@@ -334,46 +305,106 @@ class AuthService {
     }
   }
 
-  Future<String?> requestEmailVerificationCode({String? newEmail}) async {
+// Ask Firebase Authentication to send its standard verification link.
+  Future<String?> sendEmailVerificationLink() async {
     try {
-      final callable = FirebaseFunctions.instance
-          .httpsCallable('requestEmailVerificationCode');
-      await callable.call(<String, dynamic>{
-        'purpose': newEmail == null ? 'registration' : 'email_change',
-        if (newEmail != null) 'newEmail': newEmail.trim(),
-      });
+      final user = _auth.currentUser;
+      if (user == null || user.isAnonymous) {
+        return 'Sign in to verify your email.';
+      }
+      await user.reload();
+      final refreshed = _auth.currentUser;
+      if (refreshed?.emailVerified == true) return null;
+      await refreshed!.sendEmailVerification();
       return null;
-    } on FirebaseFunctionsException catch (e) {
-      return e.message ?? 'Could not send the verification code.';
-    } catch (_) {
-      return 'Could not send the verification code. Please try again.';
-    }
-  }
-
-  Future<String?> confirmEmailVerificationCode({
-    required String code,
-    String? newEmail,
-  }) async {
-    try {
-      final callable = FirebaseFunctions.instance
-          .httpsCallable('confirmEmailVerificationCode');
-      await callable.call(<String, dynamic>{
-        'purpose': newEmail == null ? 'registration' : 'email_change',
-        'code': code.trim(),
-        if (newEmail != null) 'newEmail': newEmail.trim(),
-      });
-      await _auth.currentUser?.reload();
-      await _auth.currentUser?.getIdToken(true);
-      return null;
-    } on FirebaseFunctionsException catch (e) {
-      return e.message ?? 'The verification code could not be confirmed.';
     } on FirebaseAuthException catch (e) {
-      return e.message ?? 'The account could not be refreshed.';
+      if (e.code == 'too-many-requests') {
+        return 'Too many emails were requested. Please wait and try again.';
+      }
+      if (e.code == 'network-request-failed') {
+        return 'Could not connect. Check your network and try again.';
+      }
+      return e.message ?? 'Could not send the verification email.';
     } catch (_) {
-      return 'The verification code could not be confirmed. Please try again.';
+      return 'Could not send the verification email. Please try again.';
     }
   }
 
+// Refresh the user and signed email_verified token after the link is opened.
+  Future<String?> refreshEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'Your session ended. Please sign in again.';
+      await user.reload();
+      final refreshed = _auth.currentUser;
+      if (refreshed?.emailVerified != true) {
+        return 'The email is not verified yet. Open the link in your email first.';
+      }
+      await refreshed!.getIdToken(true);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Could not check your verification status.';
+    } catch (_) {
+      return 'Could not check your verification status. Please try again.';
+    }
+  }
+
+  Future<String?> sendEmailChangeLink(String newEmail) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.isAnonymous) {
+        return 'Sign in before changing your email.';
+      }
+      final email = newEmail.trim();
+      if (email.toLowerCase() == (user.email ?? '').toLowerCase()) {
+        return 'Enter a different email address.';
+      }
+      await user.verifyBeforeUpdateEmail(email);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return 'For security, sign out and sign in again before changing your email.';
+      }
+      if (e.code == 'email-already-in-use') {
+        return 'That email is already in use.';
+      }
+      if (e.code == 'too-many-requests') {
+        return 'Too many emails were requested. Please wait and try again.';
+      }
+      return e.message ?? 'Could not send the email-change link.';
+    } catch (_) {
+      return 'Could not send the email-change link. Please try again.';
+    }
+  }
+
+  Future<String?> refreshEmailChange(String expectedEmail) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return 'Your session ended. Please sign in again.';
+      await user.reload();
+      final refreshed = _auth.currentUser;
+      if ((refreshed?.email ?? '').toLowerCase() !=
+          expectedEmail.trim().toLowerCase()) {
+        return 'The new email is not verified yet. Open the link in that email first.';
+      }
+      await refreshed!.getIdToken(true);
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(refreshed.uid)
+          .set({
+        'email': refreshed.email,
+        'emailVerified': refreshed.emailVerified,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Could not check the new email.';
+    } catch (_) {
+      return 'Could not check the new email. Please try again.';
+    }
+  }
+
+// change password
   Future<String?> changePassword(String newPassword,
       {String? currentPassword}) async {
     try {
@@ -411,6 +442,7 @@ class AuthService {
     }
   }
 
+// update name
   Future<String?> updateFullName(String uid, String newName) async {
     try {
       final user = _auth.currentUser;
@@ -437,6 +469,7 @@ class AuthService {
     }
   }
 
+// delete account (bug)
   Future<String?> deleteAccount({String? currentPassword}) async {
     final user = _auth.currentUser;
     if (user == null || user.isAnonymous) {

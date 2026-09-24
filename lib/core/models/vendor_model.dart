@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'stall_schedule.dart';
 
-class VendorModel { // file ni represent 1 stall
+class VendorModel {
+  // file ni represent 1 stall
   final String vendorId;
   final String stallName;
   final String description;
@@ -12,37 +13,46 @@ class VendorModel { // file ni represent 1 stall
   final double longitude;
   final String imageUrl;
   final String phoneNumber;
-  final DateTime? locationUpdatedAt;
-  final bool locationSharingActive;
   final Map<int, List<StallHoursInterval>> weeklyHours;
   final List<TemporaryClosure> temporaryClosures;
+  final DateTime? locationUpdatedAt;
+  final bool locationSharingActive;
 
-  bool get isTemporarilyClosed => temporaryClosures.any((c) => c.contains(DateTime.now()));
+  bool get isTemporarilyClosed =>
+      temporaryClosures.any((c) => c.contains(DateTime.now()));
   bool get isOpenNow => isOpen && !isTemporarilyClosed;
+  bool isScheduledOpenAt(DateTime instant) =>
+      isWithinStallSchedule(instant, weeklyHours, temporaryClosures);
 
   String get hoursToday {
-    final nowInMalaysia = DateTime.now().toUtc().add(const Duration(hours: 8));
-    final intervals = weeklyHours[nowInMalaysia.weekday] ?? [];
+    final day = malaysiaTime(DateTime.now()).weekday;
     if (weeklyHours.isEmpty) return openingHours;
+    final intervals = weeklyHours[day] ?? [];
     if (intervals.isEmpty) return 'Closed today';
-    return intervals.map((i) => '${formatStallTime(i.openMinute)} – '
-        '${formatStallTime(i.closeMinute)}${i.closeMinute < i.openMinute ? ' (next day)' : ''}')
+    return intervals
+        .map((i) => '${formatStallTime(i.openMinute)} – '
+            '${formatStallTime(i.closeMinute)}${i.closeMinute < i.openMinute ? ' (next day)' : ''}')
         .join(', ');
   }
 
-  bool get hasValidLocation => latitude.isFinite && longitude.isFinite &&
-      latitude.abs() <= 90 && longitude.abs() <= 180 &&
+  bool get hasValidLocation =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude.abs() <= 90 &&
+      longitude.abs() <= 180 &&
       !(latitude == 0 && longitude == 0);
 
-  bool get hasFreshLocation { // check kalau stall ada usable coordinates
+  bool get hasFreshLocation {
+    // check kalau stall ada usable coordinates
     final updated = locationUpdatedAt;
-    if (!locationSharingActive || updated == null) { return false; }
+    if (!locationSharingActive || updated == null) {
+      return false;
+    }
     final age = DateTime.now().difference(updated);
     return !age.isNegative && age < const Duration(minutes: 2);
   }
 
   // location update setiap 15sec, tapi kalau vendor punya gps fail/phone off lebih dua minit stall tutup
-
 
   VendorModel({
     required this.vendorId,
@@ -55,24 +65,24 @@ class VendorModel { // file ni represent 1 stall
     this.longitude = 0.0,
     this.imageUrl = '',
     this.phoneNumber = '',
-    this.locationUpdatedAt,
-    this.locationSharingActive = false,
     this.weeklyHours = const {},
     this.temporaryClosures = const [],
+    this.locationUpdatedAt,
+    this.locationSharingActive = false,
   });
 
   /// Editable information only. Operational state belongs to the selling session.
   Map<String, dynamic> toProfileMap() => {
-    'vendorId': vendorId,
-    'stallName': stallName,
-    'description': description,
-    'category': category,
-    'openingHours': openingHours,
-    'imageUrl': imageUrl,
-    'phoneNumber': phoneNumber,
-    'weeklyHours': serializeWeeklyHours(weeklyHours),
-    'temporaryClosures': temporaryClosures.map((c) => c.toMap()).toList(),
-  };
+        'vendorId': vendorId,
+        'stallName': stallName,
+        'description': description,
+        'category': category,
+        'openingHours': openingHours,
+        'imageUrl': imageUrl,
+        'phoneNumber': phoneNumber,
+        'weeklyHours': serializeWeeklyHours(weeklyHours),
+        'temporaryClosures': temporaryClosures.map((c) => c.toMap()).toList(),
+      };
 
   // Convert VendorModel to Map for Firestore
   Map<String, dynamic> toMap() {
@@ -107,8 +117,11 @@ class VendorModel { // file ni represent 1 stall
       phoneNumber: map['phoneNumber'] ?? '',
       weeklyHours: parseWeeklyHours(map['weeklyHours']),
       temporaryClosures: (map['temporaryClosures'] is List
-          ? map['temporaryClosures'] as List : const [])
-          .map(TemporaryClosure.fromMap).whereType<TemporaryClosure>().toList(),
+              ? map['temporaryClosures'] as List
+              : const [])
+          .map(TemporaryClosure.fromMap)
+          .whereType<TemporaryClosure>()
+          .toList(),
       locationUpdatedAt: (map['locationUpdatedAt'] as Timestamp?)?.toDate(),
       locationSharingActive: map['locationSharingActive'] == true,
     );

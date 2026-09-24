@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/storage_service.dart';
@@ -27,15 +28,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
   final _phoneController = TextEditingController();
 
   String _selectedCategory = 'Beverages';
-  final List<String> _categories = [
-    'Beverages',
-    'Snacks & Desserts',
-    'Malay Food',
-    'Chinese Food',
-    'Indian Food',
-    'Western',
-    'Noodles',
-  ];
+  final List<String> _categories = stallCategories;
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -89,10 +82,14 @@ class _EditStallScreenState extends State<EditStallScreen> {
 
   // Save updated stall profile to Firestore
   Future<void> _saveStallProfile() async {
-    if (!_formKey.currentState!.validate()) { return; }
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
     final user = _auth.currentUser;
-    if (user == null) { return; }
+    if (user == null) {
+      return;
+    }
 
     setState(() {
       _isSaving = true;
@@ -266,15 +263,19 @@ class _EditStallScreenState extends State<EditStallScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    if (_openingHoursController.text.isNotEmpty && _weeklyHours.isEmpty)
-                      Padding(padding: const EdgeInsets.only(bottom: 12),
-                        child: Text('Previous hours: ${_openingHoursController.text}. Set your weekly hours below.')),
-                    StallScheduleEditor(hours: _weeklyHours,
-                      closures: _temporaryClosures,
-                      onChanged: (hours, closures) => setState(() {
-                        _weeklyHours = hours;
-                        _temporaryClosures = closures;
-                      })),
+                    if (_openingHoursController.text.isNotEmpty &&
+                        _weeklyHours.isEmpty)
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                              'Previous hours: ${_openingHoursController.text}. Set your weekly hours below.')),
+                    StallScheduleEditor(
+                        hours: _weeklyHours,
+                        closures: _temporaryClosures,
+                        onChanged: (hours, closures) => setState(() {
+                              _weeklyHours = hours;
+                              _temporaryClosures = closures;
+                            })),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _phoneController,
@@ -284,8 +285,10 @@ class _EditStallScreenState extends State<EditStallScreen> {
                         hintText: 'e.g. 012-345 6789',
                         border: OutlineInputBorder(),
                       ),
-                      validator: (value) => normalizeVendorPhone(value ?? '') == null
-                          ? 'Enter a valid Malaysian phone number.' : null,
+                      validator: (value) =>
+                          normalizeVendorPhone(value ?? '') == null
+                              ? 'Enter a valid Malaysian phone number.'
+                              : null,
                     ),
                     const SizedBox(height: 24),
 

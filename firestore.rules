@@ -8,10 +8,24 @@ service cloud.firestore {
     }
 
     function ownsVendor(vendorId) {
-      return signedIn()
+      return verifiedAccount()
           && request.auth.uid == vendorId
           && getAfter(/databases/$(database)/documents/users/$(vendorId))
               .data.role == 'vendor';
+    }
+
+    function verifiedAccount() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
+    function initialVendorRecord(vendorId) {
+      return signedIn() && request.auth.uid == vendorId
+          && getAfter(/databases/$(database)/documents/users/$(vendorId)).data.role == 'vendor'
+          && request.resource.data.keys().hasOnly(['vendorId', 'phoneNumber', 'isOpen'])
+          && request.resource.data.vendorId == vendorId
+          && request.resource.data.phoneNumber is string
+          && request.resource.data.phoneNumber.size() <= 20
+          && request.resource.data.isOpen == false;
     }
 
     function validReviewPhotoUrls(urls) {
@@ -37,7 +51,9 @@ service cloud.firestore {
 
     match /vendors/{vendorId} {
       allow read: if true;
-      allow create, update: if ownsVendor(vendorId)
+      allow create: if initialVendorRecord(vendorId) || (ownsVendor(vendorId)
+          && request.resource.data.vendorId == vendorId);
+      allow update: if ownsVendor(vendorId)
           && request.resource.data.vendorId == vendorId;
       allow delete: if false;
 
@@ -49,7 +65,7 @@ service cloud.firestore {
 
     match /stallReviews/{vendorId}/entries/{customerId} {
         allow read: if true;
-        allow create, update: if signedIn()
+        allow create, update: if verifiedAccount()
             && request.auth.uid == customerId
             && customerId != vendorId
             && get(/databases/$(database)/documents/users/$(customerId)).data.role == 'customer'
@@ -89,7 +105,7 @@ service cloud.firestore {
     match /follows/{followId} {
       allow read: if request.auth != null
           && request.auth.uid == resource.data.customerId;
-      allow create: if signedIn()
+      allow create: if verifiedAccount()
           && request.auth.uid == request.resource.data.customerId;
       allow delete: if request.auth != null
           && request.auth.uid == resource.data.customerId;

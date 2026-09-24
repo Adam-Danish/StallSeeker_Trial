@@ -1,28 +1,23 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
-
-class LocationSelection {
-  const LocationSelection({required this.coordinates, required this.label});
-
-  final LatLng coordinates;
-  final String label;
-}
+import '../../core/services/place_search_service.dart';
+export '../../core/services/place_search_service.dart' show LocationSelection;
 
 Future<LocationSelection?> showManualLocationDialog(
   BuildContext context, {
   LatLng? initialLocation,
   String title = 'Enter Location Manually',
+  PlaceSearchService? placeSearch,
 }) {
   return showDialog<LocationSelection>(
     context: context,
     builder: (_) => _ManualLocationDialog(
       title: title,
       initialLocation: initialLocation,
+      placeSearch: placeSearch,
     ),
   );
 }
@@ -66,10 +61,12 @@ class _ManualLocationDialog extends StatefulWidget {
   const _ManualLocationDialog({
     required this.title,
     required this.initialLocation,
+    this.placeSearch,
   });
 
   final String title;
   final LatLng? initialLocation;
+  final PlaceSearchService? placeSearch;
 
   @override
   State<_ManualLocationDialog> createState() => _ManualLocationDialogState();
@@ -77,6 +74,8 @@ class _ManualLocationDialog extends StatefulWidget {
 
 class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   final _placeController = TextEditingController();
+  late final _placeSearch = widget.placeSearch ?? PlaceSearchService();
+  bool _usingDeviceFallback = false;
   Timer? _debounce;
   List<LocationSelection> _suggestions = const [];
   LocationSelection? _selection;
@@ -88,6 +87,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   void dispose() {
     _debounce?.cancel();
     _placeController.dispose();
+    if (widget.placeSearch == null) _placeSearch.dispose();
     super.dispose();
   }
 
@@ -97,6 +97,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
     final query = value.trim();
     setState(() {
       _selection = null;
+      _usingDeviceFallback = false;
       _suggestions = const [];
       _errorText = null;
       _isSearching = false;
@@ -111,21 +112,26 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   }
 
   Future<void> _findSuggestions(String query) async {
+    if (!mounted || query.trim().length < 3) return;
     final requestId = ++_requestId;
     if (mounted) {
       setState(() {
         _isSearching = true;
+        _selection = null;
+        _suggestions = const [];
+        _usingDeviceFallback = false;
         _errorText = null;
       });
     }
     try {
-      final suggestions = await _searchPlaces(query);
+      final suggestions = await _searchPlaces(query, requestId);
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _isSearching = false;
         _suggestions = suggestions;
         if (suggestions.isEmpty) {
-          _errorText = 'No matching locations were found. Please refine your search.';
+          _errorText =
+              'No matching locations were found. Please refine your search.';
         }
       });
     } catch (_) {
@@ -133,59 +139,23 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
       setState(() {
         _isSearching = false;
         _suggestions = const [];
-        _errorText = 'Unable to search for locations. Please check your connection and try again.';
+        _errorText =
+            'Unable to search for locations. Please check your connection and try again.';
       });
     }
   }
 
-  Future<List<LocationSelection>> _searchPlaces(String query) async {
+  Future<List<LocationSelection>> _searchPlaces(
+      String query, int requestId) async {
     try {
-      final origin = widget.initialLocation;
-      final uri = Uri.https('photon.komoot.io', '/api', {
-        'q': query, 'countrycode': 'MY', 'limit': '10',
-        if (origin != null) 'lat': origin.latitude.toString(),
-        if (origin != null) 'lon': origin.longitude.toString(),
-      });
-      final response = await http.get(uri).timeout(const Duration(seconds: 8));
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        final features = body['features'];
-        final results = <LocationSelection>[];
-        final seen = <String>{};
-        if (features is List) {
-          for (final feature in features) {
-            if (feature is! Map) continue;
-            final geometry = feature['geometry'];
-            final properties = feature['properties'];
-            if (geometry is! Map || properties is! Map) continue;
-            final coordinates = geometry['coordinates'];
-            if (coordinates is! List || coordinates.length < 2 ||
-                coordinates[0] is! num || coordinates[1] is! num) {
-              continue;
-            }
-            final parts = <String>[];
-            for (final key in ['name', 'street', 'district', 'city', 'county', 'state', 'postcode']) {
-              final value = properties[key];
-              if (value is String && value.trim().isNotEmpty &&
-                  !parts.contains(value.trim())) {
-                parts.add(value.trim());
-              }
-            }
-            if (parts.isEmpty) { continue; }
-            final label = parts.join(', ');
-            final point = LatLng((coordinates[1] as num).toDouble(),
-                (coordinates[0] as num).toDouble());
-            final key = '${point.latitude.toStringAsFixed(5)},${point.longitude.toStringAsFixed(5)}';
-            if (seen.add(key)) {
-              results.add(LocationSelection(coordinates: point, label: label));
-            }
-          }
-        }
-        if (results.isNotEmpty) return results.take(8).toList();
-      }
+      final results =
+          await _placeSearch.search(query, origin: widget.initialLocation);
+      if (results.isNotEmpty) return results;
     } catch (_) {
-      // Keep the device geocoder available if the place search is offline.
+      // The dialog labels this fallback instead of implying full autocomplete.
     }
+    if (!mounted || requestId != _requestId) return [];
+    _usingDeviceFallback = true;
 
     // Device geocoding is a fallback and may return only one result.
     {
@@ -234,12 +204,9 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   void _selectSuggestion(LocationSelection suggestion) {
     setState(() {
       _selection = suggestion;
-      _suggestions = const [];
       _errorText = null;
-      _placeController.text = suggestion.label;
-      _placeController.selection = TextSelection.collapsed(
-        offset: _placeController.text.length,
-      );
+      _debounce?.cancel();
+      _requestId++;
     });
     FocusManager.instance.primaryFocus?.unfocus();
   }
@@ -262,6 +229,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.title),
+      scrollable: true,
       content: SizedBox(
         width: double.maxFinite,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -301,8 +269,8 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
           ),
           if (_suggestions.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
+            SizedBox(
+              height: 220,
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: _suggestions.length,
@@ -310,6 +278,10 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
                 itemBuilder: (context, index) {
                   final suggestion = _suggestions[index];
                   return ListTile(
+                    selected: _selection == suggestion,
+                    trailing: _selection == suggestion
+                        ? const Icon(Icons.check_circle)
+                        : null,
                     dense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                     leading: const Icon(Icons.location_on_outlined),
@@ -320,6 +292,25 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
               ),
             ),
           ],
+          if (_selection != null)
+            Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Selected: ${_selection!.label}')),
+          if (_usingDeviceFallback && !_isSearching) ...[
+            const SizedBox(height: 8),
+            const Text(
+                'Full place suggestions are temporarily unavailable. Showing device results.'),
+            TextButton(
+                onPressed: () {
+                  _selection = null;
+                  _usingDeviceFallback = false;
+                  _findSuggestions(_placeController.text.trim());
+                },
+                child: const Text('Retry place suggestions')),
+          ],
+          if (_suggestions.length == 1 && !_usingDeviceFallback)
+            const Text(
+                'One match found. Add an area or street name to refine your search.'),
           if (_errorText != null) ...[
             const SizedBox(height: 10),
             Align(
@@ -330,9 +321,10 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
               ),
             ),
           ],
-          const Padding(padding: EdgeInsets.only(top: 10),
-            child: Text('Place search data © OpenStreetMap contributors',
-              style: TextStyle(fontSize: 10, color: Colors.grey))),
+          const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text('Place search data © OpenStreetMap contributors',
+                  style: TextStyle(fontSize: 10, color: Colors.grey))),
         ]),
       ),
       actions: [
@@ -345,7 +337,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _isSearching ? null : _submit,
+          onPressed: _isSearching || _selection == null ? null : _submit,
           child: const Text('Use Location'),
         ),
       ],

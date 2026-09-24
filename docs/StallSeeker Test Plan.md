@@ -29,7 +29,7 @@ The release quality goals are:
 ### In scope
 
 - App startup, Firebase initialization, splash screen, session restoration, and account recovery.
-- Anonymous guest access, email/password registration and login, Google sign-in, password reset, email verification, and email change code flows.
+- Anonymous guest access, email/password registration and login, Google sign-in, password reset, and Firebase verification-link flows for signup and email changes.
 - Customer and vendor role routing.
 - Customer GPS and manual location selection, saved location, map browsing, search, category filters, radius changes, and distance ordering.
 - Stall markers, stall cards, stall details, live vendor changes, menu availability, following, and directions handoff.
@@ -43,7 +43,7 @@ The release quality goals are:
 
 - Payments, ordering, chat, and administration features, because they are not present in this version.
 - Correctness of routing inside Google Maps or Waze after StallSeeker hands off the coordinates.
-- Internal availability guarantees of Google, Firebase, SMTP, or mobile operating-system services. StallSeeker's handling of their success and failure responses remains in scope.
+- Internal availability guarantees of Google, Firebase, or mobile operating-system services. StallSeeker's handling of their success and failure responses remains in scope.
 - Desktop platforms unless they are added to the release target. Web receives a compatibility smoke pass only until its native location, map, image, and notification expectations are formally defined.
 
 ## 3. Test priorities and severity
@@ -69,7 +69,7 @@ The release quality goals are:
 1. **Dart unit tests:** model parsing, validation, location freshness, search/filter/radius logic, formatting, and service error mapping.
 2. **Flutter widget tests:** forms, role/guest gates, loading/empty/error states, navigation, menu actions, notification filters, and responsive layouts with Firebase/plugin boundaries mocked.
 3. **Firebase emulator integration tests:** Authentication, Firestore ownership, rules, follow consistency, menu writes, account recovery, notification history, and account deletion.
-4. **Cloud Function tests:** verification-code rules, opening transition behavior, idempotency, follower eligibility, push targeting, and recursive deletion.
+4. **Cloud Function tests:** opening transition behavior, idempotency, follower eligibility, push targeting, and recursive deletion.
 5. **Mobile integration tests:** critical customer and vendor journeys using Flutter `integration_test` against a dedicated staging project.
 
 ### Manual layers
@@ -87,7 +87,7 @@ Manual exploratory testing should vary action order, rapidly repeat taps, switch
 | --- | --- | --- |
 | Local unit runner | Fast Dart and Node tests | Fakes only; no production services |
 | Firebase Emulator Suite | Auth, Firestore, rules, Functions, and deletion integration | Resettable synthetic data |
-| Dedicated staging Firebase project | Maps, Google sign-in, SMTP verification, Storage, FCM, and full flows | Test accounts and non-sensitive images only |
+| Dedicated staging Firebase project | Maps, Google sign-in, Firebase verification emails, Storage, FCM, and full flows | Test accounts and non-sensitive images only |
 | Production-like release build | Final Android/iOS smoke and upgrade checks | Controlled test accounts; no destructive tests on real users |
 
 Minimum device coverage:
@@ -167,10 +167,10 @@ Run these cases first on every release candidate. Stop and reject the build when
 | AUTH-07 | P1 | Google picker is cancelled, times out, loses network, or hits provider collision | Cancellation is quiet; other cases show the mapped recovery message and leave no partial session |
 | AUTH-08 | P1 | Login R1 and R2 with missing/invalid profile data | R1 is repaired as vendor from its vendor record; R2 is repaired as customer; valid existing roles are never overwritten |
 | AUTH-09 | P1 | Request password reset for known and unknown emails | Both show the same success outcome; malformed, rate-limited, and offline cases show safe messages |
-| AUTH-10 | P1 | Request and confirm registration verification code | Code is six digits, expires after 10 minutes, marks Auth and Firestore verified, is removed after success, and cannot be reused |
+| AUTH-10 | P1 | Send and open registration verification link | Firebase sends the link, opening it marks the Auth email verified, and returning to the app unlocks the account after a status refresh |
 | AUTH-11 | P1 | Verification resend, wrong code, expired code, and sixth attempt | 60-second cooldown is enforced; attempts increment; after five failures the code is rejected/deleted; errors do not reveal secrets |
-| AUTH-12 | P1 | Change email with valid code | Recent sign-in is required; Auth and Firestore emails change together and the new address is verified |
-| AUTH-13 | P1 | Change email to current/invalid/in-use address or confirm a code for another address | Operation is rejected with no partial email change |
+| AUTH-12 | P1 | Open a valid change-email verification link | Recent sign-in is required; Auth and Firestore emails change together and the new address is verified |
+| AUTH-13 | P1 | Change email to current/invalid/in-use address or check before opening the link | Operation is rejected with no partial email change |
 | AUTH-14 | P1 | Navigate through registration verification and change-email entry points | Required screens are reachable from the intended journey; if these features are not intended for this release, their unused endpoints/screens are explicitly removed from release scope |
 
 ### 8.3 Customer location and discovery
@@ -272,8 +272,8 @@ These tests run against committed Firestore and Storage rules in the Emulator Su
 | SEC-04 | P0 | Customer/vendor writes another account's profile, stall, menu, follow, token, or location | Operation is denied according to the confirmed ownership policy |
 | SEC-05 | P0 | Client attempts to set role, verified state, server timestamp, or notification content beyond allowed fields | Privilege-changing or server-owned writes are denied |
 | SEC-06 | P1 | Malformed Firestore documents contain wrong types, nulls, invalid coordinates, unknown stock state, or missing timestamps | UI fails closed or uses defined defaults without crashing or granting access |
-| SEC-07 | P0 | Call verification/deletion functions without auth or for another UID | Function rejects the request; request data cannot select a victim UID |
-| SEC-08 | P0 | Inspect verification records/logs/network responses | Plaintext code, SMTP password, hashing secret, password, and ID token are never stored or logged |
+| SEC-07 | P0 | Call the deletion function without auth or for another UID | Function rejects the request; request data cannot select a victim UID |
+| SEC-08 | P0 | Inspect authentication logs and network responses | Passwords, action links, and ID tokens are never stored or logged by StallSeeker |
 | SEC-09 | P1 | Upload unsupported, oversized, or cross-vendor files | Storage rules/type/size limits reject unsafe writes; vendors can write only their paths; customer reads follow product policy |
 | SEC-10 | P1 | Inspect Google Maps key and Firebase configuration | Public client keys are restricted by package/bundle/domain and API; no server secret is packaged in the app |
 | SEC-11 | P1 | Duplicate/replayed function events and concurrent writes | Idempotency prevents duplicate alerts/deletes; a late location write cannot override a newer close |
@@ -319,7 +319,7 @@ Performance targets are initial acceptance targets and should be adjusted after 
 - Create `test/` and cover `VendorModel`, `UserModel`, `MenuItemModel`, and `NotificationModel` parsing/defaults.
 - Extract/test pure discovery filtering, radius, map-boundary, distance-formatting, and validation helpers.
 - Add widget tests for registration, password, stall, dish, guest gate, empty/error/loading, and unread-filter states.
-- Expand Node tests around verification-code policy and push transition/recipient construction.
+- Expand Node tests around push transition and recipient construction.
 - Make `flutter analyze`, `flutter test --coverage`, and Node tests required checks.
 
 ### Phase 2: emulator contracts
@@ -346,7 +346,7 @@ Suggested automated coverage targets:
 ### Entry criteria
 
 - Candidate build installs and points to the intended environment.
-- Test Firebase project, Maps key restrictions, OAuth configuration, SMTP secrets, FCM/APNs, and indexes are ready.
+- Test Firebase project, Maps key restrictions, OAuth configuration, Authentication email templates, FCM/APNs, and indexes are ready.
 - Complete Firestore/Storage rules are committed and deployed to the test environment.
 - Seed script/data creates the accounts and boundary records in Section 6.
 - Known changes and affected cases are identified; production data is excluded.
@@ -383,7 +383,7 @@ Baseline observed while preparing this plan on 11 September 2026:
 - The existing Node suite contains 5 notification-history tests; all 5 passed.
 - Flutter analysis could not be confirmed because the local Flutter command stalled before producing version or analyzer output. The release gate must be rerun after the toolchain is repaired.
 - Only a notification-history rules snippet is present under `functions/`; a complete committed Firestore/Storage ruleset and emulator test configuration were not found.
-- Email verification and change-email screens/functions exist, but their intended entry points should be confirmed by AUTH-14.
+- Email verification and change-email screens use Firebase action links; their entry points should be confirmed by AUTH-14.
 - Firebase/plugin singletons are constructed directly in many screens/services, increasing the effort and flakiness risk of isolated tests until dependencies are injectable.
 - Android still uses an example application ID and debug signing for release builds; production identity/signing is covered by NF-12.
 - Web, iOS local-notification initialization, background location, and external-map behavior require explicit physical/platform validation rather than being assumed from Android behavior.
