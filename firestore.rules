@@ -37,6 +37,23 @@ service cloud.firestore {
           && (urls.size() < 5 || (urls[4] is string && urls[4].size() <= 2048));
     }
 
+    function validSearchHistory(data) {
+      return data.keys().hasOnly([
+              'query', 'normalizedQuery', 'searchedAt'
+            ])
+          && data.keys().hasAll([
+              'query', 'normalizedQuery', 'searchedAt'
+            ])
+          && data.query is string
+          && data.query.size() > 0
+          && data.query.size() <= 100
+          && data.normalizedQuery is string
+          && data.normalizedQuery.size() > 0
+          && data.normalizedQuery.size() <= 100
+          && data.normalizedQuery == data.query.lower()
+          && data.searchedAt == request.time;
+    }
+
     match /_connection_test_/{docId} {
       allow read, write: if true;
     }
@@ -61,6 +78,13 @@ service cloud.firestore {
         allow read: if true;
         allow create, update, delete: if ownsVendor(vendorId);
       }
+    }
+
+    // Firestore collection-group queries need an explicit recursive match.
+    // Menu data is already public at its direct vendor path and contains no
+    // customer or account data.
+    match /{path=**}/menu/{itemId} {
+      allow read: if true;
     }
 
     match /stallReviews/{vendorId}/entries/{customerId} {
@@ -99,6 +123,14 @@ service cloud.firestore {
                 .affectedKeys().hasOnly(['isRead'])
             && request.resource.data.isRead == true;
         allow create, delete: if false;
+      }
+
+      match /searchHistory/{searchId} {
+        allow read: if verifiedAccount() && request.auth.uid == userId;
+        allow create, update: if verifiedAccount()
+            && request.auth.uid == userId
+            && validSearchHistory(request.resource.data);
+        allow delete: if verifiedAccount() && request.auth.uid == userId;
       }
     }
 

@@ -1,11 +1,13 @@
 'use strict';
 
 const {before, after, beforeEach, test} = require('node:test');
+const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {initializeTestEnvironment, assertFails, assertSucceeds} =
     require('@firebase/rules-unit-testing');
-const {doc, setDoc, updateDoc, getDoc, serverTimestamp, writeBatch} =
+const {doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc, collectionGroup,
+  serverTimestamp, writeBatch} =
     require('firebase/firestore');
 const {ref, uploadBytes, deleteObject} = require('firebase/storage');
 
@@ -94,6 +96,18 @@ test('vendor documents and menu are writable only by the owning vendor', async (
   await assertSucceeds(getDoc(doc(guest, vendorPath)));
 });
 
+test('guests can globally search the public menu collection group', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'vendors/vendor-a/menu/dish-1'),
+        {name: 'Ayam Goreng', price: 8, status: 'available'});
+    await setDoc(doc(context.firestore(), 'vendors/vendor-b/menu/dish-2'),
+        {name: 'Ayam Goreng', price: 9, status: 'low_stock'});
+  });
+  const guest = env.unauthenticatedContext().firestore();
+  const results = await assertSucceeds(getDocs(collectionGroup(guest, 'menu')));
+  assert.equal(results.size, 2);
+});
+
 test('vendor signup can create user and stall in one batch', async () => {
   const vendor = client('new-vendor').firestore();
   const batch = writeBatch(vendor);
@@ -114,6 +128,28 @@ test('profile role cannot change after account creation', async () => {
       {fullName: 'New Name'}));
   await assertFails(updateDoc(doc(customer, 'users/customer-a'),
       {role: 'vendor'}));
+});
+
+test('search history is private, owner-writable and schema validated', async () => {
+  const owner = client('customer-a').firestore();
+  const other = client('customer-b').firestore();
+  const unverified = client('customer-a', false).firestore();
+  const historyPath = 'users/customer-a/searchHistory/ayam-goreng';
+  const history = {
+    query: 'Ayam Goreng',
+    normalizedQuery: 'ayam goreng',
+    searchedAt: serverTimestamp(),
+  };
+  await assertSucceeds(setDoc(doc(owner, historyPath), history));
+  await assertSucceeds(getDoc(doc(owner, historyPath)));
+  await assertFails(getDoc(doc(other, historyPath)));
+  await assertFails(setDoc(doc(other, historyPath), history));
+  await assertFails(setDoc(doc(unverified, historyPath), history));
+  await assertFails(setDoc(doc(owner, historyPath),
+      {...history, unexpected: true}));
+  await assertFails(setDoc(doc(owner, historyPath),
+      {...history, normalizedQuery: 'NOT NORMALIZED'}));
+  await assertSucceeds(deleteDoc(doc(owner, historyPath)));
 });
 
 test('reviews require customer ownership, valid stars and at most five photos', async () => {
