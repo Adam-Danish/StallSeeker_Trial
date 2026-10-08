@@ -9,6 +9,8 @@ import '../../../core/services/vendor_location_service.dart';
 import '../profile/edit_stall_screen.dart';
 import '../menu/vendor_menu_screen.dart';
 import '../../shared/manual_location_dialog.dart';
+import '../../shared/demo_orders_screen.dart';
+import '../../shared/live_booking_section.dart';
 import '../../../core/utils/vendor_phone.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
@@ -213,6 +215,22 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
   }
 
+  Future<void> _toggleDemoSelfCollect(bool enabled) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await _vendorService.setSelfCollectEnabled(uid, enabled);
+      _message(enabled
+          ? 'Customers can now request self-collect bookings.'
+          : 'New self-collect bookings are off.');
+    } catch (_) {
+      _message('Could not save booking setting. Please retry.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   void _message(String text) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -243,6 +261,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                     ? _vendor!.stallName
                     : 'Set up your stall',
                 style: Theme.of(context).textTheme.headlineSmall),
+            const LiveBookingSection(isVendor: true),
             const SizedBox(height: 16),
             Card(
                 child: Padding(
@@ -254,8 +273,11 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                               contentPadding: EdgeInsets.zero,
                               title: Text(_vendor?.isTemporarilyClosed == true
                                   ? 'Temporary closure active'
-                                  : open ? 'Stall open' : 'Stall closed'),
-                              subtitle: Text(_vendor?.isTemporarilyClosed == true
+                                  : open
+                                      ? 'Stall open'
+                                      : 'Stall closed'),
+                              subtitle: Text(_vendor?.isTemporarilyClosed ==
+                                      true
                                   ? 'Customers see your stall as closed. The Open switch will turn off shortly.'
                                   : 'Control whether customers can find you on the live map'),
                               value: open,
@@ -275,6 +297,31 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                                 label: const Text('Resume sharing')),
                         ]))),
             const SizedBox(height: 16),
+            Card(
+                child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(children: [
+                SwitchListTile(
+                  title: const Text('Self-collect bookings'),
+                  subtitle:
+                      const Text('Allow customers to book for collection.'),
+                  value: _vendor?.selfCollectEnabled ?? false,
+                  onChanged: _saving ? null : _toggleDemoSelfCollect,
+                ),
+                SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const DemoOrdersScreen(isVendor: true))),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('View current and past bookings'),
+                    )),
+              ]),
+            )),
+            const SizedBox(height: 16),
             FilledButton.icon(
                 onPressed: () => Navigator.push(
                     context,
@@ -293,8 +340,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 8),
                           Text(_vendor?.category ?? 'Choose a food category'),
-                          Text(_vendor?.hoursToday ??
-                              'Add your opening hours'),
+                          Text(_vendor?.hoursToday ?? 'Add your opening hours'),
                           const SizedBox(height: 8),
                           Text(_vendor?.description ??
                               'Tell customers what you sell.'),

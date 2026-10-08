@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/services/demo_order_service.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
 
@@ -12,8 +15,11 @@ class VendorMainScreen extends StatefulWidget {
 
 class _VendorMainScreenState extends State<VendorMainScreen> {
   int _selectedIndex = 0;
+  late final Stream<int> _newBookings = DemoOrderService().watchUnseenCount(
+      FirebaseAuth.instance.currentUser?.uid ?? '',
+      isVendor: true);
 
-  static const _titles = ['Vendor Dashboard', 'Profile'];
+  static const _titles = ['Vendor Dashboard', 'Settings'];
 
   // Key to call dashboard refresh method
   final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
@@ -41,7 +47,6 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
               tooltip: 'Refresh',
               onPressed: _refreshDashboard,
             ),
-
         ],
       ),
       body: IndexedStack(
@@ -58,19 +63,35 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
         backgroundColor: Colors.white,
         indicatorColor: Colors.transparent,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard, color: Color(0xFFFF6E41)),
+            icon: _dashboardIcon(false),
+            selectedIcon: _dashboardIcon(true),
             label: 'Dashboard',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
-            label: 'Profile',
+          const NavigationDestination(
+            icon: Icon(CupertinoIcons.gear, color: Color(0xFF929294)),
+            selectedIcon:
+                Icon(CupertinoIcons.gear_solid, color: Color(0xFF1C1C1E)),
+            label: 'Settings',
           ),
         ],
       ),
     );
   }
+
+  Widget _dashboardIcon(bool selected) => StreamBuilder<int>(
+      stream: _newBookings,
+      builder: (context, snapshot) => Badge(
+            isLabelVisible: (snapshot.data ?? 0) > 0,
+            label: Text(
+                (snapshot.data ?? 0) > 99 ? '99+' : '${snapshot.data ?? 0}'),
+            child: Icon(
+                selected
+                    ? CupertinoIcons.square_grid_2x2_fill
+                    : CupertinoIcons.square_grid_2x2,
+                color: selected
+                    ? const Color(0xFF1C1C1E)
+                    : const Color(0xFF929294)),
+          ));
 }

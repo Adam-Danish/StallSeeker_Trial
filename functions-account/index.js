@@ -58,7 +58,19 @@ exports.deleteAccount = onCall(async (request) => {
     ),
     addQueryResults(
         targets,
+        db.collectionGroup('dishFollows').where('vendorId', '==', uid),
+    ),
+    addQueryResults(
+        targets,
         db.collection('stalls').where('vendorId', '==', uid),
+    ),
+    addQueryResults(
+        targets,
+        db.collection('bookings').where('customerId', '==', uid),
+    ),
+    addQueryResults(
+        targets,
+        db.collection('bookings').where('vendorId', '==', uid),
     ),
   ]);
 

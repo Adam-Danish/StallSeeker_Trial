@@ -1,4 +1,6 @@
 import '../../shared/profile_page.dart';
+import '../../shared/demo_orders_screen.dart';
+import '../../shared/live_booking_section.dart';
 import '../../shared/edit_profile_screen.dart';
 import '../../shared/personal_information_screen.dart';
 import '../../shared/change_password_screen.dart';
@@ -23,11 +25,15 @@ class CustomerProfileScreen extends StatefulWidget {
     super.key,
     required this.location,
     required this.onLocationChanged,
+    this.onHomeLocation,
+    this.onCustomLocation,
   });
 
   final LocationSelection? location;
   final void Function(LocationSelection selection, bool isManual)
       onLocationChanged;
+  final VoidCallback? onHomeLocation;
+  final VoidCallback? onCustomLocation;
 
   @override
   State<CustomerProfileScreen> createState() => _CustomerProfileScreenState();
@@ -274,8 +280,15 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       isLoadingLocation: _isLoadingLocation,
       onRefresh: _loadUserData,
       onLocation: _chooseLocation,
+      onHomeLocation: widget.onHomeLocation,
+      onCustomLocation: widget.onCustomLocation,
       onEdit: _editProfile,
       onPersonalInformation: _personalInformation,
+      onOrders: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => const DemoOrdersScreen(isVendor: false))),
+      bookingSection: guest ? null : const LiveBookingSection(isVendor: false),
       onPassword: _changePassword,
       onFaq: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),

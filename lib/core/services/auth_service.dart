@@ -2,6 +2,7 @@
 // - signup, login, signin with google, signinasguest, getuserdata, save cust location, signout, resetpassword, req email verfiy, confir email verify, change password, update anem, delete account
 
 import 'notification_service.dart';
+import 'local_demo_booking_service.dart';
 import 'vendor_location_service.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -498,6 +499,11 @@ class AuthService {
 
       await NotificationService.instance.clearCurrentDevice();
       await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
+      try {
+        await LocalDemoBookingService().removeAccountData(user.uid);
+      } catch (_) {
+        debugPrint('Account deleted; local booking cleanup was unavailable.');
+      }
       await _auth.signOut();
       return null;
     } on FirebaseAuthException catch (e) {

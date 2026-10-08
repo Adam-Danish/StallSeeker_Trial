@@ -14,6 +14,16 @@ initializeApp();
 // description, menu, etc.) does not trigger a notification.
 exports.recordVendorOpeningHistory =
   require('./notification-history.cjs').recordVendorOpeningHistory;
+exports.notifyFollowersOnDishAvailable =
+  require('./dish-notifications.cjs').notifyFollowersOnDishAvailable;
+exports.cleanupDeletedDishFollows =
+  require('./dish-notifications.cjs').cleanupDeletedDishFollows;
+
+const bookings = require('./bookings.cjs');
+exports.createBooking = bookings.createBooking;
+exports.updateBooking = bookings.updateBooking;
+exports.markBookingViewed = bookings.markBookingViewed;
+exports.expireBookings = bookings.expireBookings;
 
 exports.cleanupDeletedMenuItemImage = onDocumentDeleted(
     {

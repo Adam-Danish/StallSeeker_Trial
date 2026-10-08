@@ -6,6 +6,14 @@
 .pub-cache/
 .pub/
 build/
+/tmp/
+
+# Generated emulator and JVM diagnostics
+/android/.kotlin/
+/firestore-debug.log
+/firestore-debug.*.log
+/hs_err_pid*.log
+/android/hs_err_pid*.log
 
 # Firebase local configurations
 android/app/google-services.json

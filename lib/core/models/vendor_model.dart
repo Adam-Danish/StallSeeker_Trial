@@ -17,6 +17,7 @@ class VendorModel {
   final List<TemporaryClosure> temporaryClosures;
   final DateTime? locationUpdatedAt;
   final bool locationSharingActive;
+  final bool selfCollectEnabled;
 
   bool get isTemporarilyClosed =>
       temporaryClosures.any((c) => c.contains(DateTime.now()));
@@ -69,6 +70,7 @@ class VendorModel {
     this.temporaryClosures = const [],
     this.locationUpdatedAt,
     this.locationSharingActive = false,
+    this.selfCollectEnabled = false,
   });
 
   /// Editable information only. Operational state belongs to the selling session.
@@ -99,6 +101,7 @@ class VendorModel {
       'phoneNumber': phoneNumber,
       'weeklyHours': serializeWeeklyHours(weeklyHours),
       'temporaryClosures': temporaryClosures.map((c) => c.toMap()).toList(),
+      'selfCollectEnabled': selfCollectEnabled,
     };
   }
 
@@ -124,6 +127,7 @@ class VendorModel {
           .toList(),
       locationUpdatedAt: (map['locationUpdatedAt'] as Timestamp?)?.toDate(),
       locationSharingActive: map['locationSharingActive'] == true,
+      selfCollectEnabled: map['selfCollectEnabled'] == true,
     );
   }
 
@@ -140,6 +144,7 @@ class VendorModel {
     String? phoneNumber,
     Map<int, List<StallHoursInterval>>? weeklyHours,
     List<TemporaryClosure>? temporaryClosures,
+    bool? selfCollectEnabled,
   }) {
     return VendorModel(
       vendorId: vendorId,
@@ -156,6 +161,7 @@ class VendorModel {
       temporaryClosures: temporaryClosures ?? this.temporaryClosures,
       locationUpdatedAt: locationUpdatedAt,
       locationSharingActive: locationSharingActive,
+      selfCollectEnabled: selfCollectEnabled ?? this.selfCollectEnabled,
     );
   }
 }

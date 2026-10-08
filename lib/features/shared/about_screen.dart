@@ -26,7 +26,7 @@ class AboutScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Version 1.0.0',
+                  'Version 1.0.3 · Prototype',
                   style: TextStyle(color: Colors.grey.shade600),
                 ),
               ],
@@ -37,7 +37,8 @@ class AboutScreen extends StatelessWidget {
             'StallSeeker connects food stall vendors with nearby customers. '
             'Vendors can share their live location, opening hours, and menu '
             'availability, while customers can discover open stalls nearby, '
-            'view menus in real time, and follow their favorite stalls.',
+            'view menus in real time, filter dishes by price, save Home or custom '
+            'map pins, and follow their favorite stalls and dishes for updates.',
             style: TextStyle(height: 1.5),
           ),
           const SizedBox(height: 24),

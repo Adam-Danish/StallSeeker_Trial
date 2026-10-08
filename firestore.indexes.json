@@ -1,6 +1,48 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "customerId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "vendorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "expiresAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "dishFollows",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "vendorId", "order": "ASCENDING"},
+        {"fieldPath": "itemId", "order": "ASCENDING"}
+      ]
+    }
+  ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "dishFollows",
+      "fieldPath": "vendorId",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION"},
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    },
     {
       "collectionGroup": "entries",
       "fieldPath": "customerId",

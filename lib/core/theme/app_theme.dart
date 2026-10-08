@@ -46,17 +46,22 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       )),
       scaffoldBackgroundColor: AppColors.background,
-      navigationBarTheme: const NavigationBarThemeData(
+      navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        labelTextStyle: WidgetStatePropertyAll(TextStyle(
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w400,
             letterSpacing: 0,
-            color: AppColors.textDark)),
-        iconTheme: WidgetStatePropertyAll(
-            IconThemeData(color: AppColors.textDark, size: 25)),
+            color: states.contains(WidgetState.selected)
+                ? const Color(0xFF1C1C1E)
+                : const Color(0xFF929294))),
+        iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
+            color: states.contains(WidgetState.selected)
+                ? const Color(0xFF1C1C1E)
+                : const Color(0xFF929294),
+            size: 25)),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         height: 72.0,
       ),

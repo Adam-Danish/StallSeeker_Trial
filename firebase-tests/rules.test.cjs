@@ -6,8 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {initializeTestEnvironment, assertFails, assertSucceeds} =
     require('@firebase/rules-unit-testing');
-const {doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc, collectionGroup,
-  serverTimestamp, writeBatch} =
+const {doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc, collection, collectionGroup,
+  query, where, deleteField, serverTimestamp, writeBatch} =
     require('firebase/firestore');
 const {ref, uploadBytes, deleteObject} = require('firebase/storage');
 
@@ -71,6 +71,103 @@ beforeEach(async () => {
 });
 
 after(async () => { if (env) await env.cleanup(); });
+
+async function seedDish() {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'vendors/vendor-a'),
+      {vendorId: 'vendor-a', stallName: 'Test Stall'});
+    await setDoc(doc(context.firestore(), 'vendors/vendor-a/menu/dish-1'),
+      {name: 'Nasi', price: 5, status: 'out_of_stock'});
+  });
+}
+
+function dishFollow(overrides = {}) {
+  return {customerId: 'customer-a', vendorId: 'vendor-a', itemId: 'dish-1',
+    followedAt: serverTimestamp(), ...overrides};
+}
+
+test('dish subscriptions permit owner missing-doc reads, owner queries and unfollow', async () => {
+  await seedDish();
+  const owner = client('customer-a').firestore();
+  const followPath = 'users/customer-a/dishFollows/vendor-a:dish-1';
+  const missing = await assertSucceeds(getDoc(doc(owner, followPath)));
+  assert.equal(missing.exists(), false);
+  await assertSucceeds(setDoc(doc(owner, followPath), dishFollow()));
+  await assertSucceeds(getDoc(doc(owner, followPath)));
+  const results = await assertSucceeds(getDocs(query(
+    collection(owner, 'users/customer-a/dishFollows'), where('vendorId', '==', 'vendor-a'))));
+  assert.equal(results.size, 1);
+  await env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), 'vendors/vendor-a/menu/dish-1'));
+  });
+  await assertSucceeds(deleteDoc(doc(owner, followPath)));
+});
+
+test('dish subscriptions are private and require a verified customer owner', async () => {
+  await seedDish();
+  const owner = client('customer-a').firestore();
+  const followPath = 'users/customer-a/dishFollows/vendor-a:dish-1';
+  await assertSucceeds(setDoc(doc(owner, followPath), dishFollow()));
+  const other = client('customer-b').firestore();
+  const guest = env.unauthenticatedContext().firestore();
+  const anonymous = env.authenticatedContext('customer-a', {
+    email_verified: true, firebase: {sign_in_provider: 'anonymous'},
+  }).firestore();
+  for (const denied of [other, guest, anonymous, client('customer-a', false).firestore()]) {
+    await assertFails(getDoc(doc(denied, followPath)));
+    await assertFails(getDocs(collection(denied, 'users/customer-a/dishFollows')));
+    await assertFails(setDoc(doc(denied, followPath), dishFollow()));
+    await assertFails(deleteDoc(doc(denied, followPath)));
+  }
+  const vendor = client('vendor-a').firestore();
+  await assertFails(setDoc(doc(vendor, 'users/vendor-a/dishFollows/vendor-a:dish-1'),
+    dishFollow({customerId: 'vendor-a'})));
+  const missingProfile = client('missing-customer').firestore();
+  await assertFails(setDoc(doc(missingProfile, 'users/missing-customer/dishFollows/vendor-a:dish-1'),
+    dishFollow({customerId: 'missing-customer'})));
+});
+
+test('dish follow schema, existing dish and deterministic identity cannot be forged', async () => {
+  await seedDish();
+  const owner = client('customer-a').firestore();
+  const followPath = 'users/customer-a/dishFollows/vendor-a:dish-1';
+  for (const overrides of [
+    {customerId: 'customer-b'}, {vendorId: 12}, {itemId: 'bad/path'},
+    {itemId: 'bad:id'}, {itemId: 'x'.repeat(129)}, {unexpected: true},
+    {followedAt: new Date('2000-01-01')}, {followedAt: 'today'}, {itemId: ''},
+  ]) {
+    await assertFails(setDoc(doc(owner, followPath), dishFollow(overrides)));
+  }
+  const missingRequired = dishFollow();
+  delete missingRequired.itemId;
+  await assertFails(setDoc(doc(owner, followPath), missingRequired));
+  await assertFails(setDoc(doc(owner, 'users/customer-a/dishFollows/duplicate'), dishFollow()));
+  await assertFails(setDoc(doc(owner, 'users/customer-a/dishFollows/vendor-a:missing-dish'),
+    dishFollow({itemId: 'missing-dish'})));
+  await assertFails(setDoc(doc(owner, 'users/customer-a/dishFollows/missing-vendor:dish-1'),
+    dishFollow({vendorId: 'missing-vendor'})));
+  await assertSucceeds(setDoc(doc(owner, followPath), dishFollow()));
+  await assertFails(updateDoc(doc(owner, followPath), {followedAt: serverTimestamp()}));
+  await assertFails(updateDoc(doc(owner, followPath), {customerId: 'customer-b'}));
+  await assertFails(updateDoc(doc(owner, followPath), {itemId: deleteField()}));
+  await assertFails(updateDoc(doc(owner, followPath), {unexpected: true}));
+});
+
+test('customers can mark dish notifications read but cannot forge alert content', async () => {
+  const path = 'users/customer-a/notifications/restock-event';
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), path), {vendorId: 'vendor-a', itemId: 'dish-1',
+      type: 'dish_available', title: 'Nasi is available', isRead: false});
+  });
+  const owner = client('customer-a').firestore();
+  const other = client('customer-b').firestore();
+  await assertSucceeds(getDoc(doc(owner, path)));
+  await assertSucceeds(updateDoc(doc(owner, path), {isRead: true}));
+  await assertFails(updateDoc(doc(owner, path), {title: 'Forged'}));
+  await assertFails(updateDoc(doc(owner, path), {isRead: false}));
+  await assertFails(setDoc(doc(owner, 'users/customer-a/notifications/new'), {type: 'dish_available'}));
+  await assertFails(getDoc(doc(other, path)));
+});
 
 test('vendor documents and menu are writable only by the owning vendor', async () => {
   const owner = client('vendor-a').firestore();

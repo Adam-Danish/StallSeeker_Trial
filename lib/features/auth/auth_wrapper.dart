@@ -108,7 +108,7 @@ class _AccountGateState extends State<_AccountGate> {
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            NotificationService.instance.setNavigationReady(role == 'customer');
+            NotificationService.instance.setNavigationReady(true);
             unawaited(NotificationService.instance.configureForRole(role));
           }
         });

@@ -79,6 +79,9 @@ class VendorService {
             : null);
   }
 
+  Future<void> setSelfCollectEnabled(String vendorId, bool enabled) =>
+      _vendorsRef.doc(vendorId).update({'selfCollectEnabled': enabled});
+
   Stream<List<VendorModel>> getOpenVendors() {
     return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
         (snapshot) => snapshot.docs

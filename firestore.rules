@@ -1,5 +1,14 @@
 rules_version = '2';
 
+// Dish subscriptions: users/{customerId}/dishFollows/{vendorId}:{itemId}.
+// Fields: customerId, vendorId, itemId (immutable strings, max 128 characters)
+// and followedAt (immutable server timestamp). Only verified customers can
+// manage their subscriptions; dish availability and notification content are
+// server-managed. No subscription data is public.
+// Saved pins: users/{customerId}/savedLocations/{locationId}, with name
+// (1..60 chars), address (1..500 chars), latitude/longitude (valid coordinates),
+// isHome (bool; true only at the single 'home' ID), updatedAt (server timestamp).
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -54,6 +63,36 @@ service cloud.firestore {
           && data.searchedAt == request.time;
     }
 
+    function ownsCustomer(userId) {
+      return verifiedAccount() && request.auth.uid == userId
+          && get(/databases/$(database)/documents/users/$(userId)).data.role == 'customer';
+    }
+
+    function validDishFollow(data, userId, followId) {
+      return data.keys().hasOnly(['customerId', 'vendorId', 'itemId', 'followedAt'])
+          && data.keys().hasAll(['customerId', 'vendorId', 'itemId', 'followedAt'])
+          && data.customerId is string && data.customerId.size() <= 128
+          && data.customerId == userId
+          && data.vendorId is string && data.vendorId.size() > 0
+          && data.vendorId.size() <= 128 && data.vendorId.matches('^[^/:]+$')
+          && data.itemId is string && data.itemId.size() > 0
+          && data.itemId.size() <= 128 && data.itemId.matches('^[^/:]+$')
+          && followId == data.vendorId + ':' + data.itemId
+          && data.followedAt is timestamp;
+    }
+
+    function validSavedLocation(data, locationId) {
+      return data.keys().hasOnly(['name', 'address', 'latitude', 'longitude', 'isHome', 'updatedAt'])
+          && data.keys().hasAll(['name', 'address', 'latitude', 'longitude', 'isHome', 'updatedAt'])
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 60
+          && data.address is string && data.address.size() > 0 && data.address.size() <= 500
+          && data.latitude is number && data.latitude >= -90 && data.latitude <= 90
+          && data.longitude is number && data.longitude >= -180 && data.longitude <= 180
+          && data.isHome is bool && data.isHome == (locationId == 'home')
+          && (!data.isHome || data.name == 'Home')
+          && data.updatedAt == request.time;
+    }
+
     match /_connection_test_/{docId} {
       allow read, write: if true;
     }
@@ -71,7 +110,8 @@ service cloud.firestore {
       allow create: if initialVendorRecord(vendorId) || (ownsVendor(vendorId)
           && request.resource.data.vendorId == vendorId);
       allow update: if ownsVendor(vendorId)
-          && request.resource.data.vendorId == vendorId;
+          && request.resource.data.vendorId == vendorId
+          && request.resource.data.get('selfCollectEnabled', false) is bool;
       allow delete: if false;
 
       match /menu/{itemId} {
@@ -85,6 +125,15 @@ service cloud.firestore {
     // customer or account data.
     match /{path=**}/menu/{itemId} {
       allow read: if true;
+    }
+
+    // Booking creation, status changes and seen flags are server controlled.
+    // Queries must restrict either customerId or vendorId to the signed-in UID.
+    match /bookings/{bookingId} {
+      allow get, list: if verifiedAccount()
+          && (resource.data.customerId == request.auth.uid
+              || resource.data.vendorId == request.auth.uid);
+      allow create, update, delete: if false;
     }
 
     match /stallReviews/{vendorId}/entries/{customerId} {
@@ -115,6 +164,26 @@ service cloud.firestore {
           && request.resource.data.role in ['customer', 'vendor'];
       allow update: if signedIn() && request.auth.uid == userId
           && request.resource.data.role == resource.data.role;
+
+      match /savedLocations/{locationId} {
+        allow read, delete: if ownsCustomer(userId);
+        allow create, update: if ownsCustomer(userId)
+            && validSavedLocation(request.resource.data, locationId);
+      }
+
+      match /dishFollows/{followId} {
+        // Owner path checks also permit a transaction to read a missing
+        // subscription before its first follow, and permit owner list queries.
+        allow read, delete: if ownsCustomer(userId);
+        allow create: if ownsCustomer(userId)
+            && validDishFollow(request.resource.data, userId, followId)
+            && request.resource.data.followedAt == request.time
+            && exists(/databases/$(database)/documents/vendors/$(request.resource.data.vendorId))
+            && exists(/databases/$(database)/documents/vendors/$(request.resource.data.vendorId)/menu/$(request.resource.data.itemId));
+        allow update: if ownsCustomer(userId)
+            && validDishFollow(request.resource.data, userId, followId)
+            && request.resource.data == resource.data;
+      }
 
       match /notifications/{notificationId} {
         allow read: if signedIn() && request.auth.uid == userId;

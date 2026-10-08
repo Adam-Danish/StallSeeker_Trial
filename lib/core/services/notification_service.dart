@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/vendor_model.dart';
 import 'vendor_service.dart';
 import '../../features/customer/vendor_details/vendor_details_screen.dart';
+import '../../features/shared/booking_detail_screen.dart';
 
 // Runs in its own isolate when a push arrives while the app is backgrounded
 // or fully closed. Android shows the system notification on its own from
@@ -27,7 +29,7 @@ class NotificationService {
   static const _channel = AndroidNotificationChannel(
     'stallseeker_channel',
     'StallSeeker Notifications',
-    description: 'Notifies you when a followed vendor starts selling.',
+    description: 'Stall, dish, and self-collect booking alerts.',
     importance: Importance.high,
   );
 
@@ -38,6 +40,10 @@ class NotificationService {
   String? _configuredUid;
   String? _configuredRole;
   String? _pendingVendorId;
+  String? _pendingItemId;
+  String? _pendingBookingId;
+  String? _pendingBookingRecipient;
+  bool _pendingBookingVendor = false;
   bool _navigationReady = false;
   Future<void> _tokenWork = Future<void>.value();
 
@@ -52,20 +58,31 @@ class NotificationService {
 
   void setNavigationReady(bool ready) {
     _navigationReady = ready;
+    if (ready && _pendingBookingId != null) {
+      final id = _pendingBookingId!;
+      final recipient = _pendingBookingRecipient;
+      final isVendor = _pendingBookingVendor;
+      _pendingBookingId = null;
+      _pendingBookingRecipient = null;
+      unawaited(_openBooking(id, recipientId: recipient, isVendor: isVendor));
+    }
     if (ready && _pendingVendorId != null) {
       final id = _pendingVendorId!;
+      final itemId = _pendingItemId;
       _pendingVendorId = null;
-      unawaited(_openVendorDetails(id));
+      _pendingItemId = null;
+      unawaited(_openVendorDetails(id, itemId: itemId));
     }
   }
 
-
   // One-time setup: creates the notification channel and wires up listeners
   // for taps in every app state. Permission is requested only after the
-  // signed-in account is confirmed to be a customer.
+  // signed-in account is confirmed.
   // (foreground, background, terminated). Safe to call more than once.
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
-    if (_initialized) { return; }
+    if (_initialized) {
+      return;
+    }
 
     _navigatorKey = navigatorKey;
 
@@ -79,8 +96,10 @@ class NotificationService {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
       onDidReceiveNotificationResponse: (response) {
-        final vendorId = response.payload;
-        if (vendorId != null) { _openVendorDetails(vendorId); }
+        final payload = response.payload;
+        if (payload != null) {
+          _openPayload(payload);
+        }
       },
     );
 
@@ -91,6 +110,7 @@ class NotificationService {
     FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
       final vendorId = message.data['vendorId'];
+      final bookingId = message.data['bookingId'];
       if (notification != null) {
         _localNotifications.show(
           notification.hashCode,
@@ -105,42 +125,86 @@ class NotificationService {
               priority: Priority.high,
             ),
           ),
-          payload: vendorId,
+          payload: bookingId is String
+              ? jsonEncode({
+                  'bookingId': bookingId,
+                  'recipientId': message.data['recipientId'],
+                  'role': message.data['role'],
+                })
+              : vendorId == null
+                  ? null
+                  : jsonEncode({
+                      'vendorId': vendorId,
+                      if (message.data['itemId'] is String)
+                        'itemId': message.data['itemId'],
+                    }),
         );
       }
     });
 
     // App was backgrounded and the user tapped the notification.
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final bookingId = message.data['bookingId'];
+      if (bookingId is String) {
+        unawaited(_openBooking(bookingId,
+            recipientId: message.data['recipientId'] as String?,
+            isVendor: message.data['role'] == 'vendor'));
+        return;
+      }
       final vendorId = message.data['vendorId'];
-      if (vendorId != null) { _openVendorDetails(vendorId); }
+      if (vendorId != null) {
+        _openVendorDetails(vendorId,
+            itemId: message.data['itemId'] is String
+                ? message.data['itemId'] as String
+                : null);
+      }
     });
 
     // App was fully closed and got launched by tapping the notification.
     final initialMessage = await _messaging.getInitialMessage();
+    final initialBookingId = initialMessage?.data['bookingId'];
+    if (initialBookingId is String) {
+      unawaited(_openBooking(initialBookingId,
+          recipientId: initialMessage?.data['recipientId'] as String?,
+          isVendor: initialMessage?.data['role'] == 'vendor'));
+      return;
+    }
     final vendorId = initialMessage?.data['vendorId'];
-    if (vendorId != null) { _openVendorDetails(vendorId); }
+    if (vendorId != null) {
+      _openVendorDetails(vendorId,
+          itemId: initialMessage!.data['itemId'] is String
+              ? initialMessage.data['itemId'] as String
+              : null);
+    }
   }
 
   Future<void> configureForRole(String role) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return; }
-    if (_configuredUid == user.uid && _configuredRole == role) { return; }
+    if (user == null || user.isAnonymous) {
+      return;
+    }
+    if (_configuredUid == user.uid && _configuredRole == role) {
+      return;
+    }
     _configuredUid = user.uid;
     _configuredRole = role;
 
-    if (role != 'customer') {
+    if (role != 'customer' && role != 'vendor') {
       _syncedUid = null;
       await _tokenSubscription?.cancel();
       _tokenSubscription = null;
-      await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
+      await _tokenWork
+          .timeout(const Duration(seconds: 5))
+          .catchError((Object _) {});
       try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid)
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
             .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
         await _messaging.deleteToken().timeout(const Duration(seconds: 5));
         await _localNotifications.cancelAll();
       } catch (_) {
-        debugPrint('Could not disable vendor notifications.');
+        debugPrint('Could not disable notifications.');
         _configuredUid = null;
         _configuredRole = null;
       }
@@ -160,18 +224,25 @@ class NotificationService {
       _syncedUid = null;
       await syncTokenForCurrentUser(skipPreferenceCheck: true);
     } catch (_) {
-      debugPrint('Could not configure customer notifications.');
+      debugPrint('Could not configure notifications.');
       _configuredUid = null;
       _configuredRole = null;
     }
   }
 
-  // Fetches this device's FCM token and saves it on a customer account,
+  // Fetches this device's FCM token and saves it on the signed-in account,
   // and keeps it updated if it ever rotates.
-  Future<void> syncTokenForCurrentUser({bool skipPreferenceCheck = false}) async {
+  Future<void> syncTokenForCurrentUser(
+      {bool skipPreferenceCheck = false}) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous || _syncedUid == user.uid) { return; }
-    if (_configuredRole != null && _configuredRole != 'customer') { return; }
+    if (user == null || user.isAnonymous || _syncedUid == user.uid) {
+      return;
+    }
+    if (_configuredRole != null &&
+        _configuredRole != 'customer' &&
+        _configuredRole != 'vendor') {
+      return;
+    }
     if (!skipPreferenceCheck && !await isEnabledForCurrentUser()) {
       await _removeCurrentDeviceToken(user);
       return;
@@ -180,13 +251,18 @@ class NotificationService {
     await _tokenSubscription?.cancel();
     _tokenSubscription = _messaging.onTokenRefresh.listen((token) {
       final uid = _syncedUid;
-      if (uid != null) { unawaited(_queueTokenSave(uid, token).catchError((Object e) {
-        debugPrint('Could not refresh notification registration.');
-      })); }
+      if (uid != null) {
+        unawaited(_queueTokenSave(uid, token).catchError((Object e) {
+          debugPrint('Could not refresh notification registration.');
+        }));
+      }
     });
     try {
-      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
-      if (token != null) { await _queueTokenSave(user.uid, token); }
+      final token =
+          await _messaging.getToken().timeout(const Duration(seconds: 5));
+      if (token != null) {
+        await _queueTokenSave(user.uid, token);
+      }
     } catch (_) {
       _syncedUid = null;
       debugPrint('Notification registration unavailable.');
@@ -195,17 +271,23 @@ class NotificationService {
 
   Future<bool> isEnabledForCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return false; }
+    if (user == null || user.isAnonymous) {
+      return false;
+    }
     final profile = await FirebaseFirestore.instance
-        .collection('users').doc(user.uid).get();
+        .collection('users')
+        .doc(user.uid)
+        .get();
     return profile.data()?['notificationsEnabled'] != false;
   }
 
   Future<String?> setEnabledForCurrentUser(bool enabled) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return 'Sign in to manage notifications.'; }
-    if (_configuredRole != 'customer') {
-      return 'Notifications are only available for customer accounts.';
+    if (user == null || user.isAnonymous) {
+      return 'Sign in to manage notifications.';
+    }
+    if (_configuredRole != 'customer' && _configuredRole != 'vendor') {
+      return 'Sign in to manage notifications.';
     }
     try {
       if (enabled) {
@@ -214,11 +296,10 @@ class NotificationService {
           return 'Notifications are blocked in your phone settings.';
         }
       }
-      await FirebaseFirestore.instance.collection('users').doc(user.uid)
-          .set({
-            'notificationsEnabled': enabled,
-            if (!enabled) 'fcmToken': FieldValue.delete(),
-          }, SetOptions(merge: true));
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'notificationsEnabled': enabled,
+        if (!enabled) 'fcmToken': FieldValue.delete(),
+      }, SetOptions(merge: true));
       if (enabled) {
         _syncedUid = null;
         await syncTokenForCurrentUser(skipPreferenceCheck: true);
@@ -236,11 +317,15 @@ class NotificationService {
     _syncedUid = null;
     await _tokenSubscription?.cancel();
     _tokenSubscription = null;
-    await _tokenWork.timeout(const Duration(seconds: 5)).catchError((Object _) {});
+    await _tokenWork
+        .timeout(const Duration(seconds: 5))
+        .catchError((Object _) {});
     try {
-      final token = await _messaging.getToken().timeout(const Duration(seconds: 5));
+      final token =
+          await _messaging.getToken().timeout(const Duration(seconds: 5));
       if (token != null) {
-        final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final ref =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final doc = await tx.get(ref);
           if (doc.data()?['fcmToken'] == token) {
@@ -249,17 +334,25 @@ class NotificationService {
         }).timeout(const Duration(seconds: 5));
       }
     } finally {
-      await _messaging.deleteToken().timeout(const Duration(seconds: 5)).catchError((Object _) {});
+      await _messaging
+          .deleteToken()
+          .timeout(const Duration(seconds: 5))
+          .catchError((Object _) {});
     }
   }
 
   Future<void> clearCurrentDevice() async {
     _navigationReady = false;
     _pendingVendorId = null;
+    _pendingItemId = null;
+    _pendingBookingId = null;
+    _pendingBookingRecipient = null;
     _configuredUid = null;
     _configuredRole = null;
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) { return; }
+    if (user == null || user.isAnonymous) {
+      return;
+    }
     try {
       await _removeCurrentDeviceToken(user);
     } catch (_) {
@@ -270,26 +363,68 @@ class NotificationService {
   }
 
   Future<void> _saveToken(String uid, String token) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .set({'fcmToken': token}, SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+    await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {'fcmToken': token},
+        SetOptions(merge: true)).timeout(const Duration(seconds: 5));
   }
 
-  Future<void> _openVendorDetails(String vendorId) async {
+  void _openPayload(String payload) {
+    try {
+      final data = jsonDecode(payload);
+      if (data is Map && data['bookingId'] is String) {
+        unawaited(_openBooking(data['bookingId'] as String,
+            recipientId: data['recipientId'] as String?,
+            isVendor: data['role'] == 'vendor'));
+        return;
+      }
+      if (data is Map && data['vendorId'] is String) {
+        unawaited(_openVendorDetails(data['vendorId'] as String,
+            itemId:
+                data['itemId'] is String ? data['itemId'] as String : null));
+        return;
+      }
+    } on FormatException {
+      // Existing notifications used the plain vendor ID as their payload.
+    }
+    unawaited(_openVendorDetails(payload));
+  }
+
+  Future<void> _openVendorDetails(String vendorId, {String? itemId}) async {
     final navState = _navigatorKey?.currentState;
     if (!_navigationReady || navState == null) {
       _pendingVendorId = vendorId;
+      _pendingItemId = itemId;
       return;
     }
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     final VendorModel? vendor = await _vendorService.getVendorProfile(vendorId);
-    if (vendor == null || !_navigationReady ||
-        FirebaseAuth.instance.currentUser?.uid != uid) { return; }
+    if (vendor == null ||
+        !_navigationReady ||
+        FirebaseAuth.instance.currentUser?.uid != uid) {
+      return;
+    }
 
     navState.push(
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
+      MaterialPageRoute(
+          builder: (_) =>
+              VendorDetailsScreen(vendor: vendor, initialDishId: itemId)),
     );
+  }
+
+  Future<void> _openBooking(String bookingId,
+      {String? recipientId, required bool isVendor}) async {
+    final navState = _navigatorKey?.currentState;
+    if (!_navigationReady || navState == null) {
+      _pendingBookingId = bookingId;
+      _pendingBookingRecipient = recipientId;
+      _pendingBookingVendor = isVendor;
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || (recipientId != null && uid != recipientId)) return;
+    navState.push(MaterialPageRoute(
+        builder: (_) =>
+            BookingDetailScreen(bookingId: bookingId, isVendor: isVendor)));
   }
 }

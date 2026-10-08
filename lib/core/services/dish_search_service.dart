@@ -14,9 +14,13 @@ class DishSearchService {
       for (final document in snapshot.docs) {
         final vendorId = document.reference.parent.parent?.id;
         if (vendorId == null || vendorId.isEmpty) continue;
+        final data = document.data();
+        final price = data['price'];
         dishes.add(DishSearchEntry(
           vendorId: vendorId,
-          item: MenuItemModel.fromMap(document.data(), document.id),
+          item: MenuItemModel.fromMap(
+              {...data, 'price': price is num ? price : 0}, document.id),
+          priceIsKnown: price is num && price.isFinite && price >= 0,
         ));
       }
       dishes.sort((a, b) =>

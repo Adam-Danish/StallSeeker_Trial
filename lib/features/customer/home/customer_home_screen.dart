@@ -1,4 +1,5 @@
 import '../../../core/services/notification_history_service.dart';
+import '../../../core/services/demo_order_service.dart';
 import '../notifications/customer_notifications_screen.dart';
 import 'dart:async'; // bawak time, future dan unawaited
 import 'dart:math' as math;
@@ -13,6 +14,8 @@ import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/models/dish_search_entry.dart';
 import 'open_at_picker.dart';
+import 'discovery_search_filters.dart';
+import 'price_range_picker.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/dish_search_service.dart';
@@ -22,6 +25,8 @@ import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
+import '../../shared/saved_locations_sheet.dart';
+import '../../shared/pin_location_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -38,6 +43,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   Stream<int>? _unreadCount;
+  Stream<int>? _bookingUnreadCount;
 
   int _selectedIndex = 0;
   String _searchQuery = '';
@@ -56,12 +62,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _showSearchArea = false;
   bool _programmaticCameraMove = false;
   OpeningTimeFilter? _openingTime;
+  MenuPriceRange? _priceRange;
 
   final List<String> _tabTitles = [
     'Home',
     'Following',
     'Notifications',
-    'Profile'
+    'Settings'
   ];
   String _greeting = 'Welcome!';
 
@@ -115,6 +122,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && !user.isAnonymous) {
       _unreadCount = NotificationHistoryService().watchUnreadCount(user.uid);
+      _bookingUnreadCount =
+          DemoOrderService().watchUnseenCount(user.uid, isVendor: false);
     }
     _initializeCustomerLocation();
     _loadGreeting();
@@ -147,6 +156,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _loadRecentSearches() async {
     try {
+      await _searchHistoryService.mergeGuestHistoryIntoCustomerAccount();
       final recent = await _searchHistoryService.loadRecent();
       if (mounted) setState(() => _recentSearches = recent);
     } catch (_) {
@@ -221,13 +231,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   bool _locationRequestActive = false;
+  int _locationSelectionVersion = 0;
 
   Future<void> _initializeCustomerLocation() async {
+    final selectionVersion = _locationSelectionVersion;
     // check kalau customer ada saved location, kalau takde baru call getcustomerlocation
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && !user.isAnonymous) {
       final userData = await _authService.getUserData(user.uid);
-      if (!mounted) {
+      if (!mounted || selectionVersion != _locationSelectionVersion) {
         return;
       }
       if (userData?.hasCustomerLocation == true) {
@@ -246,7 +258,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
     }
-    await _getCustomerLocation(); // get cust loc
+    if (mounted && selectionVersion == _locationSelectionVersion) {
+      await _getCustomerLocation(); // get cust loc
+    }
   }
 
   void _applyCustomerLocation(
@@ -259,6 +273,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     setState(() {
       // default
+      _locationSelectionVersion++;
+      _isLocatingCustomer = false;
+      _selectedVendorId = null;
       _customerPosition = selection.coordinates;
       _searchCenter = selection.coordinates;
       _visibleBounds = null;
@@ -289,6 +306,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       return;
     }
     _locationRequestActive = true;
+    final selectionVersion = _locationSelectionVersion;
     if (mounted) {
       setState(() {
         _isLocatingCustomer = true;
@@ -331,12 +349,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       } catch (_) {
         label = 'Current location';
       }
+      if (!mounted || selectionVersion != _locationSelectionVersion) return;
       _applyCustomerLocation(
         LocationSelection(coordinates: coordinates, label: label),
         false,
       );
     } catch (error) {
-      if (mounted) {
+      if (mounted && selectionVersion == _locationSelectionVersion) {
         setState(() {
           _locationError = error is StateError
               ? error.message.toString()
@@ -380,6 +399,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
+  Future<void> _chooseSavedLocation({String? type}) async {
+    final selection = await showSavedLocationsSheet(context,
+        initialLocation:
+            _searchCenter ?? _customerPosition ?? _defaultPosition.target,
+        initialType: type);
+    if (!mounted || selection == null) return;
+    _applyCustomerLocation(selection, true);
+  }
+
+  Future<void> _pinSearchLocation() async {
+    final selection = await Navigator.push<LocationSelection>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => PinLocationScreen(
+                initialLocation: _searchCenter ??
+                    _customerPosition ??
+                    _defaultPosition.target)));
+    if (!mounted || selection == null) return;
+    _applyCustomerLocation(selection, true);
+  }
+
   // ui for set location, enter manually button
   Future<void> _chooseLocationSource() async {
     FocusScope.of(context).unfocus();
@@ -412,6 +452,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 const Text('Search for an area, city, state, or postcode'),
             onTap: () => Navigator.pop(ctx, 'manual'),
           ),
+          ListTile(
+            leading:
+                const Icon(Icons.push_pin_outlined, color: AppColors.primary),
+            title: const Text('Pin on map'),
+            subtitle: const Text('Choose an exact search location'),
+            onTap: () => Navigator.pop(ctx, 'pin'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.home_outlined, color: AppColors.primary),
+            title: const Text('Home & saved places'),
+            subtitle: const Text('Save and choose Home or custom pins'),
+            onTap: () => Navigator.pop(ctx, 'saved'),
+          ),
           const SizedBox(height: 8),
         ]),
       ),
@@ -421,6 +474,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     if (choice == 'current') {
       await _getCustomerLocation();
+    } else if (choice == 'saved') {
+      await _chooseSavedLocation();
+    } else if (choice == 'pin') {
+      await _pinSearchLocation();
     } else {
       await _enterCustomerLocationManually();
     }
@@ -562,6 +619,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     });
   }
 
+  Future<void> _choosePriceRange() async {
+    _searchFocus.unfocus();
+    final result =
+        await showPriceRangePicker(context, initialRange: _priceRange);
+    if (result == null || !mounted) return;
+    setState(() {
+      _priceRange = result.isActive ? result : null;
+      _selectedVendorId = null;
+    });
+    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
+  }
+
   bool _matchesOpening(VendorModel vendor) {
     final filter = _openingTime;
     if (filter != null) {
@@ -623,6 +692,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     label: _customerLocationLabel ?? 'Selected location',
                   ),
             onLocationChanged: _applyCustomerLocation,
+            onHomeLocation: () => _chooseSavedLocation(type: 'home'),
+            onCustomLocation: () => _chooseSavedLocation(type: 'custom'),
           ),
         ],
       ),
@@ -635,13 +706,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           const NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map, color: Color(0xFFFF6E41)),
-            label: 'Discover',
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Home',
           ),
           const NavigationDestination(
             icon: Icon(Icons.favorite_border),
-            selectedIcon: Icon(Icons.favorite, color: Color(0xFFFF6E41)),
+            selectedIcon: Icon(Icons.favorite),
             label: 'Following',
           ),
           NavigationDestination(
@@ -649,10 +720,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             selectedIcon: _notificationIcon(true),
             label: 'Notifications',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFFFF6E41)),
-            label: 'Profile',
+          NavigationDestination(
+            icon: _settingsIcon(false),
+            selectedIcon: _settingsIcon(true),
+            label: 'Settings',
           ),
         ],
       ),
@@ -667,67 +738,31 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             isLabelVisible: count > 0,
             label: Text(count >= 100 ? '99+' : '$count'),
             child: Icon(
-                selected
-                    ? Icons.notifications
-                    : Icons.notifications_none_rounded,
-                color: selected ? const Color(0xFFFF6E41) : null),
+              selected ? Icons.notifications : Icons.notifications_none_rounded,
+            ),
           );
         },
       );
 
-  List<_SearchSuggestion> _searchSuggestions(List<VendorModel> vendors) {
-    final typed = _searchController.text.trim().toLowerCase();
-    final suggestions = <_SearchSuggestion>[];
-    final seen = <String>{};
+  Widget _settingsIcon(bool selected) => StreamBuilder<int>(
+        stream: _bookingUnreadCount,
+        builder: (context, snapshot) => Badge(
+          isLabelVisible: (snapshot.data ?? 0) > 0,
+          label:
+              Text((snapshot.data ?? 0) > 99 ? '99+' : '${snapshot.data ?? 0}'),
+          child: Icon(selected ? Icons.settings : Icons.settings_outlined),
+        ),
+      );
 
-    void add(_SearchSuggestion suggestion) {
-      final key = suggestion.label.toLowerCase();
-      if (seen.add(key) && suggestions.length < 8) suggestions.add(suggestion);
-    }
+  IconData _suggestionIcon(DiscoverySuggestion suggestion) =>
+      switch (suggestion.kind) {
+        DiscoverySuggestionKind.dish => Icons.restaurant_menu_rounded,
+        DiscoverySuggestionKind.stall => Icons.storefront_rounded,
+        DiscoverySuggestionKind.category => Icons.category_outlined,
+        DiscoverySuggestionKind.recent => Icons.history_rounded,
+      };
 
-    for (final recent in _recentSearches) {
-      if (typed.isEmpty || recent.toLowerCase().contains(typed)) {
-        add(_SearchSuggestion(
-          label: recent,
-          detail: 'Recent search',
-          icon: Icons.history_rounded,
-          isRecent: true,
-        ));
-      }
-    }
-    if (typed.isEmpty) return suggestions;
-
-    for (final dish in _allDishes) {
-      if (dish.item.name.toLowerCase().contains(typed)) {
-        add(_SearchSuggestion(
-          label: dish.item.name,
-          detail: 'Dish',
-          icon: Icons.restaurant_menu_rounded,
-        ));
-      }
-    }
-    for (final vendor in vendors) {
-      if (vendor.stallName.toLowerCase().contains(typed)) {
-        add(_SearchSuggestion(
-          label: vendor.stallName,
-          detail: 'Stall',
-          icon: Icons.storefront_rounded,
-        ));
-      }
-    }
-    for (final category in stallCategories) {
-      if (category.toLowerCase().contains(typed)) {
-        add(_SearchSuggestion(
-          label: category,
-          detail: 'Category',
-          icon: Icons.category_outlined,
-        ));
-      }
-    }
-    return suggestions;
-  }
-
-  Widget _suggestionPanel(List<_SearchSuggestion> suggestions) => Material(
+  Widget _suggestionPanel(List<DiscoverySuggestion> suggestions) => Material(
         elevation: 7,
         shadowColor: const Color(0x33000000),
         color: Colors.white,
@@ -756,7 +791,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               for (final suggestion in suggestions)
                 ListTile(
                   dense: true,
-                  leading: Icon(suggestion.icon,
+                  leading: Icon(_suggestionIcon(suggestion),
                       size: 20, color: const Color(0xFF64748B)),
                   title: Text(suggestion.label,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -785,21 +820,30 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 (_category == null || v.category == _category))
             .toList();
 
-        final query = _searchQuery.trim().toLowerCase();
+        final query = normalizeDiscoveryQuery(_searchQuery);
+        final dishesByVendor = <String, List<DishSearchEntry>>{};
+        for (final dish in _allDishes) {
+          (dishesByVendor[dish.vendorId] ??= []).add(dish);
+        }
         final matchingDishVendorIds = query.isEmpty
             ? const <String>{}
             : _allDishes
-                .where((dish) => dish.item.name.toLowerCase().contains(query))
+                .where((dish) =>
+                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
+                    (_priceRange == null || _priceRange!.contains(dish)))
                 .map((dish) => dish.vendorId)
                 .toSet();
         final matchingVendors = allVendors.where((vendor) {
-          final nameMatches = vendor.stallName.toLowerCase().contains(query);
-          final categoryMatches = vendor.category.toLowerCase().contains(query);
           final dishMatches = matchingDishVendorIds.contains(vendor.vendorId);
           // A dish search must show every nearby seller, including closed
           // stalls, so the customer can compare availability and status.
           if (!dishMatches && !_matchesOpening(vendor)) return false;
-          return query.isEmpty || nameMatches || categoryMatches || dishMatches;
+          return vendorMatchesQueryAndPrice(
+            vendor: vendor,
+            dishes: dishesByVendor[vendor.vendorId] ?? const [],
+            query: query,
+            priceRange: _priceRange,
+          );
         });
         final filteredVendors = matchingVendors.where((vendor) {
           final position = _searchCenter ?? _customerPosition;
@@ -818,7 +862,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ? <DishSearchEntry>[]
             : _allDishes
                 .where((dish) =>
-                    dish.item.name.toLowerCase().contains(query) &&
+                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
+                    (_priceRange == null || _priceRange!.contains(dish)) &&
                     filteredVendorById.containsKey(dish.vendorId))
                 .toList()
           ..sort((a, b) {
@@ -837,7 +882,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 .toLowerCase()
                 .compareTo(b.item.name.toLowerCase());
           });
-        final suggestions = _searchSuggestions(allVendors);
+        final suggestionVendors = allVendors.where((vendor) {
+          final center = _searchCenter ?? _customerPosition;
+          return center == null ||
+              Geolocator.distanceBetween(center.latitude, center.longitude,
+                      vendor.latitude, vendor.longitude) <=
+                  _searchRadiusKm * 1000;
+        });
+        final suggestions = buildDiscoverySuggestions(
+          query: _searchController.text,
+          vendors: suggestionVendors,
+          dishes: _allDishes,
+          categories: stallCategories,
+          recentSearches: _recentSearches,
+          priceRange: _priceRange,
+        );
         final showSuggestions = _searchFocus.hasFocus && suggestions.isNotEmpty;
         final showingDishResults = query.isNotEmpty && dishResults.isNotEmpty;
 
@@ -899,6 +958,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             )
             .toSet();
+        final searchPosition = _searchCenter ?? _customerPosition;
+        if (searchPosition != null) {
+          markers.add(Marker(
+            markerId: const MarkerId('customer-search-location'),
+            position: searchPosition,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure),
+            infoWindow: InfoWindow(
+                title: 'Search location',
+                snippet: searchPosition == _customerPosition
+                    ? _customerLocationLabel ?? 'Selected location'
+                    : 'Selected map area'),
+          ));
+        }
 
         return LayoutBuilder(builder: (context, constraints) {
           // The panel is a sibling below the map, never an overlay. It cannot
@@ -1054,6 +1127,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                             label: Text(_category ?? 'All categories'),
                             avatar:
                                 const Icon(Icons.category_outlined, size: 18)),
+                      ),
+                      const SizedBox(width: 8),
+                      InputChip(
+                        avatar: const Icon(Icons.payments_outlined, size: 18),
+                        label: Text(_priceRange?.label ?? 'Any price'),
+                        onPressed: _choosePriceRange,
+                        onDeleted: _priceRange == null
+                            ? null
+                            : () => setState(() {
+                                  _priceRange = null;
+                                  _selectedVendorId = null;
+                                }),
                       ),
                       const SizedBox(width: 8),
                       InputChip(
@@ -1256,22 +1341,29 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                               child: Text(
                                                   snapshot.hasError
                                                       ? 'Check your connection and retry.'
-                                                      : query.isNotEmpty &&
+                                                      : (query.isNotEmpty ||
+                                                                  _priceRange !=
+                                                                      null) &&
                                                               _dishSearchError !=
                                                                   null
-                                                          ? 'Could not search dishes. Check your connection and retry.'
-                                                          : query.isNotEmpty &&
+                                                          ? 'Could not load menu prices and dishes. Check your connection and retry.'
+                                                          : (query.isNotEmpty ||
+                                                                      _priceRange !=
+                                                                          null) &&
                                                                   _dishesLoading
-                                                              ? 'Searching dishes…'
-                                                              : _customerPosition !=
-                                                                          null &&
-                                                                      _searchRadiusKm <
-                                                                          50
-                                                                  ? 'No stalls found within ${_searchRadiusKm.toStringAsFixed(0)} km. Try Expand area.'
-                                                                  : query
-                                                                          .isNotEmpty
-                                                                      ? 'No nearby dishes or stalls match “${_searchController.text.trim()}”.'
-                                                                      : 'Move the map, zoom out, or clear your filters.',
+                                                              ? 'Loading dishes and prices…'
+                                                              : _priceRange !=
+                                                                      null
+                                                                  ? 'No dishes or stalls match ${_priceRange!.label}${query.isEmpty ? '' : ' and “${_searchController.text.trim()}”'}. Try another price range or reset it.'
+                                                                  : _customerPosition !=
+                                                                              null &&
+                                                                          _searchRadiusKm <
+                                                                              50
+                                                                      ? 'No stalls found within ${_searchRadiusKm.toStringAsFixed(0)} km. Try Expand area.'
+                                                                      : query
+                                                                              .isNotEmpty
+                                                                          ? 'No nearby dishes or stalls match “${_searchController.text.trim()}”.'
+                                                                          : 'Move the map, zoom out, or clear your filters.',
                                                   textAlign: TextAlign.center,
                                                   style: const TextStyle(
                                                       color: Color(0xFF64748B),
@@ -1361,7 +1453,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 14, fontWeight: FontWeight.w700)),
-                    Text('RM ${dish.item.price.toStringAsFixed(2)}',
+                    Text(
+                        dish.priceIsKnown
+                            ? 'RM ${dish.item.price.toStringAsFixed(2)}'
+                            : 'Price unavailable',
                         style: const TextStyle(
                             color: AppColors.primary,
                             fontSize: 13,
@@ -1582,7 +1677,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   leading: _dishPhoto(dish),
                   title: Text(dish.item.name),
                   subtitle: Text([
-                    'RM ${dish.item.price.toStringAsFixed(2)}',
+                    dish.priceIsKnown
+                        ? 'RM ${dish.item.price.toStringAsFixed(2)}'
+                        : 'Price unavailable',
                     _stockLabel(dish.item.status),
                     vendor.stallName,
                     if (_distanceTo(vendor) != null) _distanceTo(vendor)!,
@@ -1606,18 +1703,4 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
     );
   }
-}
-
-class _SearchSuggestion {
-  const _SearchSuggestion({
-    required this.label,
-    required this.detail,
-    required this.icon,
-    this.isRecent = false,
-  });
-
-  final String label;
-  final String detail;
-  final IconData icon;
-  final bool isRecent;
 }

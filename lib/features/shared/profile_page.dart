@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 /// Grouped settings layout inspired by the supplied references.
@@ -26,7 +27,13 @@ class ProfilePage extends StatelessWidget {
       required this.onTerms,
       required this.onDeleteAccount,
       this.onEditStall,
-      this.onPersonalInformation});
+      this.onOrders,
+      this.bookingSection,
+      this.onPersonalInformation,
+      this.onHomeLocation,
+      this.onCustomLocation,
+      this.homeLocation = 'Choose or save your home pin',
+      this.customLocation = 'Manage your saved places'});
 
   final String name;
   final String email;
@@ -50,11 +57,17 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onTerms;
   final VoidCallback onDeleteAccount;
   final VoidCallback? onEditStall;
+  final VoidCallback? onOrders;
+  final Widget? bookingSection;
   final VoidCallback? onPersonalInformation;
+  final VoidCallback? onHomeLocation;
+  final VoidCallback? onCustomLocation;
+  final String homeLocation;
+  final String customLocation;
 
-  static const _background = Color(0xFFF2F2F7);
-  static const _muted = Color(0xFF8E8E93);
-  static const _divider = Color(0xFFE5E5EA);
+  static const background = Color(0xFFF3F2F8);
+  static const _muted = Color(0xFF929294);
+  static const _divider = Color(0xFFE7E7EA);
 
   // The avatar must never receive the full display name.
   String get _firstWord {
@@ -88,17 +101,17 @@ class ProfilePage extends StatelessWidget {
                   errorBuilder: (_, __, ___) => _fallbackPhoto())));
 
   Widget _group(String label, List<Widget> rows) => Padding(
-      padding: const EdgeInsets.only(top: 28),
+      padding: const EdgeInsets.only(top: 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-            padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+            padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
             child: Text(label,
                 style: const TextStyle(
                     color: _muted, fontSize: 12, fontWeight: FontWeight.w400))),
-        Container(
+        Material(
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(14)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
             child: Column(children: [
               for (var index = 0; index < rows.length; index++) ...[
                 if (index > 0)
@@ -110,147 +123,179 @@ class ProfilePage extends StatelessWidget {
 
   Widget _row(IconData icon, String label, VoidCallback onTap,
           {String? subtitle, Widget? trailing}) =>
-      ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Icon(icon, color: _muted, size: 24),
-        title: Text(label,
-            style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
-        subtitle: subtitle == null
-            ? null
-            : Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Text(subtitle,
-                    style: const TextStyle(
-                        fontSize: 14, color: _muted, letterSpacing: 0))),
-        trailing: trailing ??
-            const Icon(Icons.chevron_right, color: Color(0xFFAEAEB2), size: 22),
+      InkWell(
         onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 49),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+            child: Row(children: [
+              Icon(icon, color: _muted, size: 22),
+              const SizedBox(width: 18),
+              Expanded(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          color: Color(0xFF1C1C1E),
+                          fontSize: 17,
+                          height: 1.2,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.3,
+                            color: _muted,
+                            letterSpacing: 0)),
+                  ],
+                ],
+              )),
+              const SizedBox(width: 12),
+              trailing ??
+                  const Icon(CupertinoIcons.chevron_right,
+                      color: Color(0xFFA5A5A7), size: 16),
+            ]),
+          ),
+        ),
       );
 
   @override
   Widget build(BuildContext context) => ColoredBox(
-        color: _background,
+        color: background,
         child: RefreshIndicator(
             onRefresh: onRefresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
               children: [
-                Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14)),
-                    child: Row(children: [
-                      _avatar(),
-                      const SizedBox(width: 16),
-                      Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                            Text(name,
-                                style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 0)),
-                            if (email.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(email,
-                                  style: const TextStyle(
-                                      fontSize: 14,
-                                      color: _muted,
-                                      letterSpacing: 0)),
-                            ],
-                            if (isVendor && phoneNumber?.isNotEmpty == true) ...[
-                              const SizedBox(height: 4),
-                              Text(phoneNumber!, style: const TextStyle(fontSize: 14, color: _muted)),
-                            ],
-                            const SizedBox(height: 8),
-                            TextButton(
-                                onPressed: isGuest ? onSignIn : onEdit,
-                                style: TextButton.styleFrom(
-                                    backgroundColor: _background,
-                                    foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 8),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12))),
-                                child: Text(
-                                    isGuest ? 'Sign in' : 'Edit Profile',
+                Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(children: [
+                          _avatar(),
+                          const SizedBox(width: 16),
+                          Expanded(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                Text(name,
                                     style: const TextStyle(
-                                        fontSize: 14,
+                                        fontSize: 20,
+                                        height: 1.2,
+                                        color: Color(0xFF1C1C1E),
                                         fontWeight: FontWeight.w500,
-                                        letterSpacing: 0))),
-                          ])),
-                      const SizedBox(width: 4),
-                      IconButton(
-                          tooltip: isGuest ? 'Sign in' : 'Edit profile',
-                          onPressed: isGuest ? onSignIn : onEdit,
-                          icon: const Icon(Icons.chevron_right,
-                              color: Color(0xFFAEAEB2)),
-                          constraints:
-                              const BoxConstraints(minWidth: 28, minHeight: 48),
-                          padding: EdgeInsets.zero),
-                    ])),
+                                        letterSpacing: 0)),
+                                if (email.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(email,
+                                      style: const TextStyle(
+                                          fontSize: 14,
+                                          color: _muted,
+                                          letterSpacing: 0)),
+                                ],
+                                if (isVendor &&
+                                    phoneNumber?.isNotEmpty == true) ...[
+                                  const SizedBox(height: 4),
+                                  Text(phoneNumber!,
+                                      style: const TextStyle(
+                                          fontSize: 14, color: _muted)),
+                                ],
+                                const SizedBox(height: 8),
+                                TextButton(
+                                    onPressed: isGuest ? onSignIn : onEdit,
+                                    style: TextButton.styleFrom(
+                                        backgroundColor: background,
+                                        foregroundColor: Colors.black,
+                                        minimumSize: const Size(0, 32),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16, vertical: 7),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12))),
+                                    child: Text(
+                                        isGuest ? 'Sign in' : 'Edit Profile',
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            letterSpacing: 0))),
+                              ])),
+                          const SizedBox(width: 4),
+                          IconButton(
+                              tooltip: isGuest ? 'Sign in' : 'Edit profile',
+                              onPressed: isGuest ? onSignIn : onEdit,
+                              icon: const Icon(CupertinoIcons.chevron_right,
+                                  color: Color(0xFFA5A5A7), size: 17),
+                              constraints: const BoxConstraints(
+                                  minWidth: 28, minHeight: 48),
+                              padding: EdgeInsets.zero),
+                        ]))),
+                if (bookingSection != null) bookingSection!,
                 _group('LOCATION', [
-                  _row(Icons.location_on_outlined, 'Current location',
-                      onLocation,
+                  _row(CupertinoIcons.location, 'Current location', onLocation,
                       subtitle: location,
                       trailing: isLoadingLocation
                           ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.chevron_right,
-                              color: Color(0xFFAEAEB2))),
+                          : null),
+                  if (onHomeLocation != null)
+                    _row(CupertinoIcons.house, 'Home location', onHomeLocation!,
+                        subtitle: homeLocation),
+                  if (onCustomLocation != null)
+                    _row(CupertinoIcons.map, 'Custom pins', onCustomLocation!,
+                        subtitle: customLocation),
                 ]),
                 if (!isGuest)
                   _group(isVendor ? 'ACCOUNT & STALL' : 'ACCOUNT', [
-                    _row(Icons.person_outline_rounded, 'Personal information',
+                    _row(CupertinoIcons.person, 'Personal information',
                         onPersonalInformation ?? onEdit),
                     if (isVendor && onEditStall != null)
                       _row(Icons.storefront_outlined, 'My stall', onEditStall!),
+                    if (onOrders != null)
+                      _row(Icons.receipt_long_outlined, 'My bookings',
+                          onOrders!),
                     if (canChangePassword)
-                      _row(Icons.lock_outline_rounded, 'Change password',
-                          onPassword),
+                      _row(CupertinoIcons.lock, 'Change password', onPassword),
                     if (!isVendor)
-                      _row(Icons.notifications_none_rounded,
-                          'Notification settings', onNotificationSettings),
+                      _row(CupertinoIcons.bell, 'Notification settings',
+                          onNotificationSettings),
                   ]),
                 _group('ABOUT', [
-                  _row(Icons.help_outline_rounded, 'Help & FAQ', onFaq),
+                  _row(CupertinoIcons.question_circle, 'Help & FAQ', onFaq),
+                  _row(CupertinoIcons.info, 'About StallSeeker', onAbout),
                   _row(
-                      Icons.info_outline_rounded, 'About StallSeeker', onAbout),
-                  _row(Icons.privacy_tip_outlined, 'Privacy policy',
-                      onPrivacyPolicy),
-                  _row(Icons.description_outlined, 'Terms of use', onTerms),
+                      CupertinoIcons.shield, 'Privacy policy', onPrivacyPolicy),
+                  _row(CupertinoIcons.doc_text, 'Terms of use', onTerms),
                 ]),
                 if (!isGuest)
                   _group('ACCOUNT ACTIONS', [
-                    _row(Icons.delete_outline_rounded, 'Delete account',
-                        onDeleteAccount,
-                        trailing: const Icon(Icons.chevron_right,
-                            color: Color(0xFFB3261E), size: 22)),
+                    _row(CupertinoIcons.trash, 'Delete account',
+                        onDeleteAccount),
                   ]),
-                const SizedBox(height: 28),
-                Container(
+                const SizedBox(height: 32),
+                Material(
                     clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14)),
-                    child: _row(Icons.logout_rounded,
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    child: _row(CupertinoIcons.square_arrow_right,
                         isGuest ? 'Leave guest mode' : 'Logout', onLogout,
                         trailing: const SizedBox.shrink())),
-                const SizedBox(height: 36),
-                const Icon(Icons.storefront_outlined,
-                    size: 32, color: Color(0xFFAEAEB2)),
-                const SizedBox(height: 8),
+                const SizedBox(height: 40),
+                const Icon(Icons.storefront_outlined, size: 36, color: _muted),
+                const SizedBox(height: 10),
                 const Text('StallSeeker',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 14, color: _muted, letterSpacing: 0)),
+                        fontSize: 12, color: _muted, letterSpacing: 0)),
               ],
             )),
       );

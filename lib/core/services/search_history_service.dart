@@ -41,6 +41,32 @@ class SearchHistoryService {
         .toList();
   }
 
+  /// Retry-safe: the local copy is removed only after every account write succeeds.
+  Future<void> mergeGuestHistoryIntoCustomerAccount() async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous || !user.emailVerified) return;
+    final preferences = await SharedPreferences.getInstance();
+    final guest = preferences.getStringList(_guestKey) ?? const <String>[];
+    if (guest.isEmpty) return;
+    final account = await loadRecent();
+    final seen = <String>{};
+    final merged = <String>[];
+    for (final raw in [...guest, ...account]) {
+      final query = _clean(raw);
+      if (query.isNotEmpty && seen.add(query.toLowerCase())) {
+        merged.add(query);
+      }
+      if (merged.length == _limit) break;
+    }
+    for (final query in merged.reversed) {
+      if (_auth.currentUser?.uid != user.uid) return;
+      await save(query);
+    }
+    if (_auth.currentUser?.uid == user.uid) {
+      await preferences.remove(_guestKey);
+    }
+  }
+
   Future<void> save(String rawQuery) async {
     final query = _clean(rawQuery);
     if (query.isEmpty) return;
