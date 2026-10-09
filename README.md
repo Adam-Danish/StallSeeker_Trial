@@ -2,6 +2,8 @@
 
 A new Flutter project.
 
+For Android Appium test setup and team instructions, see [appium-tests/README.md](appium-tests/README.md).
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

@@ -1,0 +1,16 @@
+{
+  "name": "appium-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node login-validation.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "webdriverio": "^10.0.2"
+  }
+}
