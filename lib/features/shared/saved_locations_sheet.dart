@@ -124,12 +124,19 @@ class _SavedLocationsSheetState extends State<_SavedLocationsSheet> {
           isHome: home,
           id: existing?.id);
       await _load();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Saved place failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
       if (mounted) {
-        setState(() => _error = 'Could not save this place. Please retry.');
+        setState(() {
+          _error = 'Could not save this place:\n$error';
+        });
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 

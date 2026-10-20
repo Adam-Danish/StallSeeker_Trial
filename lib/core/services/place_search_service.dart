@@ -34,6 +34,7 @@ class PlaceSearchService {
       : _places = places ??
             FlutterGooglePlacesSdk(
               'AIzaSyDV0UDXXVwuXQw3dVAb8RHmcql3bTlysNE',
+              useNewApi: true,
             );
 
   final FlutterGooglePlacesSdk _places;

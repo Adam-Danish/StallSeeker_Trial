@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import 'account_ui.dart';
+import 'info_page.dart';
 
 class FaqScreen extends StatefulWidget {
   const FaqScreen({super.key, required this.isVendor});
@@ -80,52 +81,54 @@ class _FaqScreenState extends State<FaqScreen> {
             (e) => '${e.question} ${e.answer}'.toLowerCase().contains(_query))
         .toList();
     final groups = entries.map((e) => e.group).toSet();
-    return AccountLayout(
-        title: 'Help & FAQ',
-        background: AppColors.background,
-        children: [
-          const Text('How can we help?',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          const Text('Find quick answers about your account and stalls.',
-              style: TextStyle(
-                  fontSize: 14, color: Color(0xFF707078), height: 1.5)),
-          const SizedBox(height: 20),
-          TextField(
-              controller: _search,
-              onChanged: (value) =>
-                  setState(() => _query = value.trim().toLowerCase()),
-              decoration: accountField('Search questions',
-                  suffix: _query.isEmpty
-                      ? const Icon(Icons.search_rounded)
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          onPressed: () {
-                            _search.clear();
-                            setState(() => _query = '');
-                          },
-                          icon: const Icon(Icons.close_rounded)))),
-          const SizedBox(height: 28),
-          if (entries.isEmpty)
-            const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Text('No matching answers. Try a different word.',
-                    textAlign: TextAlign.center)),
-          for (final group in groups) ...[
-            Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 10),
-                child: Text(group,
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF707078)))),
-            _group(entries.where((e) => e.group == group).toList()),
-            const SizedBox(height: 26),
-          ],
-        ]);
+    return InfoPage(title: 'Help & FAQ', children: [
+      const Text('How can we help?',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      const Text('Find quick answers about your account and stalls.',
+          style:
+              TextStyle(fontSize: 14, color: Color(0xFF707078), height: 1.5)),
+      const SizedBox(height: 20),
+      TextField(
+          controller: _search,
+          onChanged: (value) =>
+              setState(() => _query = value.trim().toLowerCase()),
+          decoration: accountField('Search questions',
+              suffix: _query.isEmpty
+                  ? const Icon(Icons.search_rounded)
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _search.clear();
+                        setState(() => _query = '');
+                      },
+                      icon: const Icon(Icons.close_rounded)))),
+      const SizedBox(height: 28),
+      if (entries.isEmpty)
+        const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Text('No matching answers. Try a different word.',
+                textAlign: TextAlign.center)),
+      for (final group in groups) ...[
+        Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Text(group,
+                style:
+                    const TextStyle(fontSize: 12, color: Color(0xFF707078)))),
+        _group(entries.where((e) => e.group == group).toList()),
+        const SizedBox(height: 26),
+      ],
+    ]);
   }
 
   Widget _group(List<_FaqEntry> entries) => Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(
+          color: Color(0xFFE8E8E8),
+        ),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: [
         for (var i = 0; i < entries.length; i++) ...[

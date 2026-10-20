@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import 'account_ui.dart';
+import 'info_page.dart';
 
 enum LegalPage { privacy, terms }
 
@@ -11,43 +11,45 @@ class LegalScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final privacy = page == LegalPage.privacy;
-    return AccountLayout(
+    final sections = privacy ? _privacySections : _termSections;
+
+    return InfoPage(
       title: privacy ? 'Privacy Policy' : 'Terms of Use',
-      background: AppColors.background,
       children: [
-        Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(16)),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(
-                  privacy ? 'Your privacy at StallSeeker' : 'Using StallSeeker',
+        const Text(
+          'Last updated: 20 October 2026',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 24),
+        for (final section in sections)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  section.key,
                   style: const TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -.3)),
-              const SizedBox(height: 8),
-              const Text('Last updated: 20 October 2026',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
-              const SizedBox(height: 24),
-              ...(privacy ? _privacySections : _termSections).map((section) =>
-                  Padding(
-                      padding: const EdgeInsets.only(bottom: 24),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(section.key,
-                                style: const TextStyle(
-                                    fontSize: 17, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 7),
-                            Text(section.value,
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    height: 1.55,
-                                    color: Color(0xFF52525A))),
-                          ]))),
-            ])),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  section.value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.65,
+                    color: Color(0xFF52525A),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
