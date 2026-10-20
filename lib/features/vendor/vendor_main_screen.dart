@@ -7,6 +7,7 @@ import '../../core/widgets/app_pill_navigation.dart';
 import '../../core/services/demo_order_service.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
+import '../shared/profile_page.dart';
 
 class VendorMainScreen extends StatefulWidget {
   const VendorMainScreen({super.key});
@@ -34,23 +35,27 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      appBar: AppBar(
-        title: Text(
-          _titles[_selectedIndex],
-        ),
-        centerTitle: true,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        actions: [
-          // Refresh button only on Dashboard
-          if (_selectedIndex == 0)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: AppColors.textDark),
-              tooltip: 'Refresh',
-              onPressed: _refreshDashboard,
+      backgroundColor:
+          _selectedIndex == 1 ? ProfilePage.background : AppColors.background,
+      appBar: _selectedIndex == 1
+          ? null
+          : AppBar(
+              title: Text(
+                _titles[_selectedIndex],
+              ),
+              centerTitle: true,
+              elevation: 0,
+              systemOverlayStyle: SystemUiOverlayStyle.dark,
+              actions: [
+                // Refresh button only on Dashboard
+                if (_selectedIndex == 0)
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: AppColors.textDark),
+                    tooltip: 'Refresh',
+                    onPressed: _refreshDashboard,
+                  ),
+              ],
             ),
-        ],
-      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -59,6 +64,7 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
         ],
       ),
       bottomNavigationBar: AppPillNavigation(
+        settingsStyle: _selectedIndex == 1,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),

@@ -1,40 +1,41 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
+import 'package:flutter/services.dart';
 
-/// Grouped settings layout inspired by the supplied references.
+/// iOS-style grouped settings, with StallSeeker's existing account actions.
 class ProfilePage extends StatelessWidget {
-  const ProfilePage(
-      {super.key,
-      required this.name,
-      required this.email,
-      this.photoUrl,
-      this.phoneNumber,
-      required this.isVendor,
-      required this.isGuest,
-      required this.canChangePassword,
-      required this.location,
-      required this.isLoadingLocation,
-      required this.onRefresh,
-      required this.onLocation,
-      required this.onEdit,
-      required this.onPassword,
-      required this.onFaq,
-      required this.onAbout,
-      required this.onLogout,
-      required this.onSignIn,
-      required this.onNotificationSettings,
-      required this.onPrivacyPolicy,
-      required this.onTerms,
-      required this.onDeleteAccount,
-      this.onEditStall,
-      this.onOrders,
-      this.bookingSection,
-      this.onPersonalInformation,
-      this.onHomeLocation,
-      this.onCustomLocation,
-      this.homeLocation = 'Choose or save your home pin',
-      this.customLocation = 'Manage your saved places'});
+  const ProfilePage({
+    super.key,
+    required this.name,
+    required this.email,
+    this.photoUrl,
+    this.phoneNumber,
+    required this.isVendor,
+    required this.isGuest,
+    required this.canChangePassword,
+    required this.location,
+    required this.isLoadingLocation,
+    required this.onRefresh,
+    required this.onLocation,
+    required this.onEdit,
+    required this.onPassword,
+    required this.onFaq,
+    required this.onAbout,
+    required this.onLogout,
+    required this.onSignIn,
+    required this.onNotificationSettings,
+    required this.onPrivacyPolicy,
+    required this.onTerms,
+    required this.onDeleteAccount,
+    this.onEditStall,
+    this.onOrders,
+    this.bookingSection,
+    this.onPersonalInformation,
+    this.onHomeLocation,
+    this.onCustomLocation,
+    this.homeLocation = 'Choose or save your home pin',
+    this.customLocation = 'Manage your saved places',
+  });
 
   final String name;
   final String email;
@@ -66,238 +67,349 @@ class ProfilePage extends StatelessWidget {
   final String homeLocation;
   final String customLocation;
 
-  static const background = AppColors.background;
-  static const _muted = AppColors.textMuted;
-  static const _divider = AppColors.border;
+  static const background = Color(0xFFF0EFF5);
+  static const blue = Color(0xFF1688E8);
+  static const muted = Color(0xFF8E8E93);
+  static const divider = Color(0xFFE5E5E8);
 
-  // The avatar must never receive the full display name.
-  String get _firstWord {
-    final words =
-        name.trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
-    return words.isEmpty ? 'Guest' : words.first;
+  String get _initial {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
   }
 
-  Widget _fallbackPhoto() => Container(
-      color: AppColors.mint,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.all(9),
-      child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(_firstWord,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary))));
-
   Widget _avatar() => ClipOval(
-      child: SizedBox(
-          width: 64,
-          height: 64,
+        child: SizedBox(
+          width: 100,
+          height: 100,
           child: photoUrl == null || photoUrl!.trim().isEmpty
-              ? _fallbackPhoto()
-              : Image.network(photoUrl!,
+              ? const ColoredBox(
+                  color: Color(0xFFD7E9F9),
+                  child:
+                      Icon(CupertinoIcons.person_fill, size: 60, color: blue),
+                )
+              : Image.network(
+                  photoUrl!,
                   fit: BoxFit.cover,
-                  loadingBuilder: (_, child, progress) =>
-                      progress == null ? child : _fallbackPhoto(),
-                  errorBuilder: (_, __, ___) => _fallbackPhoto())));
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Text(_initial,
+                        style: const TextStyle(fontSize: 45, color: blue)),
+                  ),
+                ),
+        ),
+      );
 
-  Widget _group(String label, List<Widget> rows) => Padding(
-      padding: const EdgeInsets.only(top: 32),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-            padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
-            child: Text(label,
-                style: const TextStyle(
-                    color: _muted, fontSize: 12, fontWeight: FontWeight.w400))),
-        Material(
-            clipBehavior: Clip.antiAlias,
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            child: Column(children: [
-              for (var index = 0; index < rows.length; index++) ...[
-                if (index > 0)
-                  const Divider(height: .5, thickness: .5, color: _divider),
-                rows[index],
-              ],
-            ])),
-      ]));
+  Widget _header(BuildContext context) {
+    final contact = [
+      if (phoneNumber?.trim().isNotEmpty == true) phoneNumber!.trim(),
+      if (email.trim().isNotEmpty) email.trim(),
+    ].join(' · ');
+    return Column(children: [
+      SizedBox(
+        height: 116,
+        child: Stack(alignment: Alignment.topCenter, children: [
+          Positioned(top: 12, child: _avatar()),
+          Positioned(
+            top: 0,
+            left: 0,
+            child: _circleButton(
+              icon: CupertinoIcons.qrcode,
+              tooltip: 'Copy profile details',
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: '$name\n$contact'));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Profile details copied')),
+                );
+              },
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Material(
+              color: Colors.white,
+              shape: const StadiumBorder(),
+              elevation: 5,
+              shadowColor: const Color(0x18000000),
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: isGuest ? onSignIn : onEdit,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 17, vertical: 10),
+                  child: Text(isGuest ? 'Sign in' : 'Edit',
+                      style:
+                          const TextStyle(fontSize: 17, color: Colors.black)),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 9),
+      Text(
+        name,
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.w600,
+          height: 1.1,
+          letterSpacing: -0.6,
+          color: Colors.black,
+        ),
+      ),
+      if (contact.isNotEmpty) ...[
+        const SizedBox(height: 3),
+        Text(
+          contact,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, height: 1.2, color: muted),
+        ),
+      ],
+    ]);
+  }
 
-  Widget _row(IconData icon, String label, VoidCallback onTap,
-          {String? subtitle, Widget? trailing}) =>
+  Widget _circleButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) =>
+      Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 5,
+        shadowColor: const Color(0x18000000),
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onTap,
+          icon: Icon(icon, color: Colors.black, size: 23),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        ),
+      );
+
+  Widget _group(List<Widget> rows) => Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          for (var index = 0; index < rows.length; index++) ...[
+            if (index > 0)
+              const Padding(
+                padding: EdgeInsets.only(left: 60, right: 16),
+                child: Divider(height: .5, thickness: .5, color: divider),
+              ),
+            rows[index],
+          ],
+        ]),
+      );
+
+  Widget _row(
+    IconData icon,
+    Color iconColor,
+    String label,
+    VoidCallback onTap, {
+    String? value,
+    String? subtitle,
+    Widget? trailing,
+  }) =>
       InkWell(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 49),
+          constraints: const BoxConstraints(minHeight: 52),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(children: [
-              Icon(icon, color: _muted, size: 22),
-              const SizedBox(width: 18),
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color.lerp(Colors.white, iconColor, .78)!,
+                      iconColor,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: Colors.white, size: 21),
+              ),
+              const SizedBox(width: 14),
               Expanded(
-                  child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: AppColors.textDark,
                           fontSize: 17,
                           height: 1.2,
-                          fontWeight: FontWeight.w400,
-                          letterSpacing: 0)),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.3,
-                            color: _muted,
-                            letterSpacing: 0)),
+                          letterSpacing: -0.2,
+                          color: Colors.black),
+                    ),
+                    if (subtitle != null)
+                      Text(subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: muted)),
                   ],
-                ],
-              )),
-              const SizedBox(width: 12),
+                ),
+              ),
+              if (value != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, color: muted)),
+                ),
+              ],
+              const SizedBox(width: 8),
               trailing ??
                   const Icon(CupertinoIcons.chevron_right,
-                      color: Color(0xFFA5A5A7), size: 16),
+                      size: 17, color: Color(0xFFB6B6B8)),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _editAction() => Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: isGuest ? onSignIn : onEdit,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 13),
+            child: Row(children: [
+              const Icon(CupertinoIcons.camera_on_rectangle,
+                  color: blue, size: 28),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  isGuest ? 'Sign in to edit profile' : 'Edit Profile',
+                  style: const TextStyle(fontSize: 17, color: blue),
+                ),
+              ),
             ]),
           ),
         ),
       );
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-        color: background,
-        child: RefreshIndicator(
-            onRefresh: onRefresh,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 112),
-              children: [
-                Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(children: [
-                          _avatar(),
-                          const SizedBox(width: 16),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                Text(name,
-                                    style: const TextStyle(
-                                        fontSize: 20,
-                                        height: 1.2,
-                                        color: AppColors.textDark,
-                                        fontWeight: FontWeight.w500,
-                                        letterSpacing: 0)),
-                                if (email.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(email,
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          color: _muted,
-                                          letterSpacing: 0)),
-                                ],
-                                if (isVendor &&
-                                    phoneNumber?.isNotEmpty == true) ...[
-                                  const SizedBox(height: 4),
-                                  Text(phoneNumber!,
-                                      style: const TextStyle(
-                                          fontSize: 14, color: _muted)),
-                                ],
-                                const SizedBox(height: 8),
-                                TextButton(
-                                    onPressed: isGuest ? onSignIn : onEdit,
-                                    style: TextButton.styleFrom(
-                                        backgroundColor: background,
-                                        foregroundColor: Colors.black,
-                                        minimumSize: const Size(0, 32),
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 7),
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(12))),
-                                    child: Text(
-                                        isGuest ? 'Sign in' : 'Edit Profile',
-                                        style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
-                                            letterSpacing: 0))),
-                              ])),
-                          const SizedBox(width: 4),
-                          IconButton(
-                              tooltip: isGuest ? 'Sign in' : 'Edit profile',
-                              onPressed: isGuest ? onSignIn : onEdit,
-                              icon: const Icon(CupertinoIcons.chevron_right,
-                                  color: Color(0xFFA5A5A7), size: 17),
-                              constraints: const BoxConstraints(
-                                  minWidth: 28, minHeight: 48),
-                              padding: EdgeInsets.zero),
-                        ]))),
-                if (bookingSection != null) bookingSection!,
-                _group('LOCATION', [
-                  _row(CupertinoIcons.location, 'Current location', onLocation,
-                      subtitle: location,
-                      trailing: isLoadingLocation
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : null),
-                  if (onHomeLocation != null)
-                    _row(CupertinoIcons.house, 'Home location', onHomeLocation!,
-                        subtitle: homeLocation),
-                  if (onCustomLocation != null)
-                    _row(CupertinoIcons.map, 'Custom pins', onCustomLocation!,
-                        subtitle: customLocation),
-                ]),
-                if (!isGuest)
-                  _group(isVendor ? 'ACCOUNT & STALL' : 'ACCOUNT', [
-                    _row(CupertinoIcons.person, 'Personal information',
-                        onPersonalInformation ?? onEdit),
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: [0, .28, .6],
+              colors: [Colors.white, background, background],
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: RefreshIndicator(
+              onRefresh: onRefresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 116),
+                children: [
+                  _header(context),
+                  const SizedBox(height: 45),
+                  _editAction(),
+                  const SizedBox(height: 24),
+                  if (!isGuest) ...[
+                    _group([
+                      _row(
+                          CupertinoIcons.person_crop_circle_fill,
+                          const Color(0xFFFF5956),
+                          'My Profile',
+                          onPersonalInformation ?? onEdit),
+                    ]),
+                    const SizedBox(height: 24),
+                  ],
+                  if (bookingSection != null) ...[
+                    bookingSection!,
+                    const SizedBox(height: 24),
+                  ],
+                  _group([
+                    _row(CupertinoIcons.location_solid, const Color(0xFF43CE72),
+                        'Current Location', onLocation,
+                        subtitle: location,
+                        trailing: isLoadingLocation
+                            ? const SizedBox(
+                                width: 17,
+                                height: 17,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : null),
+                    if (onHomeLocation != null)
+                      _row(CupertinoIcons.house_fill, const Color(0xFF329AF0),
+                          'Home location', onHomeLocation!),
+                    if (onCustomLocation != null)
+                      _row(CupertinoIcons.map_fill, const Color(0xFF39B9E5),
+                          'Custom pins', onCustomLocation!),
                     if (isVendor && onEditStall != null)
-                      _row(Icons.storefront_outlined, 'My stall', onEditStall!),
+                      _row(CupertinoIcons.bag_fill, const Color(0xFFFFAE22),
+                          'My Stall', onEditStall!),
                     if (onOrders != null)
-                      _row(Icons.receipt_long_outlined, 'My bookings',
-                          onOrders!),
-                    if (canChangePassword)
-                      _row(CupertinoIcons.lock, 'Change password', onPassword),
-                    if (!isVendor)
-                      _row(CupertinoIcons.bell, 'Notification settings',
-                          onNotificationSettings),
+                      _row(CupertinoIcons.square_list_fill,
+                          const Color(0xFFFFAE22), 'My Bookings', onOrders!),
                   ]),
-                _group('ABOUT', [
-                  _row(CupertinoIcons.question_circle, 'Help & FAQ', onFaq),
-                  _row(CupertinoIcons.info, 'About StallSeeker', onAbout),
-                  _row(
-                      CupertinoIcons.shield, 'Privacy policy', onPrivacyPolicy),
-                  _row(CupertinoIcons.doc_text, 'Terms of use', onTerms),
-                ]),
-                if (!isGuest)
-                  _group('ACCOUNT ACTIONS', [
-                    _row(CupertinoIcons.trash, 'Delete account',
-                        onDeleteAccount),
+                  if (!isGuest) ...[
+                    const SizedBox(height: 24),
+                    _group([
+                      _row(CupertinoIcons.bell_fill, const Color(0xFFFF5555),
+                          'Notifications and Sounds', onNotificationSettings),
+                      _row(CupertinoIcons.lock_fill, const Color(0xFF949499),
+                          'Privacy Policy', onPrivacyPolicy),
+                      _row(CupertinoIcons.doc_text_fill,
+                          const Color(0xFF42C96D), 'Terms of Use', onTerms),
+                      if (canChangePassword)
+                        _row(
+                            CupertinoIcons.padlock_solid,
+                            const Color(0xFF36B7E5),
+                            'Change password',
+                            onPassword),
+                    ]),
+                  ],
+                  const SizedBox(height: 24),
+                  _group([
+                    _row(CupertinoIcons.question_circle_fill,
+                        const Color(0xFFAD55E8), 'Help & FAQ', onFaq),
+                    _row(CupertinoIcons.info_circle_fill,
+                        const Color(0xFF8288EF), 'About StallSeeker', onAbout),
                   ]),
-                const SizedBox(height: 32),
-                Material(
-                    clipBehavior: Clip.antiAlias,
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    child: _row(CupertinoIcons.square_arrow_right,
-                        isGuest ? 'Leave guest mode' : 'Logout', onLogout,
-                        trailing: const SizedBox.shrink())),
-                const SizedBox(height: 40),
-                const Icon(Icons.storefront_outlined, size: 36, color: _muted),
-                const SizedBox(height: 10),
-                const Text('StallSeeker',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 12, color: _muted, letterSpacing: 0)),
-              ],
-            )),
+                  if (!isGuest) ...[
+                    const SizedBox(height: 24),
+                    _group([
+                      _row(CupertinoIcons.trash_fill, const Color(0xFFFF5956),
+                          'Delete account', onDeleteAccount),
+                    ]),
+                  ],
+                  const SizedBox(height: 24),
+                  _group([
+                    _row(
+                        CupertinoIcons.square_arrow_right,
+                        const Color(0xFF949499),
+                        isGuest ? 'Leave guest mode' : 'Logout',
+                        onLogout),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
 }

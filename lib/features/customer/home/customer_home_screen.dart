@@ -23,6 +23,7 @@ import '../../../core/services/search_history_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
+import '../../shared/profile_page.dart';
 import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/saved_locations_sheet.dart';
@@ -684,7 +685,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      appBar: _selectedIndex == 0
+      backgroundColor:
+          _selectedIndex == 3 ? ProfilePage.background : AppColors.background,
+      appBar: _selectedIndex == 0 || _selectedIndex == 3
           ? null
           : AppBar(
               title: Text(
@@ -714,6 +717,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ],
       ),
       bottomNavigationBar: AppPillNavigation(
+        settingsStyle: _selectedIndex == 3,
+        onSearch: _selectedIndex == 3
+            ? () {
+                setState(() => _selectedIndex = 0);
+                _searchFocus.requestFocus();
+              }
+            : null,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() => _selectedIndex = index);
