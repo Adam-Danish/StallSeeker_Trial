@@ -8,6 +8,7 @@ import '../../../core/services/vendor_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/vendor_phone.dart';
 import 'stall_schedule_editor.dart';
+import '../../../core/widgets/app_dropdown.dart';
 
 class EditStallScreen extends StatefulWidget {
   const EditStallScreen({super.key});
@@ -226,25 +227,16 @@ class _EditStallScreenState extends State<EditStallScreen> {
                     const SizedBox(height: 16),
 
                     // Category Dropdown
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedCategory,
-                      decoration: const InputDecoration(
-                        labelText: 'Food Category',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _categories.map((cat) {
-                        return DropdownMenuItem(
-                          value: cat,
-                          child: Text(cat),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedCategory = val;
-                          });
-                        }
+                    AppDropdown<String>(
+                      label: 'Food category',
+                      value: _selectedCategory,
+                      hint: 'Choose a category',
+                      options: {
+                        for (final category in _categories) category: category,
                       },
+                      onChanged: (value) => setState(() {
+                        _selectedCategory = value;
+                      }),
                     ),
                     const SizedBox(height: 16),
 

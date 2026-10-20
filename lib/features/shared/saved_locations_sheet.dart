@@ -5,6 +5,7 @@ import '../../core/models/saved_location.dart';
 import '../../core/services/saved_location_service.dart';
 import 'manual_location_dialog.dart';
 import 'pin_location_screen.dart';
+import '../../core/widgets/app_dropdown.dart';
 
 Future<LocationSelection?> showSavedLocationsSheet(
   BuildContext context, {
@@ -198,20 +199,26 @@ class _SavedLocationsSheetState extends State<_SavedLocationsSheet> {
             maxLines: 2, overflow: TextOverflow.ellipsis),
         onTap:
             _saving ? null : () => Navigator.pop(context, location.selection),
-        trailing: PopupMenuButton<String>(
-          enabled: !_saving,
-          tooltip: 'Manage ${location.name}',
-          onSelected: (value) {
-            if (value == 'edit') {
-              _edit(home: location.isHome, existing: location);
-            } else {
-              _delete(location);
-            }
+        trailing: AppDropdown<String>(
+          iconOnly: true,
+          icon: Icons.more_vert,
+          hint: 'Manage ${location.name}',
+          options: const {
+            'edit': 'Edit place',
+            'delete': 'Remove place',
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: Text('Edit place')),
-            PopupMenuItem(value: 'delete', child: Text('Remove place')),
-          ],
+          onChanged: _saving
+              ? null
+              : (value) {
+                  if (value == 'edit') {
+                    _edit(
+                      home: location.isHome,
+                      existing: location,
+                    );
+                  } else {
+                    _delete(location);
+                  }
+                },
         ),
       );
 

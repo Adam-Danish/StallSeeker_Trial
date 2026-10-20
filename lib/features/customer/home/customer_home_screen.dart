@@ -27,6 +27,7 @@ import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/saved_locations_sheet.dart';
 import '../../shared/pin_location_screen.dart';
+import '../../../core/widgets/app_dropdown.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -714,8 +715,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
       bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+
+          if (index == 0) {
+            unawaited(_loadGreeting());
+          }
+        },
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -1109,7 +1115,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   left: 12,
                   child: SizedBox(width: overlayWidth, child: _mapHeader())),
               Positioned(
-                  top: 80,
+                  top: 76,
                   left: 12,
                   child: SizedBox(
                       width: overlayWidth,
@@ -1148,29 +1154,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       _searchController.clear();
                                       setState(() => _searchQuery = '');
                                     })
-                                : PopupMenuButton<String>(
-                                    tooltip: 'Filter category',
-                                    icon: Icon(Icons.tune_rounded,
-                                        color: _category == null
-                                            ? AppColors.textDark
-                                            : AppColors.primary),
-                                    onSelected: (value) => setState(() {
+                                : AppDropdown<String>(
+                                    value: _category ?? 'All',
+                                    iconOnly: true,
+                                    icon: Icons.tune_rounded,
+                                    hint: 'Filter category',
+                                    options: {
+                                      'All': 'All',
+                                      for (final category in stallCategories)
+                                        category: category,
+                                    },
+                                    onChanged: (value) => setState(() {
                                       _category = value == 'All' ? null : value;
                                       _selectedVendorId = null;
                                     }),
-                                    itemBuilder: (_) => [
-                                      'All',
-                                      ...stallCategories
-                                    ]
-                                        .map((value) => PopupMenuItem(
-                                            value: value, child: Text(value)))
-                                        .toList(),
                                   ),
                           ),
                         ),
                       ))),
               Positioned(
-                  top: 144,
+                  top: 134,
                   left: 12,
                   right: 12,
                   child: SingleChildScrollView(
@@ -1182,50 +1185,40 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           label: const Text('Set location'),
                           onPressed: _chooseLocationSource),
                       const SizedBox(width: 8),
-                      PopupMenuButton<String>(
-                        tooltip: 'Choose stall status',
-                        onSelected: (status) => setState(() {
+                      AppDropdown<String>(
+                        value: _statusFilter,
+                        displayText: _openingTime != null ? 'Scheduled' : null,
+                        width: 155,
+                        compact: true,
+                        hint: 'Choose stall status',
+                        icon: Icons.storefront_outlined,
+                        options: const {
+                          'Open': 'Open now',
+                          'Closed': 'Closed',
+                          'All': 'All stalls',
+                        },
+                        onChanged: (status) => setState(() {
                           _statusFilter = status;
                           _openingTime = null;
                         }),
-                        itemBuilder: (_) => ['Open', 'Closed', 'All']
-                            .map((status) => PopupMenuItem(
-                                value: status,
-                                child: Text(status == 'Open'
-                                    ? 'Open now'
-                                    : status == 'Closed'
-                                        ? 'Closed'
-                                        : 'All stalls')))
-                            .toList(),
-                        child: Chip(
-                            avatar: Icon(
-                                _statusFilter == 'Open'
-                                    ? Icons.storefront
-                                    : _statusFilter == 'Closed'
-                                        ? Icons.store_mall_directory_outlined
-                                        : Icons.filter_alt_outlined,
-                                size: 18),
-                            label: Text(_openingTime != null
-                                ? 'Scheduled'
-                                : _statusFilter == 'Open'
-                                    ? 'Open now'
-                                    : _statusFilter == 'Closed'
-                                        ? 'Closed'
-                                        : 'All stalls')),
                       ),
                       const SizedBox(width: 8),
-                      PopupMenuButton<String>(
-                        tooltip: 'Choose category',
-                        onSelected: (value) => setState(
-                            () => _category = value == 'All' ? null : value),
-                        itemBuilder: (_) => ['All', ...stallCategories]
-                            .map((value) =>
-                                PopupMenuItem(value: value, child: Text(value)))
-                            .toList(),
-                        child: Chip(
-                            label: Text(_category ?? 'All categories'),
-                            avatar:
-                                const Icon(Icons.category_outlined, size: 18)),
+                      AppDropdown<String>(
+                        value: _category ?? 'All',
+                        displayText: _category ?? 'All categories',
+                        width: 190,
+                        compact: true,
+                        hint: 'Choose category',
+                        icon: Icons.category_outlined,
+                        options: {
+                          'All': 'All',
+                          for (final category in stallCategories)
+                            category: category,
+                        },
+                        onChanged: (value) => setState(() {
+                          _category = value == 'All' ? null : value;
+                          _selectedVendorId = null;
+                        }),
                       ),
                       const SizedBox(width: 8),
                       InputChip(
@@ -1254,19 +1247,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       if (_searchCenter != null ||
                           _customerPosition != null) ...[
                         const SizedBox(width: 8),
-                        PopupMenuButton<double>(
-                          tooltip: 'Choose distance',
-                          onSelected: _setSearchRadius,
-                          itemBuilder: (_) => [5.0, 10.0, 25.0, 50.0]
-                              .map((radius) => PopupMenuItem(
-                                  value: radius,
-                                  child: Text(
-                                      'Within ${radius.toStringAsFixed(0)} km')))
-                              .toList(),
-                          child: Chip(
-                              avatar: const Icon(Icons.radar, size: 18),
-                              label: Text(
-                                  'Within ${_searchRadiusKm.toStringAsFixed(0)} km')),
+                        AppDropdown<double>(
+                          value: _searchRadiusKm,
+                          width: 165,
+                          compact: true,
+                          hint: 'Choose distance',
+                          icon: Icons.radar,
+                          options: {
+                            for (final radius in [5.0, 10.0, 25.0, 50.0])
+                              radius: 'Within ${radius.toStringAsFixed(0)} km',
+                          },
+                          onChanged: _setSearchRadius,
                         ),
                       ],
                     ]),
@@ -1358,7 +1349,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   ])),
               if (showSuggestions)
                 Positioned(
-                  top: 139,
+                  top: 135,
                   left: 12,
                   child: SizedBox(
                       width: overlayWidth,
