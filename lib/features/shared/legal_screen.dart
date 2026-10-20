@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 import 'account_ui.dart';
 
 enum LegalPage { privacy, terms }
@@ -12,7 +13,7 @@ class LegalScreen extends StatelessWidget {
     final privacy = page == LegalPage.privacy;
     return AccountLayout(
       title: privacy ? 'Privacy Policy' : 'Terms of Use',
-      background: const Color(0xFFF2F2F7),
+      background: AppColors.background,
       children: [
         Container(
             padding: const EdgeInsets.all(22),
@@ -27,7 +28,7 @@ class LegalScreen extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       letterSpacing: -.3)),
               const SizedBox(height: 8),
-              const Text('Last updated: 6 September 2026',
+              const Text('Last updated: 20 October 2026',
                   style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
               const SizedBox(height: 24),
               ...(privacy ? _privacySections : _termSections).map((section) =>
@@ -53,7 +54,7 @@ class LegalScreen extends StatelessWidget {
 
   static const _privacySections = <MapEntry<String, String>>[
     MapEntry('Information we collect',
-        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Live bookings are shared between the customer and vendor through Firebase. Older same-phone demo bookings remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. Bookings do not involve in-app payments.'),
+        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Live bookings are shared between the customer and vendor through Firebase. Older same-phone demo bookings remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. New bookings use Stripe sandbox checkout. We store test payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
     MapEntry('How we use it',
         'We use this information to run your account, show nearby stalls and dishes, provide search suggestions, save favourites, send stall updates and keep the service secure.'),
     MapEntry('Location',
@@ -75,6 +76,8 @@ class LegalScreen extends StatelessWidget {
         'Use correct information, protect your password and do not use another person’s account. You are responsible for activity under your account.'),
     MapEntry('Vendor information',
         'Vendors are responsible for keeping their location, opening status, menu, prices and stock information accurate.'),
+    MapEntry('Prototype payments',
+        'Payments and refunds use Stripe Test Mode. Use test payment details only. No real money is charged, deposited or paid out to vendors. Demo sales are simulated amounts. Payment must be confirmed before preparation; cancelled paid bookings request a simulated refund, whose status is shown in the booking.'),
     MapEntry('Acceptable use',
         'Do not misuse the service, post harmful or false content, interfere with the app, scrape private data or break applicable laws.'),
     MapEntry('Availability',

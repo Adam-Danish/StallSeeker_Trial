@@ -2,12 +2,40 @@
 
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {vendorAvailable, bookingItems, nextStatus} = require('./booking-core.cjs');
+const {vendorAvailable, bookingItems, nextStatus,
+  paidCheckoutBecameVisible} = require('./booking-core.cjs');
 
 const now = Date.parse('2026-10-08T12:00:00Z');
 const vendor = {selfCollectEnabled: true, isOpen: true,
   latitude: 3.1, longitude: 101.7};
 const stamp = (value) => ({toMillis: () => value});
+
+test('self-collect can be cancelled by either party before collection and preparation requires payment', () => {
+  const booking = {customerId: 'customer', vendorId: 'vendor', status: 'confirmed',
+    paymentMode: 'test', paymentStatus: 'pending'};
+  for (const paymentStatus of ['unpaid', 'pending', 'failed', 'refunded', 'refund_pending']) {
+    assert.throws(() => nextStatus({...booking, paymentStatus}, 'startPreparing', 'vendor', now));
+  }
+  assert.equal(nextStatus({...booking, paymentStatus: 'paid'}, 'startPreparing', 'vendor', now), 'preparing');
+  assert.equal(nextStatus(booking, 'cancel', 'customer', now), 'cancelled');
+  for (const status of ['confirmed', 'preparing', 'ready']) {
+    assert.equal(nextStatus({...booking, status, paymentStatus: 'paid'},
+      'cancel', 'customer', now), 'cancelled');
+    assert.equal(nextStatus({...booking, status, paymentStatus: 'paid'},
+      'cancel', 'vendor', now), 'cancelled');
+  }
+  assert.throws(() => nextStatus({...booking, status: 'collected', paymentStatus: 'paid'},
+    'cancel', 'customer', now));
+});
+
+test('vendor notification is due only for a new paid checkout-first booking', () => {
+  const before = {paymentStatus: 'pending'};
+  const paid = {checkoutFirst: true, paymentStatus: 'paid', status: 'confirmed'};
+  assert.equal(paidCheckoutBecameVisible(before, paid), true);
+  assert.equal(paidCheckoutBecameVisible({paymentStatus: 'paid'}, paid), false);
+  assert.equal(paidCheckoutBecameVisible(before, {...paid, status: 'cancelled'}), false);
+  assert.equal(paidCheckoutBecameVisible(before, {...paid, checkoutFirst: false}), false);
+});
 
 test('vendor must opt in, be open, have a location, and have no active closure', () => {
   assert.equal(vendorAvailable(vendor, now), true);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/models/saved_location.dart';
 import '../../core/services/saved_location_service.dart';
 import 'manual_location_dialog.dart';
@@ -15,7 +16,7 @@ Future<LocationSelection?> showSavedLocationsSheet(
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      backgroundColor: const Color(0xFFF3F2F8),
+      backgroundColor: AppColors.background,
       builder: (_) => _SavedLocationsSheet(
           initialLocation: initialLocation, initialType: initialType),
     );

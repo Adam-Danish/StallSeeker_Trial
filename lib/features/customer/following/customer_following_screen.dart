@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/follow_service.dart';
@@ -152,7 +153,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
     final open = sorted.where((vendor) => vendor.isOpenNow).toList();
     final closed = sorted.where((vendor) => !vendor.isOpenNow).toList();
     return ColoredBox(
-        color: const Color(0xFFF2F2F7),
+        color: AppColors.background,
         child: SafeArea(
           top: false,
           bottom: false,
@@ -160,7 +161,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
               onRefresh: _listen,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 112),
                 children: [
                   Center(
                       child: CupertinoSlidingSegmentedControl<bool>(
@@ -185,7 +186,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                           onPressed: () =>
                               setState(() => _ascending = !_ascending),
                           icon: const Icon(Icons.sort_by_alpha_rounded,
-                              color: Color(0xFFFF6E41))),
+                              color: AppColors.primary)),
                       Expanded(
                           child: Center(
                               child: CupertinoSlidingSegmentedControl<bool>(
@@ -208,7 +209,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                           tooltip: 'Refresh followed stalls',
                           onPressed: _listen,
                           icon: const Icon(Icons.refresh_rounded,
-                              color: Color(0xFFFF6E41))),
+                              color: AppColors.primary)),
                     ]),
                   if (!_showDishes) const SizedBox(height: 24),
                   if (guest)
@@ -278,9 +279,8 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         leading: Icon(Icons.storefront_outlined,
             size: 24,
-            color: vendor.isOpenNow
-                ? const Color(0xFFFF6E41)
-                : const Color(0xFF8E8E93)),
+            color:
+                vendor.isOpenNow ? AppColors.primary : const Color(0xFF8E8E93)),
         title: Text(
             vendor.stallName.isEmpty ? 'Unnamed stall' : vendor.stallName,
             style: const TextStyle(

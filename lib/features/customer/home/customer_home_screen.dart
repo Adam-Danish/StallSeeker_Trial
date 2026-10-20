@@ -8,8 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_pill_navigation.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/models/dish_search_entry.dart';
@@ -70,7 +70,28 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     'Notifications',
     'Settings'
   ];
-  String _greeting = 'Welcome!';
+  String _greeting = 'Guest';
+
+  static const _mapStyle = '''[
+    {"featureType":"all","elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+    {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#f7f2e3"}]},
+    {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#d9efd9"}]},
+    {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#cce9d0"}]},
+    {"featureType":"road","elementType":"geometry","stylers":[{"color":"#ebe9df"}]},
+    {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#d9d9ce"}]},
+    {"featureType":"water","elementType":"geometry","stylers":[{"color":"#bfdfe7"}]},
+    {"featureType":"transit","elementType":"geometry","stylers":[{"visibility":"off"}]}
+  ]''';
+
+  String get _welcomeLine {
+    final hour = DateTime.now().hour;
+    final salutation = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    return '$salutation, $_greeting 👋';
+  }
 
   String? _selectedVendorId;
   bool _isLocatingCustomer = true;
@@ -215,7 +236,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     if (user.isAnonymous) {
       if (mounted) {
-        setState(() => _greeting = 'Welcome, Guest');
+        setState(() => _greeting = 'Guest');
       }
       return;
     }
@@ -224,8 +245,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final name = userData?.fullName;
     if (mounted) {
       setState(() {
-        _greeting =
-            (name != null && name.isNotEmpty) ? 'Welcome, $name' : 'Welcome!';
+        _greeting = (name != null && name.trim().isNotEmpty)
+            ? name.trim().split(RegExp(r'\s+')).first
+            : 'Guest';
       });
     }
   }
@@ -660,28 +682,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _selectedIndex == 0 ? _greeting : _tabTitles[_selectedIndex],
-          overflow: TextOverflow.ellipsis,
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        actions: [
-          if (_selectedIndex == 0)
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.black),
-              tooltip: 'Refresh',
-              onPressed: _getCustomerLocation,
+      extendBody: true,
+      appBar: _selectedIndex == 0
+          ? null
+          : AppBar(
+              title: Text(
+                _tabTitles[_selectedIndex],
+                overflow: TextOverflow.ellipsis,
+              ),
+              centerTitle: true,
+              systemOverlayStyle: SystemUiOverlayStyle.dark,
             ),
-        ],
-      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _buildMapTab(),
+          SafeArea(top: true, bottom: false, child: _buildMapTab()),
           const CustomerFollowingScreen(),
           const CustomerNotificationsScreen(),
           CustomerProfileScreen(
@@ -697,13 +712,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),
-        backgroundColor: Colors.white,
-        indicatorColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -729,6 +741,70 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
     );
   }
+
+  Widget _mapHeader() => Row(children: [
+        Expanded(
+          child: Material(
+            color: AppColors.cardColor.withValues(alpha: .94),
+            elevation: 3,
+            shadowColor: const Color(0x18000000),
+            borderRadius: BorderRadius.circular(25),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(25),
+              onTap: _chooseLocationSource,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 12, 7),
+                child: Row(children: [
+                  const CircleAvatar(
+                    radius: 22,
+                    backgroundColor: AppColors.mint,
+                    child:
+                        Icon(Icons.person_rounded, color: AppColors.textDark),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_welcomeLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        const Icon(Icons.place_outlined,
+                            size: 13, color: AppColors.textMuted),
+                        const SizedBox(width: 3),
+                        Expanded(
+                            child: Text(
+                                _customerLocationLabel ?? 'Set your location',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.textMuted))),
+                      ]),
+                    ],
+                  )),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Material(
+          color: AppColors.cardColor.withValues(alpha: .94),
+          elevation: 3,
+          shadowColor: const Color(0x18000000),
+          shape: const CircleBorder(),
+          child: IconButton(
+            tooltip: 'Notifications',
+            onPressed: () => setState(() => _selectedIndex = 2),
+            icon: _notificationIcon(false),
+          ),
+        ),
+      ]);
 
   Widget _notificationIcon(bool selected) => StreamBuilder<int>(
         stream: _unreadCount,
@@ -974,20 +1050,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         }
 
         return LayoutBuilder(builder: (context, constraints) {
-          // The panel is a sibling below the map, never an overlay. It cannot
-          // grow to obscure the map, even after tapping or scrolling a stall.
           final shortViewport = constraints.maxHeight < 400;
           final panelHeight = shortViewport
-              ? 52.0
-              : (constraints.maxHeight * .34).clamp(168.0, 180.0).toDouble();
+              ? 58.0
+              : (constraints.maxHeight * .30).clamp(184.0, 215.0).toDouble();
           final cardWidth =
-              (constraints.maxWidth - 48).clamp(220.0, 340.0).toDouble();
+              (constraints.maxWidth * .62).clamp(205.0, 260.0).toDouble();
+          final overlayWidth = math.max(0.0, constraints.maxWidth - 24);
           _cardExtent = cardWidth + 12;
           return Column(children: [
             Expanded(
                 child: Stack(children: [
               Positioned.fill(
                   child: GoogleMap(
+                style: _mapStyle,
                 initialCameraPosition: _defaultPosition,
                 markers: markers,
                 myLocationEnabled: _locationPermissionGranted,
@@ -995,7 +1071,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 zoomControlsEnabled: false,
                 mapToolbarEnabled: false,
                 compassEnabled: false,
-                padding: const EdgeInsets.fromLTRB(12, 132, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 206, 12, 12),
                 onMapCreated: (controller) {
                   _mapController = controller;
                   if (_customerPosition != null) {
@@ -1019,59 +1095,70 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               Positioned(
                   top: 12,
                   left: 12,
-                  right: 12,
-                  child: Material(
-                    elevation: 3,
-                    shadowColor: const Color(0x22000000),
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    child: TextField(
-                      controller: _searchController,
-                      focusNode: _searchFocus,
-                      textInputAction: TextInputAction.search,
-                      onTap: () => setState(() {}),
-                      onChanged: (value) => setState(() {
-                        _searchQuery = value;
-                        _selectedVendorId = null;
-                      }),
-                      onSubmitted: _submitSearch,
-                      decoration: InputDecoration(
-                        hintText: 'Find dishes, stalls or categories',
-                        hintStyle: const TextStyle(fontSize: 13),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 16),
-                        prefixIcon: PopupMenuButton<String>(
-                          tooltip: 'Filter category',
-                          icon: Icon(Icons.tune_rounded,
-                              color: _category == null
-                                  ? AppColors.textDark
-                                  : AppColors.primary),
-                          onSelected: (value) => setState(() {
-                            _category = value == 'All' ? null : value;
+                  child: SizedBox(width: overlayWidth, child: _mapHeader())),
+              Positioned(
+                  top: 80,
+                  left: 12,
+                  child: SizedBox(
+                      width: overlayWidth,
+                      child: Material(
+                        elevation: 3,
+                        shadowColor: const Color(0x22000000),
+                        color: AppColors.cardColor.withValues(alpha: .94),
+                        borderRadius: BorderRadius.circular(25),
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocus,
+                          textInputAction: TextInputAction.search,
+                          onTap: () => setState(() {}),
+                          onChanged: (value) => setState(() {
+                            _searchQuery = value;
                             _selectedVendorId = null;
                           }),
-                          itemBuilder: (_) => ['All', ...stallCategories]
-                              .map((value) => PopupMenuItem(
-                                  value: value, child: Text(value)))
-                              .toList(),
+                          onSubmitted: _submitSearch,
+                          decoration: InputDecoration(
+                            filled: false,
+                            hintText: 'Search dishes or stalls…',
+                            hintStyle: const TextStyle(
+                                fontSize: 13, color: AppColors.textMuted),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            prefixIcon: const Icon(Icons.search_rounded,
+                                color: AppColors.textMuted),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    tooltip: 'Clear search',
+                                    icon: const Icon(Icons.close_rounded),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    })
+                                : PopupMenuButton<String>(
+                                    tooltip: 'Filter category',
+                                    icon: Icon(Icons.tune_rounded,
+                                        color: _category == null
+                                            ? AppColors.textDark
+                                            : AppColors.primary),
+                                    onSelected: (value) => setState(() {
+                                      _category = value == 'All' ? null : value;
+                                      _selectedVendorId = null;
+                                    }),
+                                    itemBuilder: (_) => [
+                                      'All',
+                                      ...stallCategories
+                                    ]
+                                        .map((value) => PopupMenuItem(
+                                            value: value, child: Text(value)))
+                                        .toList(),
+                                  ),
+                          ),
                         ),
-                        suffixIcon: _searchQuery.isEmpty
-                            ? const Icon(Icons.search_rounded)
-                            : IconButton(
-                                tooltip: 'Clear search',
-                                icon: const Icon(Icons.close_rounded),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                }),
-                      ),
-                    ),
-                  )),
+                      ))),
               Positioned(
-                  top: 76,
+                  top: 144,
                   left: 12,
                   right: 12,
                   child: SingleChildScrollView(
@@ -1174,7 +1261,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   )),
               if (_showSearchArea)
                 Positioned(
-                    top: 126,
+                    top: 196,
                     left: 0,
                     right: 0,
                     child: Center(
@@ -1183,13 +1270,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       icon: const Icon(Icons.search, size: 18),
                       label: const Text('Search this area'),
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF1967D2),
+                          backgroundColor: AppColors.cardColor,
+                          foregroundColor: AppColors.primary,
                           elevation: 3),
                     ))),
               if (_locationError != null)
                 Positioned(
-                    top: _showSearchArea ? 180 : 132,
+                    top: _showSearchArea ? 250 : 202,
                     left: 12,
                     right: 68,
                     child: Material(
@@ -1211,7 +1298,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ))
               else if (!shortViewport && _isLocatingCustomer)
                 Positioned(
-                    top: 132,
+                    top: 202,
                     left: 12,
                     right: 68,
                     child: Material(
@@ -1259,19 +1346,37 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   ])),
               if (showSuggestions)
                 Positioned(
-                  top: 72,
+                  top: 139,
                   left: 12,
-                  right: 12,
-                  child: _suggestionPanel(suggestions),
+                  child: SizedBox(
+                      width: overlayWidth,
+                      child: _suggestionPanel(suggestions)),
                 ),
             ])),
             SizedBox(
                 height: panelHeight,
                 child: Material(
-                  color: Colors.white,
+                  color: AppColors.cardColor,
+                  elevation: 10,
+                  shadowColor: const Color(0x26000000),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(26)),
+                  clipBehavior: Clip.antiAlias,
                   child: Column(children: [
+                    const SizedBox(
+                        height: 10,
+                        child: Center(
+                            child: SizedBox(
+                          width: 36,
+                          height: 4,
+                          child: DecoratedBox(
+                              decoration: BoxDecoration(
+                            color: AppColors.border,
+                            borderRadius: BorderRadius.all(Radius.circular(4)),
+                          )),
+                        ))),
                     SizedBox(
-                        height: 44,
+                        height: 42,
                         child: Padding(
                           padding: const EdgeInsets.only(left: 16, right: 8),
                           child: Row(children: [
@@ -1290,7 +1395,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 15,
                                         fontWeight: FontWeight.w700))),
                             TextButton(
                                 onPressed: snapshot.hasError
@@ -1417,7 +1522,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         child: Container(
           width: size,
           height: size,
-          color: const Color(0xFFFFF0E9),
+          color: AppColors.mint,
           child: dish.item.imageUrl.isEmpty
               ? const Icon(Icons.restaurant_rounded, color: AppColors.primary)
               : Image.network(
@@ -1434,7 +1539,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         color: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFFE5E7EB)),
+          side: const BorderSide(color: AppColors.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1493,7 +1598,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         child: Container(
             width: size,
             height: size,
-            color: const Color(0xFFFFF0E9),
+            color: AppColors.mint,
             child: vendor.imageUrl.isEmpty
                 ? const Icon(Icons.storefront_rounded, color: AppColors.primary)
                 : Image.network(vendor.imageUrl,
@@ -1506,20 +1611,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _stallCard(VendorModel vendor) {
     final selected = vendor.vendorId == _selectedVendorId;
     return Material(
-      color: selected ? const Color(0xFFFFF8F3) : Colors.white,
+      color: selected ? AppColors.mint : AppColors.cardColor,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(
-              color: selected ? AppColors.primary : const Color(0xFFE5E7EB),
+              color: selected ? AppColors.primary : AppColors.border,
               width: selected ? 1.5 : 1)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _selectVendor(vendor),
         onDoubleTap: () => _openVendorDetails(vendor),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 4),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 8, 6),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 4),
             Row(children: [
               _stallPhoto(vendor),
               const SizedBox(width: 10),
@@ -1569,14 +1675,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 10, color: Color(0xFF64748B)))),
-              if (vendor.phoneNumber.isNotEmpty)
-                TextButton.icon(
-                  onPressed: () =>
-                      launchUrl(Uri(scheme: 'tel', path: vendor.phoneNumber)),
-                  icon: const Icon(Icons.call_outlined, size: 14),
-                  label: Text(vendor.phoneNumber,
-                      style: const TextStyle(fontSize: 10)),
-                ),
               TextButton(
                   onPressed: () => _openVendorDetails(vendor),
                   style: TextButton.styleFrom(

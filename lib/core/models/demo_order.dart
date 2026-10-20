@@ -43,6 +43,13 @@ class DemoOrder {
       this.expiresAt,
       this.pickupLatitude,
       this.pickupLongitude,
+      this.paymentMode,
+      this.checkoutFirst = false,
+      this.paymentStatus,
+      this.paymentReference,
+      this.paymentExpiresAt,
+      this.paymentPaidAt,
+      this.paymentRefundedCents = 0,
       this.vendorUnseenRequest = false,
       this.customerUnseenReady = false});
 
@@ -58,6 +65,36 @@ class DemoOrder {
   final DateTime? expiresAt;
   final double? pickupLatitude;
   final double? pickupLongitude;
+  final String? paymentMode;
+  final bool checkoutFirst;
+  final String? paymentStatus;
+  final String? paymentReference;
+  final DateTime? paymentExpiresAt;
+  final DateTime? paymentPaidAt;
+  final int paymentRefundedCents;
+
+  bool get hasTestPayment => paymentMode == 'test';
+  bool get awaitingPayment =>
+      hasTestPayment &&
+      status == 'confirmed' &&
+      {'awaiting_payment', 'pending', 'failed'}.contains(paymentStatus);
+  bool get canPay =>
+      awaitingPayment &&
+      paymentExpiresAt != null &&
+      DateTime.now().isBefore(paymentExpiresAt!);
+  bool get canPrepare =>
+      status == 'confirmed' && (!hasTestPayment || paymentStatus == 'paid');
+  bool get canCustomerCancel =>
+      effectiveStatus == 'requested' ||
+      (hasTestPayment &&
+          {'confirmed', 'preparing', 'ready'}.contains(effectiveStatus));
+  bool get vendorNeedsAttention =>
+      vendorUnseenRequest &&
+      (effectiveStatus == 'requested' ||
+          (checkoutFirst && paymentStatus == 'paid'));
+  int get demoSalesCents => hasTestPayment && paymentStatus == 'paid'
+      ? (totalCents - paymentRefundedCents).clamp(0, totalCents)
+      : 0;
   final bool vendorUnseenRequest;
   final bool customerUnseenReady;
 
@@ -86,6 +123,13 @@ class DemoOrder {
         'expiresAt': expiresAt?.toIso8601String(),
         'pickupLatitude': pickupLatitude,
         'pickupLongitude': pickupLongitude,
+        'paymentMode': paymentMode,
+        'checkoutFirst': checkoutFirst,
+        'paymentStatus': paymentStatus,
+        'paymentReference': paymentReference,
+        'paymentExpiresAt': paymentExpiresAt?.toIso8601String(),
+        'paymentPaidAt': paymentPaidAt?.toIso8601String(),
+        'paymentRefundedCents': paymentRefundedCents,
         'vendorUnseenRequest': vendorUnseenRequest,
         'customerUnseenReady': customerUnseenReady,
       };
@@ -103,6 +147,13 @@ class DemoOrder {
         expiresAt: nextStatus == 'requested' ? expiresAt : null,
         pickupLatitude: pickupLatitude,
         pickupLongitude: pickupLongitude,
+        paymentMode: paymentMode,
+        checkoutFirst: checkoutFirst,
+        paymentStatus: paymentStatus,
+        paymentReference: paymentReference,
+        paymentExpiresAt: paymentExpiresAt,
+        paymentPaidAt: paymentPaidAt,
+        paymentRefundedCents: paymentRefundedCents,
         vendorUnseenRequest: vendorUnseenRequest,
         customerUnseenReady: customerUnseenReady,
       );
@@ -126,6 +177,14 @@ class DemoOrder {
       expiresAt: (data['expiresAt'] as Timestamp?)?.toDate(),
       pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
       pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
+      paymentMode: data['paymentMode'] as String?,
+      checkoutFirst: data['checkoutFirst'] == true,
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentReference: data['paymentReference'] as String?,
+      paymentExpiresAt: (data['paymentExpiresAt'] as Timestamp?)?.toDate(),
+      paymentPaidAt: (data['paymentPaidAt'] as Timestamp?)?.toDate(),
+      paymentRefundedCents:
+          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
       vendorUnseenRequest: data['vendorUnseenRequest'] == true,
       customerUnseenReady: data['customerUnseenReady'] == true,
     );
@@ -149,6 +208,15 @@ class DemoOrder {
       expiresAt: DateTime.tryParse(data['expiresAt'] as String? ?? ''),
       pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
       pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
+      paymentMode: data['paymentMode'] as String?,
+      checkoutFirst: data['checkoutFirst'] == true,
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentReference: data['paymentReference'] as String?,
+      paymentExpiresAt:
+          DateTime.tryParse(data['paymentExpiresAt'] as String? ?? ''),
+      paymentPaidAt: DateTime.tryParse(data['paymentPaidAt'] as String? ?? ''),
+      paymentRefundedCents:
+          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
       vendorUnseenRequest: data['vendorUnseenRequest'] == true,
       customerUnseenReady: data['customerUnseenReady'] == true,
     );
@@ -166,3 +234,12 @@ String demoOrderStatusLabel(String status) => switch (status) {
       'expired' => 'Expired',
       _ => status,
     };
+
+String bookingStatusLabel(DemoOrder booking) {
+  if (booking.checkoutFirst && booking.status == 'confirmed') {
+    return booking.paymentStatus == 'paid'
+        ? 'Paid · awaiting preparation'
+        : 'Awaiting payment';
+  }
+  return demoOrderStatusLabel(booking.effectiveStatus);
+}

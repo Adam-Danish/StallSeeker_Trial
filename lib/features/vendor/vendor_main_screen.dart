@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/widgets/app_pill_navigation.dart';
 import '../../core/services/demo_order_service.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
@@ -31,19 +33,19 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
         title: Text(
           _titles[_selectedIndex],
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         actions: [
           // Refresh button only on Dashboard
           if (_selectedIndex == 0)
             IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.black),
+              icon: const Icon(Icons.refresh, color: AppColors.textDark),
               tooltip: 'Refresh',
               onPressed: _refreshDashboard,
             ),
@@ -56,13 +58,10 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
           const VendorProfileScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),
-        backgroundColor: Colors.white,
-        indicatorColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           NavigationDestination(
             icon: _dashboardIcon(false),
@@ -70,9 +69,8 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
             label: 'Dashboard',
           ),
           const NavigationDestination(
-            icon: Icon(CupertinoIcons.gear, color: Color(0xFF929294)),
-            selectedIcon:
-                Icon(CupertinoIcons.gear_solid, color: Color(0xFF1C1C1E)),
+            icon: Icon(CupertinoIcons.gear),
+            selectedIcon: Icon(CupertinoIcons.gear_solid),
             label: 'Settings',
           ),
         ],
@@ -90,8 +88,6 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
                 selected
                     ? CupertinoIcons.square_grid_2x2_fill
                     : CupertinoIcons.square_grid_2x2,
-                color: selected
-                    ? const Color(0xFF1C1C1E)
-                    : const Color(0xFF929294)),
+                color: selected ? AppColors.textDark : AppColors.textMuted),
           ));
 }

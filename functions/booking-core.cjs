@@ -58,7 +58,16 @@ function nextStatus(booking, action, uid, now) {
   if (uid === customerId && action === 'cancel' && status === 'requested') {
     return 'cancelled';
   }
+  if (uid === customerId && action === 'cancel' &&
+      ['confirmed', 'preparing', 'ready'].includes(status) &&
+      booking.paymentMode === 'test') {
+    return 'cancelled';
+  }
   if (uid !== vendorId) throw new Error('You cannot update this booking.');
+  if (action === 'startPreparing' && booking.paymentMode === 'test' &&
+      booking.paymentStatus !== 'paid') {
+    throw new Error('Wait for the test payment to be confirmed before preparing.');
+  }
   const transitions = {
     requested: {accept: 'confirmed', reject: 'rejected', cancel: 'cancelled'},
     confirmed: {startPreparing: 'preparing', cancel: 'cancelled'},
@@ -70,4 +79,10 @@ function nextStatus(booking, action, uid, now) {
   return next;
 }
 
-module.exports = {ACTIVE, TERMINAL, vendorAvailable, bookingItems, nextStatus};
+function paidCheckoutBecameVisible(before, after) {
+  return after?.checkoutFirst === true && before?.paymentStatus !== 'paid' &&
+    after.paymentStatus === 'paid' && after.status === 'confirmed';
+}
+
+module.exports = {ACTIVE, TERMINAL, vendorAvailable, bookingItems, nextStatus,
+  paidCheckoutBecameVisible};

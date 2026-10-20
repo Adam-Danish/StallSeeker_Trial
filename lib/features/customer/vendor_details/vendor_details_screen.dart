@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/stall_review.dart';
@@ -439,7 +440,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     final isGuest = currentUser?.isAnonymous ?? true;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Stall details'),
         backgroundColor: Colors.white,
@@ -754,10 +755,10 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   }
 
   Widget _photoPlaceholder() => Container(
-      color: const Color(0xFFFFF0E7),
+      color: AppColors.mint,
       alignment: Alignment.center,
       child: const Icon(Icons.storefront_rounded,
-          size: 60, color: Color(0xFFC64B22)));
+          size: 60, color: AppColors.primary));
 
   Widget _badge(String text, Color color, IconData icon) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -828,7 +829,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                     style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFC64B22))),
+                        color: AppColors.primary)),
                 const SizedBox(height: 8),
                 _badge(_statusLabel(item.status), _statusColor(item.status),
                     Icons.circle),

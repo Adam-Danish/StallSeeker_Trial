@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color primary =
-      Color(0xFFFF6E41); // Deep Orange / Food Stall theme
-  static const Color primaryLight = Color(0xFFFF8142);
-
-  // New design system
-  static const Color background = Color(0xFFF2F2F7); // Grouped page background
-  static const Color cardColor = Color(0xFFFFFFFF); // Pure White
-  static const Color textDark = Color(0xFF222222); // Dark Charcoal
-  static const Color textMuted = Color(0xFF9A9A9E); // Muted Gray
+  // Warm cream, soft sage and terracotta used throughout both sides of the app.
+  static const Color primary = Color(0xFF9B5839);
+  static const Color primaryLight = Color(0xFFBE8160);
+  static const Color background = Color(0xFFF7F5EE);
+  static const Color cardColor = Color(0xFFFFFEFB);
+  static const Color mint = Color(0xFFE3F1E6);
+  static const Color border = Color(0xFFE6E7DC);
+  static const Color textDark = Color(0xFF252B27);
+  static const Color textMuted = Color(0xFF68736D);
 
   // Status Colors
   static const Color openGreen = Color(0xFF2E7D32);

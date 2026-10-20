@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 import 'account_ui.dart';
 
 class FaqScreen extends StatefulWidget {
@@ -81,7 +82,7 @@ class _FaqScreenState extends State<FaqScreen> {
     final groups = entries.map((e) => e.group).toSet();
     return AccountLayout(
         title: 'Help & FAQ',
-        background: const Color(0xFFF2F2F7),
+        background: AppColors.background,
         children: [
           const Text('How can we help?',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
@@ -138,7 +139,7 @@ class _FaqScreenState extends State<FaqScreen> {
               collapsedShape: const Border(),
               backgroundColor: Colors.white,
               collapsedBackgroundColor: Colors.white,
-              iconColor: const Color(0xFFFF6E41),
+              iconColor: AppColors.primary,
               collapsedIconColor: const Color(0xFF8E8E93),
               title: Text(entries[i].question,
                   style: const TextStyle(

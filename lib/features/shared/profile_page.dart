@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 
 /// Grouped settings layout inspired by the supplied references.
 class ProfilePage extends StatelessWidget {
@@ -65,9 +66,9 @@ class ProfilePage extends StatelessWidget {
   final String homeLocation;
   final String customLocation;
 
-  static const background = Color(0xFFF3F2F8);
-  static const _muted = Color(0xFF929294);
-  static const _divider = Color(0xFFE7E7EA);
+  static const background = AppColors.background;
+  static const _muted = AppColors.textMuted;
+  static const _divider = AppColors.border;
 
   // The avatar must never receive the full display name.
   String get _firstWord {
@@ -77,7 +78,7 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _fallbackPhoto() => Container(
-      color: const Color(0xFFFFE8DB),
+      color: AppColors.mint,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(9),
       child: FittedBox(
@@ -86,7 +87,7 @@ class ProfilePage extends StatelessWidget {
               style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFFC64B22)))));
+                  color: AppColors.primary))));
 
   Widget _avatar() => ClipOval(
       child: SizedBox(
@@ -138,7 +139,7 @@ class ProfilePage extends StatelessWidget {
                 children: [
                   Text(label,
                       style: const TextStyle(
-                          color: Color(0xFF1C1C1E),
+                          color: AppColors.textDark,
                           fontSize: 17,
                           height: 1.2,
                           fontWeight: FontWeight.w400,
@@ -170,7 +171,7 @@ class ProfilePage extends StatelessWidget {
             onRefresh: onRefresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 112),
               children: [
                 Material(
                     color: Colors.white,
@@ -188,7 +189,7 @@ class ProfilePage extends StatelessWidget {
                                     style: const TextStyle(
                                         fontSize: 20,
                                         height: 1.2,
-                                        color: Color(0xFF1C1C1E),
+                                        color: AppColors.textDark,
                                         fontWeight: FontWeight.w500,
                                         letterSpacing: 0)),
                                 if (email.isNotEmpty) ...[

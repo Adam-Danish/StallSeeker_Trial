@@ -12,6 +12,7 @@ import '../../shared/manual_location_dialog.dart';
 import '../../shared/demo_orders_screen.dart';
 import '../../shared/live_booking_section.dart';
 import '../../../core/utils/vendor_phone.dart';
+import 'vendor_demo_sales.dart';
 
 class VendorDashboardScreen extends StatefulWidget {
   const VendorDashboardScreen({super.key});
@@ -222,7 +223,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     try {
       await _vendorService.setSelfCollectEnabled(uid, enabled);
       _message(enabled
-          ? 'Customers can now request self-collect bookings.'
+          ? 'Customers can now pay for self-collect bookings immediately.'
           : 'New self-collect bookings are off.');
     } catch (_) {
       _message('Could not save booking setting. Please retry.');
@@ -254,7 +255,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
       onRefresh: fetchVendorDetails,
       child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
           children: [
             Text(
                 _vendor?.stallName.isNotEmpty == true
@@ -262,6 +263,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
                     : 'Set up your stall',
                 style: Theme.of(context).textTheme.headlineSmall),
             const LiveBookingSection(isVendor: true),
+            const VendorDemoSales(),
             const SizedBox(height: 16),
             Card(
                 child: Padding(

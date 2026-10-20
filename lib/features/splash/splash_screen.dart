@@ -25,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF8F4),
+      backgroundColor: AppColors.background,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -46,7 +46,7 @@ class _SplashScreenState extends State<SplashScreen> {
               'Find nearby food stalls, live.',
               style: TextStyle(
                 fontSize: 14,
-                color: Color(0xFF706A68),
+                color: AppColors.textMuted,
               ),
             ),
             const SizedBox(height: 30),

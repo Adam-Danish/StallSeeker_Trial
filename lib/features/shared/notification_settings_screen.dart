@@ -110,7 +110,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   Widget build(BuildContext context) => AccountLayout(
         title: 'Notifications',
         busy: _busy,
-        background: const Color(0xFFF2F2F7),
+        background: AppColors.background,
         children: [
           Container(
               decoration: BoxDecoration(

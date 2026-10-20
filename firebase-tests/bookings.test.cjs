@@ -61,6 +61,21 @@ test('clients cannot forge prices, progress, or seen flags', async () => {
   await assertFails(updateDoc(doc(customer, ref), {status: 'ready'}));
   await assertFails(updateDoc(doc(vendor, ref), {vendorUnseenRequest: false}));
   await assertFails(deleteDoc(doc(vendor, ref)));
+  await assertFails(updateDoc(doc(customer, ref), {paymentStatus: 'paid'}));
+  await assertFails(updateDoc(doc(vendor, ref), {paymentMode: 'test', paymentPaidAt: Timestamp.now()}));
+});
+
+test('private checkout records cannot be read or written by clients', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'bookingPayments/booking-a'),
+      {sessionId: 'cs_test_example', customerId: 'customer-a', vendorId: 'vendor-a'});
+  });
+  for (const db of [client('customer-a'), client('vendor-a'), client('customer-b'),
+    env.unauthenticatedContext().firestore()]) {
+    await assertFails(getDoc(doc(db, 'bookingPayments/booking-a')));
+    await assertFails(getDocs(collection(db, 'bookingPayments')));
+    await assertFails(setDoc(doc(db, 'bookingPayments/forged'), {sessionId: 'forged'}));
+  }
 });
 
 test('vendor booking opt-in defaults off and accepts only owner boolean writes', async () => {

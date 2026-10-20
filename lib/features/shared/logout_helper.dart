@@ -112,7 +112,7 @@ class _LogoutSheetState extends State<_LogoutSheet> {
                   width: 58,
                   height: 58,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFFEEE8),
+                    color: AppColors.mint,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(

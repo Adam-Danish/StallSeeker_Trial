@@ -2,10 +2,14 @@
 
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
+const {onDocumentUpdated} = require('firebase-functions/v2/firestore');
+const {createHash} = require('node:crypto');
 const {getApps, initializeApp} = require('firebase-admin/app');
 const {getFirestore, Timestamp, FieldValue} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
-const {vendorAvailable, bookingItems, nextStatus} = require('./booking-core.cjs');
+const {vendorAvailable, bookingItems, nextStatus,
+  paidCheckoutBecameVisible} = require('./booking-core.cjs');
+const {PAYMENT_WINDOW_MS} = require('./stripe-payment-core.cjs');
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
@@ -33,9 +37,11 @@ async function push(uid, role, bookingId, status, stallName) {
     const profile = (await db.collection('users').doc(uid).get()).data();
     if (!profile?.fcmToken || profile.notificationsEnabled === false) return;
     const message = role === 'vendor'
-      ? status === 'requested'
+      ? status === 'paid'
+        ? {title: 'New paid self-collect booking', body: 'Open StallSeeker to prepare it.'}
+        : status === 'requested'
         ? {title: 'New self-collect booking', body: 'Open StallSeeker to answer it.'}
-        : {title: 'Booking cancelled', body: 'A customer cancelled their request.'}
+        : {title: 'Booking cancelled', body: 'A customer cancelled a self-collect booking.'}
       : status === 'ready'
         ? {title: 'Ready for collection', body: `${stallName} has your booking ready.`}
         : {title: 'Booking update', body: `Your booking at ${stallName} is ${status}.`};
@@ -70,10 +76,7 @@ exports.createBooking = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Choose valid dishes.');
   }
   const now = Date.now();
-  let created = false;
-  let stallName = '';
   await db.runTransaction(async (tx) => {
-    created = false;
     const [existing, customer, vendor, vendorUser, ...menu] = await Promise.all([
       tx.get(bookingRef), tx.get(customerRef), tx.get(vendorRef),
       tx.get(vendorUserRef),
@@ -95,19 +98,22 @@ exports.createBooking = onCall(async (request) => {
     } catch (error) {
       throw new HttpsError('failed-precondition', error.message);
     }
-    stallName = String(stall.stallName || 'Stall').slice(0, 120);
+    if (priced.totalCents < 200) {
+      throw new HttpsError('failed-precondition', 'Choose at least RM2.00 of dishes for test checkout.');
+    }
+    const stallName = String(stall.stallName || 'Stall').slice(0, 120);
     const name = String(customer.data()?.fullName || 'Customer').trim().slice(0, 80);
     tx.create(bookingRef, {
       customerId: uid, vendorId, customerName: name || 'Customer', stallName,
-      status: 'requested', items: priced.items, totalCents: priced.totalCents,
+      status: 'confirmed', items: priced.items, totalCents: priced.totalCents,
+      paymentMode: 'test', paymentProvider: 'stripe', paymentStatus: 'awaiting_payment',
+      checkoutFirst: true,
+      paymentExpiresAt: Timestamp.fromMillis(now + PAYMENT_WINDOW_MS),
       pickupLatitude: stall.latitude, pickupLongitude: stall.longitude,
       createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now),
-      expiresAt: Timestamp.fromMillis(now + 10 * 60 * 1000),
-      vendorUnseenRequest: true, customerUnseenReady: false,
+      vendorUnseenRequest: false, customerUnseenReady: false,
     });
-    created = true;
   });
-  if (created) await push(vendorId, 'vendor', bookingId, 'requested', stallName);
   return {bookingId};
 });
 
@@ -142,6 +148,11 @@ exports.updateBooking = onCall(async (request) => {
     }
     tx.update(ref, {
       status, updatedAt: Timestamp.fromMillis(now),
+      ...(status === 'cancelled' && booking.paymentMode === 'test' &&
+        booking.paymentStatus === 'paid' ? {paymentStatus: 'refund_pending'} : {}),
+      ...(status === 'confirmed' && booking.paymentMode === 'test'
+        ? {paymentStatus: 'awaiting_payment',
+          paymentExpiresAt: Timestamp.fromMillis(now + PAYMENT_WINDOW_MS)} : {}),
       vendorUnseenRequest: status === 'requested' && booking.vendorUnseenRequest === true,
       customerUnseenReady: status === 'ready' ||
         (status === 'collected' && booking.customerUnseenReady === true),
@@ -156,6 +167,28 @@ exports.updateBooking = onCall(async (request) => {
       bookingId, changed.status, changed.stallName);
   }
   return {status: changed.status};
+});
+
+exports.notifyPaidSelfCollect = onDocumentUpdated({
+  document: 'bookings/{bookingId}', region: 'asia-southeast1', retry: true,
+}, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!paidCheckoutBecameVisible(before, after)) return;
+  const current = (await orders.doc(event.params.bookingId).get()).data();
+  if (current?.status === 'confirmed' && current.paymentStatus === 'paid') {
+    const eventId = createHash('sha256').update(event.id).digest('hex');
+    const marker = db.collection('bookingNotificationEvents').doc(eventId);
+    const firstDelivery = await db.runTransaction(async (tx) => {
+      if ((await tx.get(marker)).exists) return false;
+      tx.create(marker, {bookingId: event.params.bookingId,
+        createdAt: FieldValue.serverTimestamp()});
+      return true;
+    });
+    if (!firstDelivery) return;
+    await push(current.vendorId, 'vendor', event.params.bookingId,
+      'paid', current.stallName);
+  }
 });
 
 exports.markBookingViewed = onCall(async (request) => {

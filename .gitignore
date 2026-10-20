@@ -16,6 +16,10 @@ build/
 /android/hs_err_pid*.log
 
 # Firebase local configurations
+**/.secret.local
+**/.env.local
+/firebase-debug.log
+/firebase-debug.*.log
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 

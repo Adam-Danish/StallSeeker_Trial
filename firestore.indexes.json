@@ -4,6 +4,15 @@
       "collectionGroup": "bookings",
       "queryScope": "COLLECTION",
       "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "paymentStatus", "order": "ASCENDING"},
+        {"fieldPath": "paymentExpiresAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
         {"fieldPath": "customerId", "order": "ASCENDING"},
         {"fieldPath": "createdAt", "order": "DESCENDING"}
       ]

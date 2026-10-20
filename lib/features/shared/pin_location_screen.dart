@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../core/constants/app_colors.dart';
 import 'manual_location_dialog.dart';
 
 class PinLocationScreen extends StatefulWidget {
@@ -93,7 +94,7 @@ class _PinLocationScreenState extends State<PinLocationScreen> {
                 child: Padding(
                     padding: EdgeInsets.only(bottom: 48),
                     child: Icon(Icons.location_pin,
-                        size: 48, color: Color(0xFFFF6E41)))),
+                        size: 48, color: AppColors.primary))),
             const Positioned(
                 top: 12,
                 left: 20,

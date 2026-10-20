@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/vendor_service.dart';
@@ -126,7 +127,7 @@ class _CustomerNotificationsScreenState
               child: const Text('Sign in')));
     }
     return ColoredBox(
-        color: const Color(0xFFF2F2F7),
+        color: AppColors.background,
         child: StreamBuilder<List<NotificationModel>>(
           stream: _stream,
           builder: (context, snapshot) {
@@ -145,7 +146,7 @@ class _CustomerNotificationsScreenState
                 },
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 112),
                   children: [
                     Wrap(
                         alignment: WrapAlignment.spaceBetween,
@@ -243,9 +244,7 @@ class _CustomerNotificationsScreenState
               item.type == 'dish_available'
                   ? Icons.restaurant_outlined
                   : Icons.storefront_outlined,
-              color: item.isRead
-                  ? const Color(0xFF8E8E93)
-                  : const Color(0xFFFF6E41)),
+              color: item.isRead ? const Color(0xFF8E8E93) : AppColors.primary),
           title: Text(item.title,
               style: TextStyle(
                   fontSize: 17,
@@ -274,7 +273,7 @@ class _CustomerNotificationsScreenState
                   size: item.isRead ? 20 : 8,
                   color: item.isRead
                       ? const Color(0xFFAEAEB2)
-                      : const Color(0xFFFF6E41)),
+                      : AppColors.primary),
           onTap: () => _open(item),
         ),
       );

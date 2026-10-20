@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
+import 'booking_payment_card.dart';
 
 class BookingSummaryCard extends StatelessWidget {
   const BookingSummaryCard(
@@ -53,8 +57,13 @@ class BookingSummaryCard extends StatelessWidget {
               const Icon(Icons.chevron_right, size: 20),
             ]),
             const SizedBox(height: 8),
-            Text(demoOrderStatusLabel(booking.effectiveStatus),
+            Text(bookingStatusLabel(booking),
                 style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+            if (booking.hasTestPayment) ...[
+              const SizedBox(height: 4),
+              Text(bookingPaymentLabel(booking),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
             if (!compact) ...[
               const SizedBox(height: 4),
               Text(
@@ -82,20 +91,73 @@ String _dateTime(DateTime date) => '${date.day}/${date.month}/${date.year} '
 
 class BookingDetailScreen extends StatefulWidget {
   const BookingDetailScreen(
-      {super.key, required this.bookingId, required this.isVendor});
+      {super.key,
+      required this.bookingId,
+      required this.isVendor,
+      this.openCheckoutOnStart = false});
   final String bookingId;
   final bool isVendor;
+  final bool openCheckoutOnStart;
 
   @override
   State<BookingDetailScreen> createState() => _BookingDetailScreenState();
 }
 
-class _BookingDetailScreenState extends State<BookingDetailScreen> {
+class _BookingDetailScreenState extends State<BookingDetailScreen>
+    with WidgetsBindingObserver {
   final _service = DemoOrderService();
   late final Stream<DemoOrder?> _booking =
       _service.watchBooking(widget.bookingId);
   bool _busy = false;
   bool _viewing = false;
+  bool _initialPaymentCheck = false;
+  bool _hasTestPayment = false;
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.openCheckoutOnStart && !widget.isVendor) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_act(_pay));
+      });
+    }
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _hasTestPayment) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _hasTestPayment && !_busy) {
+      unawaited(_act(() => _service.refreshPayment(widget.bookingId)));
+    }
+  }
+
+  Future<void> _pay() async {
+    final uri = await _service.createTestCheckout(widget.bookingId);
+    final opened = await launchUrl(uri,
+        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Tap Open checkout to continue to Stripe.'),
+          action: SnackBarAction(
+              label: 'Open checkout',
+              onPressed: () {
+                unawaited(launchUrl(uri,
+                    mode: LaunchMode.externalApplication,
+                    webOnlyWindowName: '_blank'));
+              })));
+    }
+  }
 
   void _viewIfNeeded(DemoOrder booking) {
     final unseen = widget.isVendor
@@ -118,10 +180,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     setState(() => _busy = true);
     try {
       await action();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not update this booking. Please try again.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                error is FirebaseFunctionsException && error.message != null
+                    ? error.message!
+                    : 'Could not update this booking. Please try again.')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -137,12 +202,40 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             onPressed: _busy ? null : () => _act(action), child: Text(label));
   }
 
+  Future<void> _confirmCancellation(DemoOrder booking) async {
+    final paid = booking.paymentStatus == 'paid';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this booking?'),
+        content: Text(paid
+            ? 'The full test payment will be refunded to the original payment method. Refund status may take time to update.'
+            : 'The booking will be cancelled. Any open test checkout will close.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep booking'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(paid ? 'Cancel and refund' : 'Cancel booking'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _service.cancel(booking.id);
+  }
+
   List<Widget> _actions(DemoOrder booking) {
     final status = booking.effectiveStatus;
     if (!widget.isVendor) {
-      return status == 'requested'
+      return booking.canCustomerCancel
           ? [
-              _action('Cancel request', () => _service.cancel(booking.id),
+              _action(
+                  booking.paymentStatus == 'paid'
+                      ? 'Cancel and refund'
+                      : 'Cancel booking',
+                  () => _confirmCancellation(booking),
                   primary: false)
             ]
           : [];
@@ -154,19 +247,32 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               primary: false),
         ],
       'confirmed' => [
+          if (booking.canPrepare)
+            _action(
+                'Start preparing', () => _service.advance(booking.id, status)),
           _action(
-              'Start preparing', () => _service.advance(booking.id, status)),
-          _action('Cancel booking', () => _service.cancel(booking.id),
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
               primary: false),
         ],
       'preparing' => [
           _action('Mark ready', () => _service.advance(booking.id, status)),
-          _action('Cancel booking', () => _service.cancel(booking.id),
+          _action(
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
               primary: false),
         ],
       'ready' => [
           _action('Mark collected', () => _service.advance(booking.id, status)),
-          _action('Cancel booking', () => _service.cancel(booking.id),
+          _action(
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
               primary: false),
         ],
       _ => [],
@@ -174,8 +280,28 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   Widget _progress(DemoOrder booking) {
-    const steps = ['requested', 'confirmed', 'preparing', 'ready', 'collected'];
-    final position = steps.indexOf(booking.effectiveStatus);
+    final steps = [
+      if (booking.checkoutFirst)
+        'checkout_started'
+      else ...[
+        'requested',
+        'confirmed',
+      ],
+      if (booking.hasTestPayment) 'payment_confirmed',
+      'preparing',
+      'ready',
+      'collected'
+    ];
+    var position = steps.indexOf(booking.effectiveStatus);
+    if (booking.checkoutFirst && booking.status == 'confirmed') {
+      position = steps.indexOf(booking.paymentStatus == 'paid'
+          ? 'payment_confirmed'
+          : 'checkout_started');
+    } else if (booking.hasTestPayment &&
+        booking.status == 'confirmed' &&
+        booking.paymentStatus == 'paid') {
+      position = steps.indexOf('payment_confirmed');
+    }
     return Column(children: [
       for (var i = 0; i < steps.length; i++)
         Padding(
@@ -185,9 +311,15 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 size: 20,
                 color: i <= position ? const Color(0xFF137547) : Colors.grey),
             const SizedBox(width: 10),
-            Text(demoOrderStatusLabel(steps[i]),
-                style: TextStyle(
-                    fontWeight: i == position ? FontWeight.bold : null)),
+            Expanded(
+                child: Text(
+                    steps[i] == 'payment_confirmed'
+                        ? 'Test payment confirmed'
+                        : steps[i] == 'checkout_started'
+                            ? 'Checkout started'
+                            : demoOrderStatusLabel(steps[i]),
+                    style: TextStyle(
+                        fontWeight: i == position ? FontWeight.bold : null))),
           ]),
         ),
     ]);
@@ -212,12 +344,24 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               return const Center(child: Text('Booking not found.'));
             }
             _viewIfNeeded(booking);
+            _hasTestPayment = booking.hasTestPayment;
+            if (!_initialPaymentCheck &&
+                booking.hasTestPayment &&
+                booking.paymentStatus != 'unpaid') {
+              _initialPaymentCheck = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_busy) {
+                  unawaited(_act(() => _service.refreshPayment(booking.id)));
+                }
+              });
+            }
             return ListView(padding: const EdgeInsets.all(18), children: [
               Text(widget.isVendor ? booking.customerName : booking.stallName,
                   style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 6),
               if (booking.createdAt != null)
-                Text('Requested ${_dateTime(booking.createdAt!)}'),
+                Text(
+                    '${booking.checkoutFirst ? 'Started' : 'Requested'} ${_dateTime(booking.createdAt!)}'),
               const SizedBox(height: 18),
               Card(
                   child: Padding(
@@ -269,6 +413,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                   'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
                             ]),
                           ]))),
+              if (booking.hasTestPayment) ...[
+                const SizedBox(height: 12),
+                BookingPaymentCard(
+                    booking: booking,
+                    isVendor: widget.isVendor,
+                    busy: _busy,
+                    onPay: () => _act(_pay),
+                    onRefresh: () =>
+                        _act(() => _service.refreshPayment(booking.id))),
+              ],
               if (booking.pickupLatitude != null &&
                   booking.pickupLongitude != null)
                 TextButton.icon(
@@ -280,8 +434,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
               const SizedBox(height: 8),
-              const Text(
-                  'No in-app payment. Arrange payment directly with the stall.'),
+              if (!booking.hasTestPayment)
+                const Text(
+                    'This earlier booking uses payment arranged directly with the stall.'),
             ]);
           },
         ),

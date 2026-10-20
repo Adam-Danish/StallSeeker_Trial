@@ -22,9 +22,12 @@ class DemoOrderService {
       .orderBy('createdAt', descending: true));
 
   Stream<List<DemoOrder>> watchVendorOrders(String vendorId) => _watch(_db
-      .collection('bookings')
-      .where('vendorId', isEqualTo: vendorId)
-      .orderBy('createdAt', descending: true));
+          .collection('bookings')
+          .where('vendorId', isEqualTo: vendorId)
+          .orderBy('createdAt', descending: true))
+      .map((orders) => orders
+          .where((order) => !order.checkoutFirst || order.paymentPaidAt != null)
+          .toList());
 
   Stream<List<DemoOrder>> _watch(Query<Map<String, dynamic>> query) => query
       .snapshots()
@@ -40,8 +43,7 @@ class DemoOrderService {
       (isVendor ? watchVendorOrders(uid) : watchCustomerOrders(uid)).map(
           (orders) => orders
               .where((booking) => isVendor
-                  ? booking.effectiveStatus == 'requested' &&
-                      booking.vendorUnseenRequest
+                  ? booking.vendorNeedsAttention
                   : booking.customerUnseenReady)
               .length);
 
@@ -76,6 +78,27 @@ class DemoOrderService {
       );
 
   Future<void> cancel(String bookingId) => _action(bookingId, 'cancel');
+
+  Future<Uri> createTestCheckout(String bookingId) async {
+    final result = await _functions
+        .httpsCallable('createStripeCheckout',
+            options:
+                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
+        .call({'bookingId': bookingId});
+    final uri = Uri.parse((result.data as Map)['checkoutUrl'] as String);
+    if (uri.scheme != 'https' || uri.host != 'checkout.stripe.com') {
+      throw StateError('Invalid checkout URL.');
+    }
+    return uri;
+  }
+
+  Future<void> refreshPayment(String bookingId) async {
+    await _functions
+        .httpsCallable('refreshStripePayment',
+            options:
+                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
+        .call({'bookingId': bookingId});
+  }
 
   Future<void> markViewed(String bookingId) async {
     await _functions.httpsCallable('markBookingViewed').call({

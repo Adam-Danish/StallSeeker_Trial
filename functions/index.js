@@ -24,6 +24,15 @@ exports.createBooking = bookings.createBooking;
 exports.updateBooking = bookings.updateBooking;
 exports.markBookingViewed = bookings.markBookingViewed;
 exports.expireBookings = bookings.expireBookings;
+exports.notifyPaidSelfCollect = bookings.notifyPaidSelfCollect;
+
+const payments = require('./stripe-payments.cjs');
+exports.createStripeCheckout = payments.createStripeCheckout;
+exports.refreshStripePayment = payments.refreshStripePayment;
+exports.stripeWebhook = payments.stripeWebhook;
+exports.stripePaymentReturn = payments.stripePaymentReturn;
+exports.closeCancelledStripePayment = payments.closeCancelledStripePayment;
+exports.expireStripePayments = payments.expireStripePayments;
 
 exports.cleanupDeletedMenuItemImage = onDocumentDeleted(
     {

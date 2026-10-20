@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/dish_follow_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/vendor_model.dart';
@@ -184,7 +185,7 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 leading: Icon(Icons.restaurant_outlined,
                     color: available
-                        ? const Color(0xFFFF6E41)
+                        ? AppColors.primary
                         : const Color(0xFF8E8E93)),
                 title: Text(
                     dish?.name ??
@@ -224,7 +225,7 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
                         tooltip: 'Unfollow dish',
                         onPressed: _unfollow,
                         icon: const Icon(Icons.notifications_active_outlined,
-                            color: Color(0xFFFF6E41))),
+                            color: AppColors.primary)),
                 onTap: vendor == null || loading || error
                     ? null
                     : () => Navigator.push(

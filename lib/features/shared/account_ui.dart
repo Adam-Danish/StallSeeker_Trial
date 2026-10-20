@@ -8,7 +8,7 @@ class AccountLayout extends StatelessWidget {
       required this.title,
       required this.children,
       this.busy = false,
-      this.background = const Color(0xFFF3F2F8)});
+      this.background = AppColors.background});
   final String title;
   final List<Widget> children;
   final bool busy;
@@ -22,13 +22,13 @@ class AccountLayout extends StatelessWidget {
           appBar: AppBar(
               title: Text(title),
               centerTitle: true,
-              backgroundColor: Colors.white,
+              backgroundColor: AppColors.background,
               surfaceTintColor: Colors.transparent,
               elevation: 0,
               scrolledUnderElevation: 0,
               titleTextStyle: const TextStyle(
                   fontSize: 20,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w700,
                   color: AppColors.textDark,
                   letterSpacing: 0),
               leading: BackButton(
@@ -60,7 +60,7 @@ class AccountIntro extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: const BoxDecoration(
-                color: Color(0xFFFFF0E9), shape: BoxShape.circle),
+                color: AppColors.mint, shape: BoxShape.circle),
             child: Icon(icon, color: AppColors.primary, size: 30)),
         const SizedBox(height: 24),
         Text(title,
