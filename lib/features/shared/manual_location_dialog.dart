@@ -3,8 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import '../../core/constants/app_colors.dart';
 import '../../core/services/place_search_service.dart';
-export '../../core/services/place_search_service.dart' show LocationSelection;
+
+export '../../core/services/place_search_service.dart'
+    show LocationSelection, PlaceSuggestion;
 
 Future<LocationSelection?> showManualLocationDialog(
   BuildContext context, {
@@ -29,9 +33,9 @@ Future<String> describeLocation(LatLng coordinates) async {
         coordinates.longitude,
       )
       .timeout(const Duration(seconds: 8));
-  if (placemarks.isEmpty) {
-    return 'Selected location';
-  }
+
+  if (placemarks.isEmpty) return 'Selected location';
+
   return _formatPlacemark(placemarks.first);
 }
 
@@ -45,15 +49,18 @@ String _formatPlacemark(Placemark placemark) {
     placemark.postalCode,
     placemark.country,
   ];
+
   final parts = <String>[];
   final seen = <String>{};
+
   for (final candidate in candidates) {
     final value = candidate?.trim() ?? '';
-    if (value.isEmpty || !seen.add(value.toLowerCase())) {
-      continue;
+
+    if (value.isNotEmpty && seen.add(value.toLowerCase())) {
+      parts.add(value);
     }
-    parts.add(value);
   }
+
   return parts.isEmpty ? 'Selected location' : parts.join(', ');
 }
 
@@ -74,273 +81,455 @@ class _ManualLocationDialog extends StatefulWidget {
 
 class _ManualLocationDialogState extends State<_ManualLocationDialog> {
   final _placeController = TextEditingController();
+
   late final _placeSearch = widget.placeSearch ?? PlaceSearchService();
-  bool _usingDeviceFallback = false;
+
   Timer? _debounce;
-  List<LocationSelection> _suggestions = const [];
+
+  List<PlaceSuggestion> _suggestions = const [];
   LocationSelection? _selection;
+
   String? _errorText;
+  String? _fallbackMessage;
+
   bool _isSearching = false;
+  bool _isFetchingCoords = false;
+  bool _usingDeviceFallback = false;
+
   int _requestId = 0;
+
+  bool _isCurrent(int requestId) => mounted && requestId == _requestId;
 
   @override
   void dispose() {
+    _requestId++;
     _debounce?.cancel();
     _placeController.dispose();
-    if (widget.placeSearch == null) _placeSearch.dispose();
+
+    if (widget.placeSearch == null) {
+      _placeSearch.dispose();
+    }
+
     super.dispose();
   }
 
   void _onQueryChanged(String value) {
     _debounce?.cancel();
     _requestId++;
-    final query = value.trim();
+
     setState(() {
       _selection = null;
-      _usingDeviceFallback = false;
       _suggestions = const [];
       _errorText = null;
+      _fallbackMessage = null;
+      _usingDeviceFallback = false;
       _isSearching = false;
+      _isFetchingCoords = false;
     });
-    if (query.length < 3) {
-      return;
-    }
+
+    final query = value.trim();
+    if (query.length < 2) return;
+
     _debounce = Timer(
-      const Duration(milliseconds: 450),
+      const Duration(milliseconds: 350),
       () => _findSuggestions(query),
     );
   }
 
-  Future<void> _findSuggestions(String query) async {
-    if (!mounted || query.trim().length < 3) return;
+  Future<void> _findSuggestions(String value) async {
+    _debounce?.cancel();
+
+    final query = value.trim();
+    if (!mounted || query.length < 2) return;
+
     final requestId = ++_requestId;
-    if (mounted) {
-      setState(() {
-        _isSearching = true;
-        _selection = null;
-        _suggestions = const [];
-        _usingDeviceFallback = false;
-        _errorText = null;
-      });
-    }
+
+    setState(() {
+      _isSearching = true;
+      _isFetchingCoords = false;
+      _selection = null;
+      _suggestions = const [];
+      _errorText = null;
+      _fallbackMessage = null;
+      _usingDeviceFallback = false;
+    });
+
+    var googleFailed = false;
+    List<PlaceSuggestion> results = const [];
+
     try {
-      final suggestions = await _searchPlaces(query, requestId);
-      if (!mounted || requestId != _requestId) return;
-      setState(() {
-        _isSearching = false;
-        _suggestions = suggestions;
-        if (suggestions.isEmpty) {
-          _errorText =
-              'No matching locations were found. Please refine your search.';
-        }
-      });
+      results = await _placeSearch.search(query);
     } catch (_) {
-      if (!mounted || requestId != _requestId) return;
-      setState(() {
-        _isSearching = false;
-        _suggestions = const [];
-        _errorText =
-            'Unable to search for locations. Please check your connection and try again.';
-      });
+      // The service logs the actual Google Places error.
+      googleFailed = true;
     }
+
+    if (!_isCurrent(requestId)) return;
+
+    if (results.isNotEmpty) {
+      setState(() {
+        _suggestions = results.take(5).toList();
+        _isSearching = false;
+      });
+      return;
+    }
+
+    final fallbackResults = await _findDeviceSuggestions(query, requestId);
+
+    if (!_isCurrent(requestId)) return;
+
+    setState(() {
+      _isSearching = false;
+      _usingDeviceFallback = true;
+      _suggestions = fallbackResults;
+
+      if (fallbackResults.isNotEmpty) {
+        _fallbackMessage = googleFailed
+            ? 'Google search is unavailable. These are limited device '
+                'results; check the address before selecting.'
+            : 'No Google suggestions found. Showing limited device results.';
+      } else {
+        _errorText = googleFailed
+            ? 'Location search is unavailable. Try again or check '
+                'your connection.'
+            : 'No matching places found. Try a more specific name, '
+                'such as Bukit Bintang, Kuala Lumpur.';
+      }
+    });
   }
 
-  Future<List<LocationSelection>> _searchPlaces(
-      String query, int requestId) async {
+  Future<List<PlaceSuggestion>> _findDeviceSuggestions(
+    String query,
+    int requestId,
+  ) async {
     try {
-      final results =
-          await _placeSearch.search(query, origin: widget.initialLocation);
-      if (results.isNotEmpty) return results;
-    } catch (_) {
-      // The dialog labels this fallback instead of implying full autocomplete.
-    }
-    if (!mounted || requestId != _requestId) return [];
-    _usingDeviceFallback = true;
-
-    // Device geocoding is a fallback and may return only one result.
-    {
       final searchQuery =
           query.toLowerCase().contains('malaysia') ? query : '$query, Malaysia';
+
       final locations = await Geocoding()
           .locationFromAddress(searchQuery)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 8));
+
+      if (!_isCurrent(requestId)) return [];
+
       final ordered = List<Location>.from(locations);
       final origin = widget.initialLocation;
+
       if (origin != null) {
-        ordered.sort((a, b) {
-          final aDistance = _distanceSquared(a, origin);
-          final bDistance = _distanceSquared(b, origin);
-          return aDistance.compareTo(bDistance);
-        });
+        ordered.sort(
+          (a, b) => _distanceSquared(a, origin)
+              .compareTo(_distanceSquared(b, origin)),
+        );
       }
 
-      final suggestions = <LocationSelection>[];
-      final labels = <String>{};
-      for (final location in ordered.take(6)) {
-        final coordinates = LatLng(location.latitude, location.longitude);
+      final suggestions = <PlaceSuggestion>[];
+      final seen = <String>{};
+
+      for (final location in ordered.take(3)) {
+        if (!_isCurrent(requestId)) return [];
+
+        final coordinates = LatLng(
+          location.latitude,
+          location.longitude,
+        );
+
         String label;
+
         try {
           label = await describeLocation(coordinates);
         } catch (_) {
-          label = query;
+          label = '$query '
+              '(${coordinates.latitude.toStringAsFixed(5)}, '
+              '${coordinates.longitude.toStringAsFixed(5)})';
         }
-        if (labels.add(label.toLowerCase())) {
+
+        if (!_isCurrent(requestId)) return [];
+
+        if (seen.add(label.toLowerCase())) {
           suggestions.add(
-            LocationSelection(coordinates: coordinates, label: label),
+            PlaceSuggestion(
+              placeId: '',
+              primaryText: label,
+              secondaryText: 'Device result',
+              fullText: label,
+              coordinates: coordinates,
+            ),
           );
         }
       }
 
       return suggestions;
+    } catch (error) {
+      debugPrint('Device location search failed: $error');
+      return [];
     }
   }
 
   double _distanceSquared(Location location, LatLng origin) {
     final latitude = location.latitude - origin.latitude;
     final longitude = location.longitude - origin.longitude;
+
     return latitude * latitude + longitude * longitude;
   }
 
-  void _selectSuggestion(LocationSelection suggestion) {
-    setState(() {
-      _selection = suggestion;
-      _errorText = null;
-      _debounce?.cancel();
-      _requestId++;
-    });
+  Future<void> _handleSuggestionTap(
+    PlaceSuggestion suggestion,
+  ) async {
+    _debounce?.cancel();
     FocusManager.instance.primaryFocus?.unfocus();
+
+    final requestId = ++_requestId;
+
+    if (suggestion.coordinates != null) {
+      _selectSuggestion(
+        LocationSelection(
+          coordinates: suggestion.coordinates!,
+          label: suggestion.fullText,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _selection = null;
+      _isSearching = false;
+      _isFetchingCoords = true;
+      _errorText = null;
+    });
+
+    try {
+      final coordinates = await _placeSearch.getCoordinates(suggestion.placeId);
+
+      if (!_isCurrent(requestId)) return;
+
+      if (coordinates == null) {
+        setState(() {
+          _isFetchingCoords = false;
+          _errorText =
+              'Could not load this place. Please select another result.';
+        });
+        return;
+      }
+
+      _selectSuggestion(
+        LocationSelection(
+          coordinates: coordinates,
+          label: suggestion.fullText,
+        ),
+      );
+    } catch (_) {
+      if (!_isCurrent(requestId)) return;
+
+      setState(() {
+        _isFetchingCoords = false;
+        _errorText = 'Could not load location details. Please try again.';
+      });
+    }
+  }
+
+  void _selectSuggestion(LocationSelection selection) {
+    if (!mounted) return;
+
+    setState(() {
+      _selection = selection;
+      _isSearching = false;
+      _isFetchingCoords = false;
+      _errorText = null;
+    });
   }
 
   void _submit() {
     final selection = _selection;
-    if (selection == null) {
-      setState(() {
-        _errorText = 'Please select a location from the suggestions.';
-      });
-      return;
-    }
-    // Avoid registering a new inherited focus dependency while this route is
-    // being removed; doing so can trigger `_dependents.isEmpty` in debug mode.
+    if (selection == null) return;
+
+    _requestId++;
+    _debounce?.cancel();
     FocusManager.instance.primaryFocus?.unfocus();
+
     Navigator.pop(context, selection);
   }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _isSearching || _isFetchingCoords;
+
     return AlertDialog(
-      title: Text(widget.title),
+      backgroundColor: AppColors.cardColor,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 24,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      title: Text(
+        widget.title,
+        style: const TextStyle(
+          fontSize: 21,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       scrollable: true,
       content: SizedBox(
-        width: double.maxFinite,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Search for an area, city, state, or postcode in Malaysia, then select the correct result.',
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _placeController,
-            textInputAction: TextInputAction.search,
-            onChanged: _onQueryChanged,
-            onSubmitted: (value) {
-              _debounce?.cancel();
-              final query = value.trim();
-              if (query.length >= 3) {
-                _findSuggestions(query);
-              }
-            },
-            decoration: InputDecoration(
-              labelText: 'Search location',
-              hintText: 'For example, Bukit Bintang',
-              border: const OutlineInputBorder(),
-              suffixIcon: _isSearching
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : const Icon(Icons.search),
-            ),
-          ),
-          if (_suggestions.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 220,
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _suggestions.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final suggestion = _suggestions[index];
-                  return ListTile(
-                    selected: _selection == suggestion,
-                    trailing: _selection == suggestion
-                        ? const Icon(Icons.check_circle)
-                        : null,
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    leading: const Icon(Icons.location_on_outlined),
-                    title: Text(suggestion.label),
-                    onTap: () => _selectSuggestion(suggestion),
-                  );
-                },
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Search for a place in Malaysia, then select its address.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textMuted,
               ),
             ),
-          ],
-          if (_selection != null)
-            Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text('Selected: ${_selection!.label}')),
-          if (_usingDeviceFallback && !_isSearching) ...[
-            const SizedBox(height: 8),
-            const Text(
-                'Full place suggestions are temporarily unavailable. Showing device results.'),
-            TextButton(
-                onPressed: () {
-                  _selection = null;
-                  _usingDeviceFallback = false;
-                  _findSuggestions(_placeController.text.trim());
-                },
-                child: const Text('Retry place suggestions')),
-          ],
-          if (_suggestions.length == 1 && !_usingDeviceFallback)
-            const Text(
-                'One match found. Add an area or street name to refine your search.'),
-          if (_errorText != null) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
+            const SizedBox(height: 16),
+            TextField(
+              controller: _placeController,
+              textInputAction: TextInputAction.search,
+              onChanged: _onQueryChanged,
+              onSubmitted: _findSuggestions,
+              decoration: InputDecoration(
+                labelText: 'Search location',
+                hintText: 'Bukit Bintang, Kuala Lumpur',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: busy
+                    ? const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            if (_suggestions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              for (var index = 0; index < _suggestions.length; index++) ...[
+                if (index > 0) const Divider(height: 1),
+                _suggestionTile(_suggestions[index]),
+              ],
+            ],
+            if (_isFetchingCoords)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text(
+                  'Getting location details…',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ),
+            if (_fallbackMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _fallbackMessage!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+            if (_errorText != null) ...[
+              const SizedBox(height: 12),
+              Text(
                 _errorText!,
-                style: const TextStyle(color: Colors.red),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.closedRed,
+                ),
               ),
-            ),
+            ],
+            if (_usingDeviceFallback && !busy)
+              TextButton(
+                onPressed: () => _findSuggestions(_placeController.text),
+                child: const Text('Retry Google search'),
+              ),
+            if (_selection != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Selected: ${_selection!.label}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textDark,
+                ),
+              ),
+            ],
+            if (!_usingDeviceFallback && _suggestions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Powered by Google Places',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ],
           ],
-          const Padding(
-              padding: EdgeInsets.only(top: 10),
-              child: Text('Place search data © OpenStreetMap contributors',
-                  style: TextStyle(fontSize: 10, color: Colors.grey))),
-        ]),
+        ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       actions: [
         TextButton(
           onPressed: () {
             _requestId++;
+            _debounce?.cancel();
             FocusManager.instance.primaryFocus?.unfocus();
             Navigator.pop(context);
           },
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _isSearching || _selection == null ? null : _submit,
-          child: const Text('Use Location'),
+          onPressed: busy || _selection == null ? null : _submit,
+          child: const Text('Use location'),
         ),
       ],
+    );
+  }
+
+  Widget _suggestionTile(PlaceSuggestion suggestion) {
+    final selected = _selection?.label == suggestion.fullText;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 4,
+      ),
+      selected: selected,
+      leading: const Icon(Icons.location_on_outlined),
+      title: Text(
+        suggestion.primaryText,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: suggestion.secondaryText.isEmpty
+          ? null
+          : Text(
+              suggestion.secondaryText,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+      trailing: selected
+          ? const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.openGreen,
+            )
+          : null,
+      onTap: _isSearching || _isFetchingCoords
+          ? null
+          : () => _handleSuggestionTap(suggestion),
     );
   }
 }

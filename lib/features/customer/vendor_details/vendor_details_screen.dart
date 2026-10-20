@@ -438,6 +438,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
     final customerId = currentUser?.uid;
     final isGuest = currentUser?.isAnonymous ?? true;
+    final isTablet = MediaQuery.sizeOf(context).width >= 700;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -476,282 +477,418 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                   ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (!_vendorDeleted &&
-              _vendor.selfCollectEnabled &&
-              _vendor.isOpenNow &&
-              _vendor.hasValidLocation) ...[
-            SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: isGuest
-                      ? () => _showLoginRequiredDialog(context,
-                          action: 'self-collect bookings')
-                      : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  DemoOrderCartScreen(vendor: _vendor))),
-                  icon: const Icon(Icons.shopping_bag_outlined),
-                  label: Text(
-                      isGuest ? 'Sign in to book' : 'Book for self-collect'),
-                )),
-            const SizedBox(height: 8),
-          ],
-          SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: !_vendorDeleted && _vendor.hasValidLocation
-                    ? _openNavigation
-                    : null,
-                icon: const Icon(Icons.directions),
-                label: const Text('Get directions'),
-              )),
-        ]),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        children: [
-          if (_vendorDeleted || _vendorError != null)
-            Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_vendorDeleted
-                    ? 'This stall is no longer available.'
-                    : _vendorError!)),
-          ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: AspectRatio(
-                  aspectRatio: 1.8,
-                  child: _vendor.imageUrl.isNotEmpty
-                      ? Image.network(_vendor.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _photoPlaceholder())
-                      : _photoPlaceholder())),
-          const SizedBox(height: 20),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            _badge(
-                _vendor.isOpenNow ? 'Open now' : 'Closed',
-                _vendor.isOpenNow
-                    ? const Color(0xFF15803D)
-                    : const Color(0xFFB42318),
-                Icons.circle),
-            if (_vendor.category.isNotEmpty)
-              _badge(_vendor.category, const Color(0xFF64748B),
-                  Icons.restaurant_outlined),
-          ]),
-          const SizedBox(height: 12),
-          Text(_vendor.stallName.isEmpty ? 'Unnamed stall' : _vendor.stallName,
-              style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  height: 1.2,
-                  color: Color(0xFF17202D))),
-          if (_vendor.description.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(_vendor.description,
-                style: const TextStyle(
-                    fontSize: 14, height: 1.5, color: Color(0xFF64748B))),
-          ],
-          const SizedBox(height: 18),
-          Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE9ECF0))),
-              child: Column(children: [
-                _info(
-                    Icons.schedule_rounded,
-                    'Opening hours',
-                    _vendor.hoursToday.isEmpty
-                        ? 'Not provided by this vendor'
-                        : _vendor.hoursToday),
-                if (_vendor.isTemporarilyClosed) ...[
-                  const Divider(height: 24, indent: 36),
-                  _info(Icons.event_busy_outlined, 'Temporary closure',
-                      'This stall is temporarily closed.'),
-                ],
-                if (_vendor.phoneNumber.isNotEmpty) ...[
-                  const Divider(height: 24, indent: 36),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.call_outlined,
-                        color: Color(0xFF64748B)),
-                    title: const Text('Vendor phone'),
-                    subtitle: Text(_vendor.phoneNumber),
-                    trailing: const Icon(Icons.call),
-                    onTap: () => launchUrl(
-                        Uri(scheme: 'tel', path: _vendor.phoneNumber)),
-                  ),
-                ],
-                const Divider(height: 24, indent: 36),
-                _info(
-                    Icons.location_on_outlined,
-                    _vendor.hasFreshLocation
-                        ? 'Location updated recently'
-                        : 'Last known location',
-                    _vendor.hasFreshLocation
-                        ? 'The vendor is sharing their location.'
-                        : 'This location may be outdated. Check before travelling.'),
-              ])),
-          const SizedBox(height: 26),
-          const Text('On the menu',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF17202D))),
-          const SizedBox(height: 4),
-          const Text('Availability is updated by the vendor',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          const SizedBox(height: 4),
-          const Text('Follow a dish to hear when it is back in stock.',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          if (_dishFollowError)
-            Row(children: [
-              const Expanded(child: Text('Could not load dish following.')),
-              TextButton(
-                  onPressed: _listenDishFollows, child: const Text('Retry')),
-            ]),
-          if (_focusedDishId != null)
-            Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(children: [
-                  const Expanded(child: Text('Showing your followed dish')),
-                  TextButton(
-                      onPressed: () => setState(() => _focusedDishId = null),
-                      child: const Text('Show all dishes')),
-                ])),
-          const SizedBox(height: 14),
-          TextField(
-              controller: _dishSearch,
-              onChanged: (value) => setState(() {
-                    _focusedDishId = null;
-                    _dishQuery = value.trim().toLowerCase();
-                  }),
-              decoration: InputDecoration(
-                  hintText: 'Search dishes',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _dishQuery.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear dish search',
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            _dishSearch.clear();
-                            setState(() => _dishQuery = '');
-                          }),
-                  border: const OutlineInputBorder())),
-          const SizedBox(height: 14),
-          StreamBuilder<List<MenuItemModel>>(
-            stream: _menuStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(children: [
-                      const Text('Could not load the menu.'),
-                      TextButton(
-                          onPressed: () => setState(() => _menuStream =
-                              _menuService.getMenuItems(_vendor.vendorId)),
-                          child: const Text('Retry')),
-                    ]));
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()));
-              }
-              final items = snapshot.data ?? [];
-              if (items.isEmpty) {
-                return const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text('The vendor has not added a menu yet.'));
-              }
-              final filtered = items
-                  .where((item) =>
-                      (_focusedDishId == null ||
-                          item.itemId == _focusedDishId) &&
-                      item.name.toLowerCase().contains(_dishQuery))
-                  .toList();
-              if (filtered.isEmpty) {
-                return Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(_focusedDishId != null
-                        ? 'This dish is no longer on the menu.'
-                        : 'No dishes match your search.'));
-              }
-              final sections = <String, List<MenuItemModel>>{};
-              for (final item in filtered) {
-                sections.putIfAbsent(item.section, () => []).add(item);
-              }
-              return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final entry in sections.entries) ...[
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Text(entry.key,
-                              style: const TextStyle(
-                                  fontSize: 17, fontWeight: FontWeight.w700))),
-                      ...entry.value.map(_menuCard),
-                    ],
-                  ]);
-            },
+      // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
+      bottomNavigationBar: isTablet
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.all(16),
+              child: _buildActionButtons(isGuest: isGuest),
+            ),
+      body: isTablet
+          ? _buildTabletLayout(context, isGuest: isGuest)
+          : _buildMobileLayout(context),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Responsive Layouts (Mobile vs Tablet)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        ..._buildStallInfoWidgets(isTablet: false),
+        const SizedBox(height: 26),
+        ..._buildMenuAndReviewWidgets(),
+      ],
+    );
+  }
+
+  Widget _buildTabletLayout(BuildContext context, {required bool isGuest}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Column: Stall Identity & Info & Actions
+        SizedBox(
+          width: 380,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 20, 24),
+            children: [
+              ..._buildStallInfoWidgets(isTablet: true),
+              const SizedBox(height: 20),
+              _buildActionButtons(isGuest: isGuest),
+            ],
           ),
-          const SizedBox(height: 20),
-          StreamBuilder<List<StallReview>>(
-              stream: _reviewStream,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return const Text('Could not load reviews.');
-                }
-                final reviews = snapshot.data ?? [];
-                final uid = FirebaseAuth.instance.currentUser?.uid;
-                StallReview? mine;
-                for (final review in reviews) {
-                  if (review.customerId == uid) {
-                    mine = review;
-                    break;
-                  }
-                }
-                final average = reviews.isEmpty
-                    ? 0.0
-                    : reviews.fold<int>(
-                            0, (sum, review) => sum + review.rating) /
-                        reviews.length;
-                return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Expanded(
-                            child: Text('Reviews (${reviews.length})',
-                                style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800))),
-                        if (reviews.isNotEmpty)
-                          Text('${average.toStringAsFixed(1)} ★',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700)),
-                      ]),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                          onPressed: () => _editReview(mine),
-                          icon: const Icon(Icons.rate_review_outlined),
-                          label: Text(mine == null
-                              ? 'Write a review'
-                              : 'Edit your review')),
-                      if (reviews.isEmpty)
-                        const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text('No reviews yet.')),
-                      for (final review in reviews) _reviewCard(review),
-                    ]);
-              }),
-        ],
+        ),
+        const VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: Color(0xFFE9ECF0),
+        ),
+        // Right Column: Menu & Reviews
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            children: _buildMenuAndReviewWidgets(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Component Blocks
+  // ---------------------------------------------------------------------------
+
+  Widget _buildStallPhoto({double height = 210}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: _vendor.imageUrl.isNotEmpty
+            ? Image.network(
+                _vendor.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _photoPlaceholder(),
+              )
+            : _photoPlaceholder(),
       ),
     );
+  }
+
+  List<Widget> _buildStallInfoWidgets({required bool isTablet}) {
+    return [
+      if (_vendorDeleted || _vendorError != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            _vendorDeleted
+                ? 'This stall is no longer available.'
+                : _vendorError!,
+            style: const TextStyle(color: Colors.red),
+          ),
+        ),
+      _buildStallPhoto(height: isTablet ? 220 : 200),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _badge(
+            _vendor.isOpenNow ? 'Open now' : 'Closed',
+            _vendor.isOpenNow
+                ? const Color(0xFF15803D)
+                : const Color(0xFFB42318),
+            Icons.circle,
+          ),
+          if (_vendor.category.isNotEmpty)
+            _badge(_vendor.category, const Color(0xFF64748B),
+                Icons.restaurant_outlined),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Text(
+        _vendor.stallName.isEmpty ? 'Unnamed stall' : _vendor.stallName,
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
+          height: 1.2,
+          color: Color(0xFF17202D),
+        ),
+      ),
+      if (_vendor.description.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text(
+          _vendor.description,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: Color(0xFF64748B),
+          ),
+        ),
+      ],
+      const SizedBox(height: 18),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE9ECF0)),
+        ),
+        child: Column(
+          children: [
+            _info(
+              Icons.schedule_rounded,
+              'Opening hours',
+              _vendor.hoursToday.isEmpty
+                  ? 'Not provided by this vendor'
+                  : _vendor.hoursToday,
+            ),
+            if (_vendor.isTemporarilyClosed) ...[
+              const Divider(height: 24, indent: 36),
+              _info(
+                Icons.event_busy_outlined,
+                'Temporary closure',
+                'This stall is temporarily closed.',
+              ),
+            ],
+            if (_vendor.phoneNumber.isNotEmpty) ...[
+              const Divider(height: 24, indent: 36),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading:
+                    const Icon(Icons.call_outlined, color: Color(0xFF64748B)),
+                title: const Text('Vendor phone'),
+                subtitle: Text(_vendor.phoneNumber),
+                trailing: const Icon(Icons.call),
+                onTap: () =>
+                    launchUrl(Uri(scheme: 'tel', path: _vendor.phoneNumber)),
+              ),
+            ],
+            const Divider(height: 24, indent: 36),
+            _info(
+              Icons.location_on_outlined,
+              _vendor.hasFreshLocation
+                  ? 'Location updated recently'
+                  : 'Last known location',
+              _vendor.hasFreshLocation
+                  ? 'The vendor is sharing their location.'
+                  : 'This location may be outdated. Check before travelling.',
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildActionButtons({required bool isGuest}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!_vendorDeleted &&
+            _vendor.selfCollectEnabled &&
+            _vendor.isOpenNow &&
+            _vendor.hasValidLocation) ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isGuest
+                  ? () => _showLoginRequiredDialog(context,
+                      action: 'self-collect bookings')
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              DemoOrderCartScreen(vendor: _vendor))),
+              icon: const Icon(Icons.shopping_bag_outlined),
+              label:
+                  Text(isGuest ? 'Sign in to book' : 'Book for self-collect'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: !_vendorDeleted && _vendor.hasValidLocation
+                ? _openNavigation
+                : null,
+            icon: const Icon(Icons.directions),
+            label: const Text('Get directions'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildMenuAndReviewWidgets() {
+    return [
+      const Text(
+        'On the menu',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF17202D),
+        ),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'Availability is updated by the vendor',
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'Follow a dish to hear when it is back in stock.',
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
+      if (_dishFollowError)
+        Row(children: [
+          const Expanded(child: Text('Could not load dish following.')),
+          TextButton(
+            onPressed: _listenDishFollows,
+            child: const Text('Retry'),
+          ),
+        ]),
+      if (_focusedDishId != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            const Expanded(child: Text('Showing your followed dish')),
+            TextButton(
+              onPressed: () => setState(() => _focusedDishId = null),
+              child: const Text('Show all dishes'),
+            ),
+          ]),
+        ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _dishSearch,
+        onChanged: (value) => setState(() {
+          _focusedDishId = null;
+          _dishQuery = value.trim().toLowerCase();
+        }),
+        decoration: InputDecoration(
+          hintText: 'Search dishes',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _dishQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear dish search',
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    _dishSearch.clear();
+                    setState(() => _dishQuery = '');
+                  },
+                ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 14),
+      StreamBuilder<List<MenuItemModel>>(
+        stream: _menuStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(children: [
+                const Text('Could not load the menu.'),
+                TextButton(
+                  onPressed: () => setState(() => _menuStream =
+                      _menuService.getMenuItems(_vendor.vendorId)),
+                  child: const Text('Retry'),
+                ),
+              ]),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final items = snapshot.data ?? [];
+          if (items.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('The vendor has not added a menu yet.'),
+            );
+          }
+          final filtered = items
+              .where((item) =>
+                  (_focusedDishId == null || item.itemId == _focusedDishId) &&
+                  item.name.toLowerCase().contains(_dishQuery))
+              .toList();
+          if (filtered.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(_focusedDishId != null
+                  ? 'This dish is no longer on the menu.'
+                  : 'No dishes match your search.'),
+            );
+          }
+          final sections = <String, List<MenuItemModel>>{};
+          for (final item in filtered) {
+            sections.putIfAbsent(item.section, () => []).add(item);
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final entry in sections.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    entry.key,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                ...entry.value.map(_menuCard),
+              ],
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 24),
+      StreamBuilder<List<StallReview>>(
+        stream: _reviewStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text('Could not load reviews.');
+          }
+          final reviews = snapshot.data ?? [];
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          StallReview? mine;
+          for (final review in reviews) {
+            if (review.customerId == uid) {
+              mine = review;
+              break;
+            }
+          }
+          final average = reviews.isEmpty
+              ? 0.0
+              : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
+                  reviews.length;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    'Reviews (${reviews.length})',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (reviews.isNotEmpty)
+                  Text(
+                    '${average.toStringAsFixed(1)} ★',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _editReview(mine),
+                icon: const Icon(Icons.rate_review_outlined),
+                label:
+                    Text(mine == null ? 'Write a review' : 'Edit your review'),
+              ),
+              if (reviews.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No reviews yet.'),
+                ),
+              for (final review in reviews) _reviewCard(review),
+            ],
+          );
+        },
+      ),
+    ];
   }
 
   Widget _photoPlaceholder() => Container(

@@ -1051,13 +1051,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
         return LayoutBuilder(builder: (context, constraints) {
           final shortViewport = constraints.maxHeight < 400;
-          final panelHeight = shortViewport
-              ? 58.0
-              : (constraints.maxHeight * .30).clamp(184.0, 215.0).toDouble();
-          final cardWidth =
-              (constraints.maxWidth * .62).clamp(205.0, 260.0).toDouble();
+
+          // With Scaffold.extendBody enabled, this includes the
+          // floating navigation bar and the device's bottom inset.
+          final navClearance = MediaQuery.paddingOf(context).bottom + 12;
+
+          const headerHeight = 52.0;
+          final cardAreaHeight = shortViewport ? 0.0 : 144.0;
+
+          final panelHeight = headerHeight + cardAreaHeight + navClearance;
+
+          final cardWidth = constraints.maxWidth >= 600
+              ? 320.0
+              : (constraints.maxWidth * .78).clamp(220.0, 320.0).toDouble();
+
           final overlayWidth = math.max(0.0, constraints.maxWidth - 24);
+
           _cardExtent = cardWidth + 12;
+
+          // Keep the existing return Column(...) below.
           return Column(children: [
             Expanded(
                 child: Stack(children: [
@@ -1477,7 +1489,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                           controller: _stallScrollController,
                                           scrollDirection: Axis.horizontal,
                                           padding: const EdgeInsets.fromLTRB(
-                                              16, 0, 4, 10),
+                                              16, 0, 4, 4),
                                           itemCount: onScreenVendors.length,
                                           itemExtent: _cardExtent,
                                           itemBuilder: (context, index) =>
@@ -1488,6 +1500,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                                 onScreenVendors[index]),
                                           ),
                                         )),
+                    SizedBox(height: navClearance),
                   ]),
                 )),
           ]);
@@ -1656,6 +1669,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     child: Icon(Icons.location_on_rounded,
                         color: AppColors.primary, size: 18)),
             ]),
+            const Spacer(),
             Row(children: [
               Icon(
                   vendor.hasFreshLocation
