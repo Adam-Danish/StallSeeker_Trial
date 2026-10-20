@@ -67,8 +67,8 @@ class _LogoutSheetState extends State<_LogoutSheet> {
           top: false,
           child: Container(
             decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
             ),
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
@@ -112,7 +112,7 @@ class _LogoutSheetState extends State<_LogoutSheet> {
                   width: 58,
                   height: 58,
                   decoration: const BoxDecoration(
-                    color: AppColors.mint,
+                    color: Colors.white,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -161,10 +161,11 @@ class _LogoutSheetState extends State<_LogoutSheet> {
                           _busy ? null : () => Navigator.pop(context, false),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.textDark,
-                        side: const BorderSide(color: Color(0xFFE2E2E6)),
+                        backgroundColor: Colors.white,
+                        side: BorderSide.none,
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(26),
                         ),
                       ),
                       child: const Text('Cancel'),
@@ -175,13 +176,13 @@ class _LogoutSheetState extends State<_LogoutSheet> {
                     child: FilledButton(
                       onPressed: _busy ? null : _logout,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: const Color(0xFFFF453A),
                         foregroundColor: Colors.white,
                         disabledBackgroundColor:
-                            AppColors.primary.withValues(alpha: .65),
+                            const Color(0xFFFF453A).withValues(alpha: .65),
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(26),
                         ),
                       ),
                       child: _busy

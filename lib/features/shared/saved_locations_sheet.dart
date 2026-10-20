@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/ios_grouped.dart';
 import '../../core/models/saved_location.dart';
 import '../../core/services/saved_location_service.dart';
 import 'manual_location_dialog.dart';
@@ -198,9 +199,10 @@ class _SavedLocationsSheetState extends State<_SavedLocationsSheet> {
   }
 
   Widget _pin(SavedLocation location) => ListTile(
-        leading: Icon(
-            location.isHome ? Icons.home_outlined : Icons.location_on_outlined,
-            color: const Color(0xFF8E8E93)),
+        leading: AppIconTile(
+            icon: location.isHome ? Icons.home_rounded : Icons.place_rounded,
+            color:
+                location.isHome ? AppColors.primary : const Color(0xFFAD55E8)),
         title: Text(location.name),
         subtitle: Text(location.address,
             maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -292,11 +294,13 @@ class _SavedLocationsSheetState extends State<_SavedLocationsSheet> {
         const SizedBox(height: 10),
         Material(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(26),
             clipBehavior: Clip.antiAlias,
             child: Column(children: [
               for (var i = 0; i < rows.length; i++) ...[
-                if (i != 0) const Divider(height: 1, thickness: .5),
+                if (i != 0)
+                  const Divider(
+                      height: .5, thickness: .5, indent: 60, endIndent: 16),
                 rows[i],
               ],
             ])),

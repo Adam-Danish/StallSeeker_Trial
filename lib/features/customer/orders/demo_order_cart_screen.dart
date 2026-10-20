@@ -169,7 +169,7 @@ class BookingCartView extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: AppColors.mint.withValues(alpha: .65),
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(26),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,8 +228,7 @@ class BookingCartView extends StatelessWidget {
                       Container(
                         decoration: BoxDecoration(
                           color: AppColors.cardColor,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: AppColors.border),
+                          borderRadius: BorderRadius.circular(26),
                         ),
                         child: Column(
                           children: [

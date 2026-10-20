@@ -124,16 +124,18 @@ class _FaqScreenState extends State<FaqScreen> {
   Widget _group(List<_FaqEntry> entries) => Material(
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(
-          color: Color(0xFFE8E8E8),
-        ),
+        borderRadius: BorderRadius.circular(26),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: [
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0)
-            const Divider(height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
+            const Divider(
+                height: .5,
+                thickness: .5,
+                indent: 18,
+                endIndent: 18,
+                color: AppColors.border),
           ExpansionTile(
               key: PageStorageKey(entries[i].question),
               tilePadding:

@@ -101,12 +101,9 @@ class _AppDropdownState<T> extends State<AppDropdown<T>> {
                   surfaceTintColor: Colors.transparent,
                   elevation: 8,
                   shadowColor: const Color(0x26000000),
-                  menuPadding: const EdgeInsets.symmetric(vertical: 4),
+                  menuPadding: const EdgeInsets.symmetric(vertical: 6),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: const BorderSide(
-                      color: Color(0xFFE5E7EB),
-                    ),
+                    borderRadius: BorderRadius.circular(24),
                   ),
                   constraints: BoxConstraints(
                     minWidth: menuWidth,
@@ -125,20 +122,31 @@ class _AppDropdownState<T> extends State<AppDropdown<T>> {
 
                       return PopupMenuItem<T>(
                         value: option.key,
-                        height: 48,
+                        height: 50,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                         ),
-                        child: Text(
-                          option.value,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: selected ? _accent : AppColors.textDark,
-                            fontWeight:
-                                selected ? FontWeight.w600 : FontWeight.w400,
-                          ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                option.value,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color:
+                                      selected ? _accent : AppColors.textDark,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                            if (selected)
+                              const Icon(Icons.check_rounded,
+                                  size: 19, color: _accent),
+                          ],
                         ),
                       );
                     }).toList();
@@ -165,12 +173,7 @@ class _AppDropdownState<T> extends State<AppDropdown<T>> {
                               color: enabled
                                   ? Colors.white
                                   : const Color(0xFFF5F5F5),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color:
-                                    _open ? _accent : const Color(0xFFB8B8B8),
-                                width: _open ? 1.5 : 1,
-                              ),
+                              borderRadius: BorderRadius.circular(22),
                             ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -182,7 +185,8 @@ class _AppDropdownState<T> extends State<AppDropdown<T>> {
                                     Icon(
                                       widget.icon,
                                       size: 18,
-                                      color: AppColors.textMuted,
+                                      color:
+                                          _open ? _accent : AppColors.textMuted,
                                     ),
                                     const SizedBox(width: 8),
                                   ],

@@ -160,16 +160,16 @@ class _LoginScreenState extends State<LoginScreen> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFD5D5D8))),
+            borderRadius: BorderRadius.circular(26),
+            borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFD5D5D8))),
+            borderRadius: BorderRadius.circular(26),
+            borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(26),
             borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
         errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(26),
             borderSide: const BorderSide(color: Color(0xFFB3261E))),
       );
 
@@ -183,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ]);
 
   Widget _panel(BuildContext context) => Material(
-        color: Colors.white,
+        color: AppColors.background,
         borderRadius: widget.embeddedInDialog
             ? BorderRadius.circular(28)
             : widget.embeddedInSheet

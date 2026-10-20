@@ -614,8 +614,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE9ECF0)),
+          borderRadius: BorderRadius.circular(26),
         ),
         child: Column(
           children: [
@@ -937,9 +936,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE9ECF0))),
+            color: Colors.white, borderRadius: BorderRadius.circular(26)),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ClipRRect(
               borderRadius: BorderRadius.circular(14),

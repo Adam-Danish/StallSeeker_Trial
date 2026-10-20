@@ -12,9 +12,10 @@ Future<MenuPriceRange?> showPriceRangePicker(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
+      showDragHandle: true,
+      backgroundColor: AppColors.background,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       builder: (_) => _PriceRangePicker(initialRange: initialRange),
     );
@@ -85,7 +86,16 @@ class _PriceRangePickerState extends State<_PriceRangePicker> {
           labelText: isMax ? 'Maximum' : 'Minimum',
           hintText: 'Any',
           prefixText: 'RM ',
-          border: const OutlineInputBorder(),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
         ),
         validator: (value) {
           final error = _validateAmount(value);
@@ -117,17 +127,21 @@ class _PriceRangePickerState extends State<_PriceRangePicker> {
                     const Expanded(
                       child: Text('Dish price range',
                           style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.w700)),
+                              fontSize: 22, fontWeight: FontWeight.w600)),
                     ),
-                    IconButton(
-                      tooltip: 'Close price filter',
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
+                    Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: 'Close price filter',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
                     ),
                   ]),
                   const Text(
                     'Find stalls with a dish in your budget. Leave a price blank for any amount.',
-                    style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 24),
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

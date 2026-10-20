@@ -64,7 +64,6 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
         ],
       ),
       bottomNavigationBar: AppPillNavigation(
-        settingsStyle: _selectedIndex == 1,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),

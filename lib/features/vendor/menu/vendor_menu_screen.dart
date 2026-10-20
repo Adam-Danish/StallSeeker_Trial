@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/menu_service.dart';
 import '../../../core/services/storage_service.dart';
@@ -105,6 +106,10 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
       useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
       builder: (_) =>
           _MenuEditor(uid: _uid, item: item, menu: _menu, storage: _storage),
     );
@@ -336,8 +341,24 @@ class _MenuEditorState extends State<_MenuEditor> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(widget.item == null ? 'Add dish' : 'Edit dish',
-                        style: Theme.of(context).textTheme.headlineSmall),
+                    Row(children: [
+                      TextButton(
+                        onPressed:
+                            _saving ? null : () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      Expanded(
+                        child: Text(
+                          widget.item == null ? 'Add dish' : 'Edit dish',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(_saving ? 'Saving…' : 'Done'),
+                      ),
+                    ]),
                     const SizedBox(height: 16),
                     if (_image != null)
                       ClipRRect(
@@ -354,6 +375,7 @@ class _MenuEditorState extends State<_MenuEditor> {
                         onPressed: _saving ? null : _pick,
                         icon: const Icon(Icons.add_a_photo_outlined),
                         label: const Text('Choose photo')),
+                    const SizedBox(height: 12),
                     TextFormField(
                         controller: _name,
                         enabled: !_saving,
@@ -364,6 +386,7 @@ class _MenuEditorState extends State<_MenuEditor> {
                             value == null || value.trim().isEmpty
                                 ? 'Enter a dish name.'
                                 : null),
+                    const SizedBox(height: 12),
                     TextFormField(
                         controller: _section,
                         enabled: !_saving,
@@ -400,20 +423,7 @@ class _MenuEditorState extends State<_MenuEditor> {
                           child: Text(_error!,
                               style: TextStyle(
                                   color: Theme.of(context).colorScheme.error))),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                        onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Save dish')),
-                    TextButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.pop(context),
-                        child: const Text('Cancel')),
+                    if (_saving) const LinearProgressIndicator(),
                   ])),
         ),
       );

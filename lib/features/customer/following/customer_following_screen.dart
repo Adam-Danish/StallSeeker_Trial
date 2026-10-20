@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/follow_service.dart';
@@ -165,6 +166,8 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                 children: [
                   Center(
                       child: CupertinoSlidingSegmentedControl<bool>(
+                    backgroundColor: const Color(0xFFE2E2E7),
+                    thumbColor: Colors.white,
                     groupValue: _showDishes,
                     children: const {
                       false: Padding(
@@ -190,6 +193,8 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                       Expanded(
                           child: Center(
                               child: CupertinoSlidingSegmentedControl<bool>(
+                        backgroundColor: const Color(0xFFE2E2E7),
+                        thumbColor: Colors.white,
                         groupValue: _openOnly,
                         children: const {
                           false: Padding(
@@ -259,28 +264,21 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
               child: Text('$label · ${vendors.length}',
                   style:
                       const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)))),
-          Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(14)),
-              child: Column(children: [
-                for (var index = 0; index < vendors.length; index++) ...[
-                  if (index > 0)
-                    const Divider(
-                        height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
-                  _stallRow(vendors[index]),
-                ],
-              ])),
+          AppGroupedCard(children: [
+            for (var index = 0; index < vendors.length; index++) ...[
+              _stallRow(vendors[index]),
+            ],
+          ]),
         ]),
       );
 
   Widget _stallRow(VendorModel vendor) => ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        leading: Icon(Icons.storefront_outlined,
-            size: 24,
+        leading: AppIconTile(
+            icon: Icons.storefront_rounded,
             color:
-                vendor.isOpenNow ? AppColors.primary : const Color(0xFF8E8E93)),
+                vendor.isOpenNow ? AppColors.primary : const Color(0xFF949499)),
         title: Text(
             vendor.stallName.isEmpty ? 'Unnamed stall' : vendor.stallName,
             style: const TextStyle(

@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/place_search_service.dart';
+import '../../core/widgets/ios_grouped.dart';
 
 export '../../core/services/place_search_service.dart'
     show LocationSelection, PlaceSuggestion;
@@ -354,14 +355,14 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
     final busy = _isSearching || _isFetchingCoords;
 
     return AlertDialog(
-      backgroundColor: AppColors.cardColor,
+      backgroundColor: AppColors.background,
       surfaceTintColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(
         horizontal: 20,
         vertical: 24,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(30),
       ),
       title: Text(
         widget.title,
@@ -410,10 +411,13 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
             ),
             if (_suggestions.isNotEmpty) ...[
               const SizedBox(height: 12),
-              for (var index = 0; index < _suggestions.length; index++) ...[
-                if (index > 0) const Divider(height: 1),
-                _suggestionTile(_suggestions[index]),
-              ],
+              AppGroupedCard(
+                dividerIndent: 56,
+                children: [
+                  for (final suggestion in _suggestions)
+                    _suggestionTile(suggestion),
+                ],
+              ),
             ],
             if (_isFetchingCoords)
               const Padding(
@@ -503,7 +507,10 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
         vertical: 4,
       ),
       selected: selected,
-      leading: const Icon(Icons.location_on_outlined),
+      leading: const AppIconTile(
+        icon: Icons.location_on_outlined,
+        color: AppColors.primary,
+      ),
       title: Text(
         suggestion.primaryText,
         maxLines: 2,
@@ -524,7 +531,7 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
       trailing: selected
           ? const Icon(
               Icons.check_circle_rounded,
-              color: AppColors.openGreen,
+              color: AppColors.primary,
             )
           : null,
       onTap: _isSearching || _isFetchingCoords

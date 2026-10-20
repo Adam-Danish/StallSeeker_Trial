@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/constants/app_colors.dart';
+
 /// iOS-style grouped settings, with StallSeeker's existing account actions.
 class ProfilePage extends StatelessWidget {
   const ProfilePage({
@@ -67,8 +69,8 @@ class ProfilePage extends StatelessWidget {
   final String homeLocation;
   final String customLocation;
 
-  static const background = Color(0xFFF0EFF5);
-  static const blue = Color(0xFF1688E8);
+  static const background = AppColors.background;
+  static const accent = AppColors.primary;
   static const muted = Color(0xFF8E8E93);
   static const divider = Color(0xFFE5E5E8);
 
@@ -83,22 +85,22 @@ class ProfilePage extends StatelessWidget {
           height: 100,
           child: photoUrl == null || photoUrl!.trim().isEmpty
               ? const ColoredBox(
-                  color: Color(0xFFD7E9F9),
+                  color: Color(0xFFF3DED1),
                   child:
-                      Icon(CupertinoIcons.person_fill, size: 60, color: blue),
+                      Icon(CupertinoIcons.person_fill, size: 60, color: accent),
                 )
               : Image.network(
                   photoUrl!,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Center(
                     child: Text(_initial,
-                        style: const TextStyle(fontSize: 45, color: blue)),
+                        style: const TextStyle(fontSize: 45, color: accent)),
                   ),
                 ),
         ),
       );
 
-  Widget _header(BuildContext context) {
+  Widget _header() {
     final contact = [
       if (phoneNumber?.trim().isNotEmpty == true) phoneNumber!.trim(),
       if (email.trim().isNotEmpty) email.trim(),
@@ -108,20 +110,6 @@ class ProfilePage extends StatelessWidget {
         height: 116,
         child: Stack(alignment: Alignment.topCenter, children: [
           Positioned(top: 12, child: _avatar()),
-          Positioned(
-            top: 0,
-            left: 0,
-            child: _circleButton(
-              icon: CupertinoIcons.qrcode,
-              tooltip: 'Copy profile details',
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: '$name\n$contact'));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Profile details copied')),
-                );
-              },
-            ),
-          ),
           Positioned(
             top: 0,
             right: 0,
@@ -172,25 +160,6 @@ class ProfilePage extends StatelessWidget {
     ]);
   }
 
-  Widget _circleButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) =>
-      Material(
-        color: Colors.white,
-        shape: const CircleBorder(),
-        elevation: 5,
-        shadowColor: const Color(0x18000000),
-        child: IconButton(
-          tooltip: tooltip,
-          onPressed: onTap,
-          icon: Icon(icon, color: Colors.black, size: 23),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-        ),
-      );
-
   Widget _group(List<Widget> rows) => Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
@@ -228,14 +197,16 @@ class ProfilePage extends StatelessWidget {
                 height: 30,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color.lerp(Colors.white, iconColor, .78)!,
-                      iconColor,
-                    ],
-                  ),
+                  gradient: iconColor == AppColors.primary
+                      ? AppColors.logoGradient
+                      : LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color.lerp(Colors.white, iconColor, .78)!,
+                            iconColor,
+                          ],
+                        ),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: Colors.white, size: 21),
@@ -291,12 +262,12 @@ class ProfilePage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 13),
             child: Row(children: [
               const Icon(CupertinoIcons.camera_on_rectangle,
-                  color: blue, size: 28),
+                  color: accent, size: 28),
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
                   isGuest ? 'Sign in to edit profile' : 'Edit Profile',
-                  style: const TextStyle(fontSize: 17, color: blue),
+                  style: const TextStyle(fontSize: 17, color: accent),
                 ),
               ),
             ]),
@@ -324,7 +295,7 @@ class ProfilePage extends StatelessWidget {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 116),
                 children: [
-                  _header(context),
+                  _header(),
                   const SizedBox(height: 45),
                   _editAction(),
                   const SizedBox(height: 24),
@@ -355,10 +326,10 @@ class ProfilePage extends StatelessWidget {
                               )
                             : null),
                     if (onHomeLocation != null)
-                      _row(CupertinoIcons.house_fill, const Color(0xFF329AF0),
+                      _row(CupertinoIcons.house_fill, AppColors.primary,
                           'Home location', onHomeLocation!),
                     if (onCustomLocation != null)
-                      _row(CupertinoIcons.map_fill, const Color(0xFF39B9E5),
+                      _row(CupertinoIcons.map_fill, AppColors.primaryLight,
                           'Custom pins', onCustomLocation!),
                     if (isVendor && onEditStall != null)
                       _row(CupertinoIcons.bag_fill, const Color(0xFFFFAE22),
@@ -379,7 +350,7 @@ class ProfilePage extends StatelessWidget {
                       if (canChangePassword)
                         _row(
                             CupertinoIcons.padlock_solid,
-                            const Color(0xFF36B7E5),
+                            AppColors.primaryLight,
                             'Change password',
                             onPassword),
                     ]),

@@ -43,13 +43,17 @@ void main() {
       ));
 
       expect(tester.takeException(), isNull);
-      final bar = tester.getRect(find.byType(NavigationBar));
+      final bar = tester.getRect(find.byKey(const Key('pill-navigation')));
       expect(bar.left, greaterThanOrEqualTo(12));
       expect(bar.right, lessThanOrEqualTo(width - 12));
-      expect(bar.width, closeTo(width - 24, 1));
+      expect(bar.width, closeTo(width < 674 ? width - 24 : 650, 1));
       expect(tester.getRect(find.byKey(const Key('page-content'))).bottom,
           greaterThan(bar.bottom));
+      expect(find.byTooltip('Search'), findsNothing);
 
+      await tester.tap(find.text('Following'));
+      await tester.pumpAndSettle();
+      expect(selected, 1);
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
       expect(selected, 3);

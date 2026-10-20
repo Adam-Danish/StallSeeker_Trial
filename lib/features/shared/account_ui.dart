@@ -22,17 +22,28 @@ class AccountLayout extends StatelessWidget {
           appBar: AppBar(
               title: Text(title),
               centerTitle: true,
-              backgroundColor: AppColors.background,
+              backgroundColor: background,
               surfaceTintColor: Colors.transparent,
               elevation: 0,
               scrolledUnderElevation: 0,
               titleTextStyle: const TextStyle(
                   fontSize: 20,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: AppColors.textDark,
                   letterSpacing: 0),
-              leading: BackButton(
-                  onPressed: busy ? () {} : () => Navigator.maybePop(context))),
+              leading: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Material(
+                  color: Colors.white,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: 'Back',
+                    icon:
+                        const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
+                    onPressed: busy ? null : () => Navigator.maybePop(context),
+                  ),
+                ),
+              )),
           body: SafeArea(
               top: false,
               child: Align(
@@ -88,17 +99,17 @@ InputDecoration accountField(String label, {Widget? suffix, String? helper}) =>
       labelStyle: const TextStyle(color: Color(0xFF707078), fontSize: 14),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
       focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(26),
           borderSide: const BorderSide(color: AppColors.primary)),
       errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(26),
           borderSide: const BorderSide(color: Color(0xFFB3261E))),
       focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(26),
           borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.5)),
     );
 

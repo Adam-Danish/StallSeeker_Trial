@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/services/vendor_service.dart';
@@ -174,8 +175,8 @@ class _EditStallScreenState extends State<EditStallScreen> {
             width: double.infinity,
             height: 160,
             decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
+              color: AppColors.mint,
+              borderRadius: BorderRadius.circular(26),
             ),
             clipBehavior: Clip.antiAlias,
             child: imageContent,
@@ -184,7 +185,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
             margin: const EdgeInsets.all(8),
             padding: const EdgeInsets.all(6),
             decoration: const BoxDecoration(
-              color: Colors.black54,
+              color: AppColors.primary,
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
@@ -198,7 +199,18 @@ class _EditStallScreenState extends State<EditStallScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Stall Profile'),
+        leadingWidth: 88,
+        leading: TextButton(
+          onPressed: _isSaving ? null : () => Navigator.maybePop(context),
+          child: const Text('Cancel'),
+        ),
+        title: const Text('Edit stall'),
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : _saveStallProfile,
+            child: Text(_isSaving ? 'Saving…' : 'Done'),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -207,6 +219,8 @@ class _EditStallScreenState extends State<EditStallScreen> {
               child: Form(
                 key: _formKey,
                 child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   children: [
                     // Stall Photo
                     _buildImagePicker(),
@@ -218,7 +232,6 @@ class _EditStallScreenState extends State<EditStallScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Stall Name',
                         hintText: 'e.g. Uncle John Drink Stall',
-                        border: OutlineInputBorder(),
                       ),
                       validator: (val) => val == null || val.isEmpty
                           ? 'Enter stall name'
@@ -247,7 +260,6 @@ class _EditStallScreenState extends State<EditStallScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Description',
                         hintText: 'Describe your food/drinks offered...',
-                        border: OutlineInputBorder(),
                       ),
                       validator: (val) => val == null || val.isEmpty
                           ? 'Enter description'
@@ -275,7 +287,6 @@ class _EditStallScreenState extends State<EditStallScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Business phone number',
                         hintText: 'e.g. 012-345 6789',
-                        border: OutlineInputBorder(),
                       ),
                       validator: (value) =>
                           normalizeVendorPhone(value ?? '') == null
@@ -284,19 +295,8 @@ class _EditStallScreenState extends State<EditStallScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Save Button
-                    ElevatedButton(
-                      onPressed: _isSaving ? null : _saveStallProfile,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _isSaving
-                          ? const CircularProgressIndicator()
-                          : const Text(
-                              'Save Changes',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
+                    if (_isSaving) const LinearProgressIndicator(),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

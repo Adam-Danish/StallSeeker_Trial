@@ -33,7 +33,7 @@ class _LiveBookingSectionState extends State<LiveBookingSection> {
       padding: const EdgeInsets.only(top: 16),
       child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(26),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: StreamBuilder<List<DemoOrder>>(

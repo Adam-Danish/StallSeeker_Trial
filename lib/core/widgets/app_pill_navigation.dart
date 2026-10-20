@@ -2,47 +2,45 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 
-/// A wide, floating navigation bar that stays inside the device safe area.
+/// Floating iOS-style tab bar shared by customer and vendor screens.
 class AppPillNavigation extends StatelessWidget {
   const AppPillNavigation({
     super.key,
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
-    this.settingsStyle = false,
-    this.onSearch,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final List<NavigationDestination> destinations;
-  final bool settingsStyle;
-  final VoidCallback? onSearch;
 
   @override
-  Widget build(BuildContext context) {
-    if (settingsStyle) {
-      return SafeArea(
+  Widget build(BuildContext context) => SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: Row(children: [
-            Expanded(
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 650),
               child: Container(
-                height: 64,
+                key: const Key('pill-navigation'),
+                height: 66,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(35),
+                  borderRadius: BorderRadius.circular(36),
                   boxShadow: const [
                     BoxShadow(
-                        color: Color(0x18000000),
-                        blurRadius: 16,
-                        offset: Offset(0, 3)),
+                      color: Color(0x18000000),
+                      blurRadius: 16,
+                      offset: Offset(0, 3),
+                    ),
                   ],
                 ),
                 child: Material(
                   color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(35),
+                  borderRadius: BorderRadius.circular(36),
                   clipBehavior: Clip.antiAlias,
                   child: Row(children: [
                     for (var index = 0; index < destinations.length; index++)
@@ -50,7 +48,7 @@ class AppPillNavigation extends StatelessWidget {
                         child: InkWell(
                           onTap: () => onDestinationSelected(index),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -58,8 +56,8 @@ class AppPillNavigation extends StatelessWidget {
                                   data: IconThemeData(
                                     size: 25,
                                     color: index == selectedIndex
-                                        ? const Color(0xFF1688E8)
-                                        : const Color(0xFF242424),
+                                        ? AppColors.primary
+                                        : AppColors.textDark,
                                   ),
                                   child: index == selectedIndex
                                       ? (destinations[index].selectedIcon ??
@@ -73,9 +71,10 @@ class AppPillNavigation extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 10,
+                                    height: 1.1,
                                     color: index == selectedIndex
-                                        ? const Color(0xFF1688E8)
-                                        : const Color(0xFF242424),
+                                        ? AppColors.primary
+                                        : AppColors.textDark,
                                   ),
                                 ),
                               ],
@@ -87,65 +86,7 @@ class AppPillNavigation extends StatelessWidget {
                 ),
               ),
             ),
-            if (onSearch != null) ...[
-              const SizedBox(width: 8),
-              Container(
-                width: 64,
-                height: 64,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                        color: Color(0x18000000),
-                        blurRadius: 16,
-                        offset: Offset(0, 3)),
-                  ],
-                ),
-                child: IconButton(
-                  tooltip: 'Search',
-                  onPressed: onSearch,
-                  icon: const Icon(Icons.search, color: Colors.black, size: 28),
-                ),
-              ),
-            ],
-          ]),
+          ),
         ),
       );
-    }
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Material(
-                  elevation: 8,
-                  shadowColor: const Color(0x25000000),
-                  color: AppColors.cardColor,
-                  shape: const StadiumBorder(
-                      side: BorderSide(color: AppColors.border)),
-                  clipBehavior: Clip.antiAlias,
-                  child: NavigationBar(
-                    height: 68,
-                    selectedIndex: selectedIndex,
-                    onDestinationSelected: onDestinationSelected,
-                    backgroundColor: AppColors.cardColor,
-                    indicatorColor: AppColors.mint,
-                    labelBehavior:
-                        NavigationDestinationLabelBehavior.alwaysShow,
-                    destinations: destinations,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

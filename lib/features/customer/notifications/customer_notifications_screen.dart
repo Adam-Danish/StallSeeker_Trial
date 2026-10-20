@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/vendor_service.dart';
@@ -155,6 +156,8 @@ class _CustomerNotificationsScreenState
                         runSpacing: 4,
                         children: [
                           CupertinoSlidingSegmentedControl<bool>(
+                            backgroundColor: const Color(0xFFE2E2E7),
+                            thumbColor: Colors.white,
                             groupValue: _onlyUnread,
                             children: const {
                               false: Padding(
@@ -205,21 +208,11 @@ class _CustomerNotificationsScreenState
                                 style: TextStyle(color: Color(0xFF8E8E93))),
                           ]))
                     else
-                      Container(
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14)),
-                          child: Column(children: [
-                            for (var i = 0; i < visible.length; i++) ...[
-                              if (i > 0)
-                                const Divider(
-                                    height: .5,
-                                    thickness: .5,
-                                    color: Color(0xFFE5E5EA)),
-                              _tile(visible[i]),
-                            ],
-                          ])),
+                      AppGroupedCard(children: [
+                        for (var i = 0; i < visible.length; i++) ...[
+                          _tile(visible[i]),
+                        ],
+                      ]),
                     if (all.length >= _limit)
                       Padding(
                           padding: const EdgeInsets.only(top: 12),
@@ -236,15 +229,15 @@ class _CustomerNotificationsScreenState
   }
 
   Widget _tile(NotificationModel item) => Material(
-        color: item.isRead ? Colors.white : const Color(0xFFFFFAF6),
+        color: item.isRead ? Colors.white : const Color(0xFFFFF5EC),
         child: ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          leading: Icon(
-              item.type == 'dish_available'
-                  ? Icons.restaurant_outlined
-                  : Icons.storefront_outlined,
-              color: item.isRead ? const Color(0xFF8E8E93) : AppColors.primary),
+          leading: AppIconTile(
+              icon: item.type == 'dish_available'
+                  ? Icons.restaurant_rounded
+                  : Icons.storefront_rounded,
+              color: item.isRead ? const Color(0xFF949499) : AppColors.primary),
           title: Text(item.title,
               style: TextStyle(
                   fontSize: 17,

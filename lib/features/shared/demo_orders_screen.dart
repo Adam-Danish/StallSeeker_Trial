@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 
 import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
@@ -53,10 +54,30 @@ class _DemoOrdersScreenState extends State<DemoOrdersScreen> {
         child: Scaffold(
           appBar: AppBar(
             title: Text(widget.isVendor ? 'Stall bookings' : 'My bookings'),
-            bottom: TabBar(tabs: [
-              const Tab(text: 'Active'),
-              const Tab(text: 'History'),
-            ]),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(50),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Container(
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E2E7),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TabBar(
+                    indicator: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    labelColor: AppColors.textDark,
+                    unselectedLabelColor: AppColors.textMuted,
+                    tabs: const [Tab(text: 'Active'), Tab(text: 'History')],
+                  ),
+                ),
+              ),
+            ),
           ),
           body: StreamBuilder<List<DemoOrder>>(
             stream: _live,

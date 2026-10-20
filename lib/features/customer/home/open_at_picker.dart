@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/stall_schedule.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/ios_grouped.dart';
 
 class OpeningTimeFilter {
   const OpeningTimeFilter(this.start, this.label, {this.end});
@@ -11,33 +13,61 @@ class OpeningTimeFilter {
 Future<OpeningTimeFilter?> showOpeningTimePicker(BuildContext context) async {
   final choice = await showModalBottomSheet<String>(
       context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
       builder: (context) => SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('When would you like to visit?',
+                Container(
+                  width: 36,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text('When would you like to visit?',
                     style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.w600))),
-            const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                    'Based on vendor schedules in Malaysia time (MYT). Actual opening may change.')),
-            ListTile(
-                leading: const Icon(Icons.nightlight_outlined),
-                title: const Text('After 10 PM tonight'),
-                subtitle: const Text('Any opening between 10 PM and 6 AM'),
-                onTap: () => Navigator.pop(context, 'tonight')),
-            ListTile(
-                leading: const Icon(Icons.wb_sunny_outlined),
-                title: const Text('Tomorrow morning'),
-                subtitle: const Text('Any opening between 6 AM and 12 PM'),
-                onTap: () => Navigator.pop(context, 'morning')),
-            ListTile(
-                leading: const Icon(Icons.calendar_month),
-                title: const Text('Choose date and time'),
-                onTap: () => Navigator.pop(context, 'custom')),
-            const SizedBox(height: 12),
-          ])));
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Based on vendor schedules in Malaysia time (MYT). Actual opening may change.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 22),
+                AppGroupedCard(children: [
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.nightlight_outlined,
+                          color: AppColors.primary),
+                      title: const Text('After 10 PM tonight'),
+                      subtitle: const Text('10 PM to 6 AM'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'tonight')),
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.wb_sunny_outlined,
+                          color: AppColors.primaryLight),
+                      title: const Text('Tomorrow morning'),
+                      subtitle: const Text('6 AM to 12 PM'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'morning')),
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.calendar_month, color: AppColors.primary),
+                      title: const Text('Choose date and time'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'custom')),
+                ]),
+              ]),
+            ),
+          ));
   if (choice == null || !context.mounted) return null;
   final now = DateTime.now();
   final local = malaysiaTime(now);

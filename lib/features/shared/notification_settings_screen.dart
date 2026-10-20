@@ -114,7 +114,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         children: [
           Container(
               decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                  color: Colors.white, borderRadius: BorderRadius.circular(26)),
               child: SwitchListTile.adaptive(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -135,7 +135,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                  color: Colors.white, borderRadius: BorderRadius.circular(26)),
               child: Row(children: [
                 const Icon(Icons.phone_android_rounded,
                     color: Color(0xFF8E8E93)),

@@ -10,6 +10,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/app_pill_navigation.dart';
+import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/models/dish_search_entry.dart';
@@ -449,47 +450,55 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     FocusScope.of(context).unfocus();
     final choice = await showModalBottomSheet<String>(
       context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.background,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 18),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text('Set your location',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
             ),
           ),
-          ListTile(
-            leading:
-                const Icon(Icons.my_location_rounded, color: AppColors.primary),
-            title: const Text('Use current location'),
-            subtitle: const Text('Find stalls near where you are now'),
-            onTap: () => Navigator.pop(ctx, 'current'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: AppGroupedCard(children: [
+              ListTile(
+                leading: const AppIconTile(
+                    icon: Icons.my_location_rounded, color: Color(0xFF43CE72)),
+                title: const Text('Use current location'),
+                subtitle: const Text('Find stalls near where you are now'),
+                onTap: () => Navigator.pop(ctx, 'current'),
+              ),
+              ListTile(
+                leading: const AppIconTile(
+                    icon: Icons.search_rounded, color: AppColors.primary),
+                title: const Text('Enter manually'),
+                subtitle:
+                    const Text('Search for an area, city, state, or postcode'),
+                onTap: () => Navigator.pop(ctx, 'manual'),
+              ),
+              ListTile(
+                leading: const AppIconTile(
+                    icon: Icons.push_pin_rounded, color: Color(0xFFFFAE22)),
+                title: const Text('Pin on map'),
+                subtitle: const Text('Choose an exact search location'),
+                onTap: () => Navigator.pop(ctx, 'pin'),
+              ),
+              ListTile(
+                leading: const AppIconTile(
+                    icon: Icons.home_rounded, color: Color(0xFFAD55E8)),
+                title: const Text('Home & saved places'),
+                subtitle: const Text('Save and choose Home or custom pins'),
+                onTap: () => Navigator.pop(ctx, 'saved'),
+              ),
+            ]),
           ),
-          ListTile(
-            leading: const Icon(Icons.edit_location_alt_outlined,
-                color: AppColors.primary),
-            title: const Text('Enter manually'),
-            subtitle:
-                const Text('Search for an area, city, state, or postcode'),
-            onTap: () => Navigator.pop(ctx, 'manual'),
-          ),
-          ListTile(
-            leading:
-                const Icon(Icons.push_pin_outlined, color: AppColors.primary),
-            title: const Text('Pin on map'),
-            subtitle: const Text('Choose an exact search location'),
-            onTap: () => Navigator.pop(ctx, 'pin'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.home_outlined, color: AppColors.primary),
-            title: const Text('Home & saved places'),
-            subtitle: const Text('Save and choose Home or custom pins'),
-            onTap: () => Navigator.pop(ctx, 'saved'),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
         ]),
       ),
     );
@@ -717,13 +726,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ],
       ),
       bottomNavigationBar: AppPillNavigation(
-        settingsStyle: _selectedIndex == 3,
-        onSearch: _selectedIndex == 3
-            ? () {
-                setState(() => _selectedIndex = 0);
-                _searchFocus.requestFocus();
-              }
-            : null,
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() => _selectedIndex = index);

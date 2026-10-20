@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/models/dish_follow_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/vendor_model.dart';
@@ -93,21 +94,14 @@ class _FollowedDishesListState extends State<FollowedDishesList> {
               child: Text('FOLLOWED DISHES · ${follows.length}',
                   style:
                       const TextStyle(fontSize: 12, color: Color(0xFF8E8E93)))),
-          Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(14)),
-              child: Column(children: [
-                for (var index = 0; index < follows.length; index++) ...[
-                  if (index > 0)
-                    const Divider(
-                        height: .5, thickness: .5, color: Color(0xFFE5E5EA)),
-                  _FollowedDishRow(
-                      key: ValueKey(follows[index].id),
-                      uid: widget.uid,
-                      follow: follows[index]),
-                ],
-              ])),
+          AppGroupedCard(children: [
+            for (var index = 0; index < follows.length; index++) ...[
+              _FollowedDishRow(
+                  key: ValueKey(follows[index].id),
+                  uid: widget.uid,
+                  follow: follows[index]),
+            ],
+          ]),
         ]);
       },
     );
@@ -183,10 +177,11 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
               return ListTile(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                leading: Icon(Icons.restaurant_outlined,
+                leading: AppIconTile(
+                    icon: Icons.restaurant_rounded,
                     color: available
                         ? AppColors.primary
-                        : const Color(0xFF8E8E93)),
+                        : const Color(0xFF949499)),
                 title: Text(
                     dish?.name ??
                         (loading ? 'Loading dish…' : 'Unavailable dish'),
