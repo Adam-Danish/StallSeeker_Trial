@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -9,11 +10,10 @@ Future<void> confirmAndLogout(
   AuthService authService,
 ) async {
   final navigator = Navigator.of(context, rootNavigator: true);
-  final signedOut = await showModalBottomSheet<bool>(
+  final signedOut = await showCupertinoModalPopup<bool>(
     context: context,
     useRootNavigator: true,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
+    barrierDismissible: false,
     barrierColor: Colors.black45,
     builder: (_) => _LogoutSheet(authService: authService),
   );
@@ -63,142 +63,35 @@ class _LogoutSheetState extends State<_LogoutSheet> {
   @override
   Widget build(BuildContext context) => PopScope(
         canPop: !_busy,
-        child: SafeArea(
-          top: false,
-          child: Container(
-            decoration: const BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-            ),
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                24,
-                14,
-                24,
-                MediaQuery.paddingOf(context).bottom + 24,
-              ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD8D8DC),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(children: [
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed:
-                        _busy ? null : () => Navigator.pop(context, false),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                  Expanded(
-                    child: Text(
-                      _guest ? 'Leave Guest Mode' : 'Log Out',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 48),
-                ]),
-                const Divider(height: 24),
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: AppColors.primary,
-                    size: 27,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  _guest
-                      ? 'Are you sure you want to leave guest mode?'
-                      : 'Are you sure you want to log out?',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _guest
-                      ? 'You can continue browsing or sign in at any time.'
-                      : 'Thank you for using StallSeeker. We hope to see you again soon.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: AppColors.textMuted,
-                  ),
-                ),
+        child: CupertinoTheme(
+          data: const CupertinoThemeData(primaryColor: AppColors.primary),
+          child: CupertinoActionSheet(
+            title: Text(_guest ? 'Leave Guest Mode?' : 'Log Out?'),
+            message: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_guest
+                    ? 'You can continue browsing or sign in at any time.'
+                    : 'Are you sure you want to log out of StallSeeker?'),
                 if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Color(0xFFB3261E)),
-                  ),
+                  const SizedBox(height: 10),
+                  Text(_error!,
+                      style: const TextStyle(color: CupertinoColors.systemRed)),
                 ],
-                const SizedBox(height: 26),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed:
-                          _busy ? null : () => Navigator.pop(context, false),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textDark,
-                        backgroundColor: Colors.white,
-                        side: BorderSide.none,
-                        minimumSize: const Size.fromHeight(52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _busy ? null : _logout,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF453A),
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            const Color(0xFFFF453A).withValues(alpha: .65),
-                        minimumSize: const Size.fromHeight(52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                      ),
-                      child: _busy
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(_guest ? 'Yes, Leave' : 'Yes, Log Out'),
-                    ),
-                  ),
-                ]),
-              ]),
+              ],
+            ),
+            actions: [
+              CupertinoActionSheetAction(
+                isDestructiveAction: true,
+                onPressed: _busy ? () {} : _logout,
+                child: _busy
+                    ? const CupertinoActivityIndicator()
+                    : Text(_guest ? 'Leave Guest Mode' : 'Log Out'),
+              ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              onPressed: _busy ? () {} : () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
             ),
           ),
         ),

@@ -153,7 +153,7 @@ test('dish follow schema, existing dish and deterministic identity cannot be for
   await assertFails(updateDoc(doc(owner, followPath), {unexpected: true}));
 });
 
-test('customers can mark dish notifications read but cannot forge alert content', async () => {
+test('customers can read and remove their own notifications but cannot forge content', async () => {
   const path = 'users/customer-a/notifications/restock-event';
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), path), {vendorId: 'vendor-a', itemId: 'dish-1',
@@ -167,6 +167,8 @@ test('customers can mark dish notifications read but cannot forge alert content'
   await assertFails(updateDoc(doc(owner, path), {isRead: false}));
   await assertFails(setDoc(doc(owner, 'users/customer-a/notifications/new'), {type: 'dish_available'}));
   await assertFails(getDoc(doc(other, path)));
+  await assertFails(deleteDoc(doc(other, path)));
+  await assertSucceeds(deleteDoc(doc(owner, path)));
 });
 
 test('vendor documents and menu are writable only by the owning vendor', async () => {

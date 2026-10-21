@@ -17,6 +17,7 @@ import '../../../core/models/dish_search_entry.dart';
 import 'open_at_picker.dart';
 import 'discovery_search_filters.dart';
 import 'price_range_picker.dart';
+import 'map_marker_focus.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/dish_search_service.dart';
@@ -64,6 +65,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   LatLng? _searchCenter;
   bool _showSearchArea = false;
   bool _programmaticCameraMove = false;
+  Timer? _cameraMoveGuard;
+  bool _cameraMovedByUser = false;
+  int _boundsRequest = 0;
   OpeningTimeFilter? _openingTime;
   MenuPriceRange? _priceRange;
 
@@ -111,6 +115,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String? _dishSearchError;
   final ScrollController _stallScrollController = ScrollController();
   List<VendorModel> _visibleVendors = [];
+  List<VendorModel> _markerVendors = [];
   double _cardExtent = 288;
   int _cameraRequest = 0;
 
@@ -171,7 +176,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _mapBearing.dispose();
     _stallScrollController.dispose();
     _freshnessTimer?.cancel();
+    _cameraMoveGuard?.cancel();
     super.dispose();
+  }
+
+  void _expectProgrammaticCameraMove() {
+    _programmaticCameraMove = true;
+    _cameraMoveGuard?.cancel();
+    _cameraMoveGuard = Timer(const Duration(seconds: 3), () {
+      _programmaticCameraMove = false;
+    });
   }
 
   void _onSearchFocusChanged() {
@@ -309,7 +323,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _locationPermissionGranted = !isManual;
       _locationError = null; // buang error
     });
-    _mapController?.animateCamera(
+    final controller = _mapController;
+    if (controller != null) _expectProgrammaticCameraMove();
+    controller?.animateCamera(
       CameraUpdate.newLatLngZoom(
           selection.coordinates,
           isManual
@@ -414,6 +430,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final center = _searchCenter ?? _customerPosition;
     _visibleBounds = null;
     if (center != null) {
+      if (_mapController != null) _expectProgrammaticCameraMove();
       final zoom = switch (radius) {
         <= 5 => 13.5,
         <= 10 => 12.5,
@@ -522,13 +539,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     FocusScope.of(context).unfocus();
     final request = ++_cameraRequest;
-    setState(() => _selectedVendorId = vendor.vendorId);
-    _programmaticCameraMove = true;
+    setState(() {
+      _selectedVendorId = vendor.vendorId;
+    });
     _revealSelectedCard();
     final controller = _mapController;
     if (controller == null) {
       return;
     }
+    _expectProgrammaticCameraMove();
     try {
       final currentZoom = await controller.getZoomLevel();
       if (!mounted || request != _cameraRequest) {
@@ -543,6 +562,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ));
     } catch (_) {
       // A controller may be disposed while the user changes screens.
+      if (request == _cameraRequest) {
+        _programmaticCameraMove = false;
+        _cameraMoveGuard?.cancel();
+      }
     }
   }
 
@@ -570,15 +593,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   // NEW: Update the visible bounds whenever the map stops moving
   void _updateVisibleBounds() async {
-    if (_mapController == null) {
+    final controller = _mapController;
+    if (controller == null) {
       return;
     }
+    final request = ++_boundsRequest;
+    final movedByUser = _cameraMovedByUser && !_programmaticCameraMove;
+    _cameraMovedByUser = false;
+    final center = _lastCameraPosition?.target ?? _mapCenter;
     try {
-      final bounds = await _mapController!.getVisibleRegion();
-      if (mounted) {
+      final bounds = await controller.getVisibleRegion();
+      if (mounted && request == _boundsRequest) {
+        final focused = movedByUser && center != null
+            ? stallNearMapCenter(
+                center: center,
+                bounds: bounds,
+                vendors: _markerVendors,
+              )
+            : null;
         setState(() {
           _pendingBounds = bounds;
-          if (_visibleBounds == null) {
+          if (movedByUser && focused != null) {
+            _visibleBounds = bounds;
+            _searchCenter = center;
+            _showSearchArea = false;
+            _selectedVendorId = focused.vendorId;
+          } else if (_programmaticCameraMove && _selectedVendorId != null) {
+            _visibleBounds = bounds;
+            _showSearchArea = false;
+          } else if (_visibleBounds == null) {
             _visibleBounds = bounds;
             _showSearchArea = false;
           } else if (!_programmaticCameraMove) {
@@ -598,11 +641,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         0.0001;
           }
           _programmaticCameraMove = false;
+          _cameraMoveGuard?.cancel();
         });
         _revealSelectedCard();
       }
     } catch (_) {
       // Controller may have been disposed during navigation.
+      _programmaticCameraMove = false;
+      _cameraMoveGuard?.cancel();
     }
   }
 
@@ -622,6 +668,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (controller == null) return;
 
     try {
+      _expectProgrammaticCameraMove();
       final camera = _lastCameraPosition;
       final zoom = camera?.zoom ?? await controller.getZoomLevel();
       await controller.animateCamera(
@@ -948,6 +995,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   position.longitude, vendor.latitude, vendor.longitude) <=
               _searchRadiusKm * 1000;
         }).toList();
+        _markerVendors = filteredVendors;
 
         final filteredVendorById = {
           for (final vendor in filteredVendors) vendor.vendorId: vendor,
@@ -992,7 +1040,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           priceRange: _priceRange,
         );
         final showSuggestions = _searchFocus.hasFocus && suggestions.isNotEmpty;
-        final showingDishResults = query.isNotEmpty && dishResults.isNotEmpty;
+        final showingDishResults = query.isNotEmpty &&
+            dishResults.isNotEmpty &&
+            _selectedVendorId == null;
 
         // NEW: Filter to only vendors that are physically inside the current map view
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
@@ -1105,6 +1155,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 onMapCreated: (controller) {
                   _mapController = controller;
                   if (_customerPosition != null) {
+                    _expectProgrammaticCameraMove();
                     controller.animateCamera(
                         CameraUpdate.newLatLngZoom(_customerPosition!, 15));
                   }
@@ -1116,6 +1167,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   if ((_mapBearing.value - position.bearing).abs() > .1) {
                     _mapBearing.value = position.bearing;
                   }
+                },
+                onCameraMoveStarted: () {
+                  _boundsRequest++;
+                  if (!_programmaticCameraMove) _cameraMovedByUser = true;
                 },
                 onCameraIdle: _updateVisibleBounds,
                 onTap: (_) {

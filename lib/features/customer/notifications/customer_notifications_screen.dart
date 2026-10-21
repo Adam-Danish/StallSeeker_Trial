@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,6 +25,7 @@ class _CustomerNotificationsScreenState
   final _uid = FirebaseAuth.instance.currentUser?.uid;
   late Stream<List<NotificationModel>> _stream;
   final Set<String> _opening = {};
+  final Set<String> _removedIds = {};
   int _limit = 50;
   bool _marking = false;
   bool _onlyUnread = false;
@@ -107,6 +110,20 @@ class _CustomerNotificationsScreenState
     }
   }
 
+  Future<void> _remove(NotificationModel item) async {
+    final uid = _uid;
+    if (uid == null) return;
+    setState(() => _removedIds.add(item.id));
+    try {
+      await _history.remove(uid, item.id);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _removedIds.remove(item.id));
+        _message('Could not remove this notification. Please retry.');
+      }
+    }
+  }
+
   String _date(DateTime? value) {
     if (value == null) {
       return 'Date unavailable';
@@ -118,6 +135,8 @@ class _CustomerNotificationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final horizontalInset =
+        math.max(16.0, (MediaQuery.sizeOf(context).width - 960) / 2);
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) {
       return _empty('Your stall updates, in one place',
@@ -138,7 +157,9 @@ class _CustomerNotificationsScreenState
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            final all = snapshot.data ?? [];
+            final all = (snapshot.data ?? [])
+                .where((item) => !_removedIds.contains(item.id))
+                .toList();
             final visible =
                 _onlyUnread ? all.where((item) => !item.isRead).toList() : all;
             return RefreshIndicator(
@@ -147,7 +168,8 @@ class _CustomerNotificationsScreenState
                 },
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 112),
+                  padding: EdgeInsets.fromLTRB(
+                      horizontalInset, 20, horizontalInset, 112),
                   children: [
                     Wrap(
                         alignment: WrapAlignment.spaceBetween,
@@ -208,11 +230,34 @@ class _CustomerNotificationsScreenState
                                 style: TextStyle(color: Color(0xFF8E8E93))),
                           ]))
                     else
-                      AppGroupedCard(children: [
-                        for (var i = 0; i < visible.length; i++) ...[
-                          _tile(visible[i]),
-                        ],
-                      ]),
+                      for (final item in visible) ...[
+                        Dismissible(
+                          key: ValueKey('notification-${item.id}'),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 24),
+                            decoration: BoxDecoration(
+                              color: AppColors.closedRed,
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.delete_outline_rounded,
+                                    color: Colors.white),
+                                SizedBox(width: 6),
+                                Text('Remove',
+                                    style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                          onDismissed: (_) => _remove(item),
+                          child: _tile(item),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     if (all.length >= _limit)
                       Padding(
                           padding: const EdgeInsets.only(top: 12),
@@ -230,9 +275,18 @@ class _CustomerNotificationsScreenState
 
   Widget _tile(NotificationModel item) => Material(
         color: item.isRead ? Colors.white : const Color(0xFFFFF5EC),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(
+            color: item.isRead
+                ? AppColors.border
+                : AppColors.primary.withValues(alpha: .18),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: ListTile(
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           leading: AppIconTile(
               icon: item.type == 'dish_available'
                   ? Icons.restaurant_rounded
