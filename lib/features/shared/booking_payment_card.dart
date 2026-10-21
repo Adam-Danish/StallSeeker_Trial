@@ -27,12 +27,14 @@ class BookingPaymentCard extends StatelessWidget {
       required this.booking,
       required this.isVendor,
       this.busy = false,
+      this.busyLabel = 'Processing…',
       this.onPay,
       this.onRefresh});
 
   final DemoOrder booking;
   final bool isVendor;
   final bool busy;
+  final String busyLabel;
   final VoidCallback? onPay;
   final VoidCallback? onRefresh;
 
@@ -117,7 +119,7 @@ class BookingPaymentCard extends StatelessWidget {
                         onPressed: busy ? null : onPay,
                         icon: const Icon(Icons.lock_outline, size: 18),
                         label: Text(busy
-                            ? 'Please wait…'
+                            ? busyLabel
                             : 'Pay RM ${(booking.totalCents / 100).toStringAsFixed(2)}'))),
                 const SizedBox(height: 8),
                 const Text(

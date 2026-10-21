@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/constants/app_colors.dart';
 import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
 import 'booking_payment_card.dart';
+
+enum _PaymentTransition { openingCheckout, checkingPayment }
 
 class BookingSummaryCard extends StatelessWidget {
   const BookingSummaryCard(
@@ -112,6 +115,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
   bool _viewing = false;
   bool _initialPaymentCheck = false;
   bool _hasTestPayment = false;
+  bool _checkoutLaunched = false;
+  bool _refreshOnResume = false;
+  bool _refreshWithTransition = false;
+  _PaymentTransition? _paymentTransition;
   Timer? _clock;
 
   @override
@@ -120,7 +127,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
     WidgetsBinding.instance.addObserver(this);
     if (widget.openCheckoutOnStart && !widget.isVendor) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_act(_pay));
+        if (mounted) {
+          unawaited(
+              _runPaymentTransition(_pay, _PaymentTransition.openingCheckout));
+        }
       });
     }
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -137,24 +147,59 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _hasTestPayment && !_busy) {
-      unawaited(_act(() => _service.refreshPayment(widget.bookingId)));
+    if (state == AppLifecycleState.resumed && _hasTestPayment) {
+      final showTransition = _checkoutLaunched && !widget.isVendor;
+      _checkoutLaunched = false;
+      if (_busy) {
+        _refreshOnResume = true;
+        _refreshWithTransition |= showTransition;
+      } else {
+        unawaited(showTransition
+            ? _checkPayment()
+            : _act(() => _service.refreshPayment(widget.bookingId)));
+      }
+    }
+  }
+
+  Future<void> _checkPayment() => _runPaymentTransition(
+        () => _service.refreshPayment(widget.bookingId),
+        _PaymentTransition.checkingPayment,
+      );
+
+  Future<void> _runPaymentTransition(
+      Future<void> Function() action, _PaymentTransition transition) async {
+    if (!mounted || _busy) return;
+    setState(() => _paymentTransition = transition);
+    try {
+      await _act(action);
+    } finally {
+      if (mounted) setState(() => _paymentTransition = null);
     }
   }
 
   Future<void> _pay() async {
     final uri = await _service.createTestCheckout(widget.bookingId);
-    final opened = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    await _launchCheckout(uri);
+  }
+
+  Future<void> _launchCheckout(Uri uri) async {
+    bool opened;
+    _checkoutLaunched = true;
+    try {
+      opened = await launchUrl(uri,
+          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened) _checkoutLaunched = false;
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Tap Open checkout to continue to Stripe.'),
+          content: const Text('Could not open Stripe checkout.'),
           action: SnackBarAction(
-              label: 'Open checkout',
+              label: 'Try again',
               onPressed: () {
-                unawaited(launchUrl(uri,
-                    mode: LaunchMode.externalApplication,
-                    webOnlyWindowName: '_blank'));
+                unawaited(_runPaymentTransition(() => _launchCheckout(uri),
+                    _PaymentTransition.openingCheckout));
               })));
     }
   }
@@ -189,8 +234,70 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                     : 'Could not update this booking. Please try again.')));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        if (_refreshOnResume) {
+          final showTransition = _refreshWithTransition;
+          _refreshOnResume = false;
+          _refreshWithTransition = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              unawaited(showTransition
+                  ? _checkPayment()
+                  : _act(() => _service.refreshPayment(widget.bookingId)));
+            }
+          });
+        }
+      }
     }
+  }
+
+  Widget _paymentTransitionView() {
+    final opening = _paymentTransition == _PaymentTransition.openingCheckout;
+    return ColoredBox(
+      color: AppColors.background,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Semantics(
+            liveRegion: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline_rounded,
+                    size: 38, color: AppColors.primary),
+                const SizedBox(height: 24),
+                const CircularProgressIndicator(color: AppColors.primary),
+                const SizedBox(height: 24),
+                Text(
+                  opening
+                      ? 'Opening secure checkout'
+                      : 'Checking payment status',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  opening
+                      ? 'Please wait while we open Stripe.'
+                      : 'Confirming your payment with Stripe.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Test mode · No real charge',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _action(String label, Future<void> Function() action,
@@ -326,119 +433,148 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Booking details')),
-        body: StreamBuilder<DemoOrder?>(
-          stream: _booking,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return const Center(
-                  child: Text(
-                      'Could not load this booking. Check your connection.'));
-            }
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final booking = snapshot.data;
-            if (booking == null) {
-              return const Center(child: Text('Booking not found.'));
-            }
-            _viewIfNeeded(booking);
-            _hasTestPayment = booking.hasTestPayment;
-            if (!_initialPaymentCheck &&
-                booking.hasTestPayment &&
-                booking.paymentStatus != 'unpaid') {
-              _initialPaymentCheck = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && !_busy) {
-                  unawaited(_act(() => _service.refreshPayment(booking.id)));
+  Widget build(BuildContext context) => Stack(
+        children: [
+          Scaffold(
+            appBar: AppBar(title: const Text('Booking details')),
+            body: StreamBuilder<DemoOrder?>(
+              stream: _booking,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(
+                      child: Text(
+                          'Could not load this booking. Check your connection.'));
                 }
-              });
-            }
-            return ListView(padding: const EdgeInsets.all(18), children: [
-              Text(widget.isVendor ? booking.customerName : booking.stallName,
-                  style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 6),
-              if (booking.createdAt != null)
-                Text(
-                    '${booking.checkoutFirst ? 'Started' : 'Requested'} ${_dateTime(booking.createdAt!)}'),
-              const SizedBox(height: 18),
-              Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Progress',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 10),
-                            if (booking.isActive ||
-                                booking.status == 'collected')
-                              _progress(booking)
-                            else
-                              Text(
-                                  demoOrderStatusLabel(booking.effectiveStatus),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
-                            if (booking.effectiveStatus == 'requested' &&
-                                booking.expiresAt != null)
-                              Text(
-                                  'Vendor reply due by ${_dateTime(booking.expiresAt!)}'),
-                          ]))),
-              const SizedBox(height: 12),
-              Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Items',
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 8),
-                            for (final item in booking.items)
-                              Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 3),
-                                  child: Row(children: [
-                                    Expanded(
-                                        child: Text(
-                                            '${item.quantity}× ${item.name}')),
-                                    Text(
-                                        'RM ${(item.subtotalCents / 100).toStringAsFixed(2)}'),
-                                  ])),
-                            const Divider(),
-                            Row(children: [
-                              const Expanded(child: Text('Total')),
-                              Text(
-                                  'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
-                            ]),
-                          ]))),
-              if (booking.hasTestPayment) ...[
-                const SizedBox(height: 12),
-                BookingPaymentCard(
-                    booking: booking,
-                    isVendor: widget.isVendor,
-                    busy: _busy,
-                    onPay: () => _act(_pay),
-                    onRefresh: () =>
-                        _act(() => _service.refreshPayment(booking.id))),
-              ],
-              if (booking.pickupLatitude != null &&
-                  booking.pickupLongitude != null)
-                TextButton.icon(
-                  onPressed: () => launchUrl(Uri.parse(
-                      'https://www.google.com/maps/search/?api=1&query=${booking.pickupLatitude},${booking.pickupLongitude}')),
-                  icon: const Icon(Icons.place_outlined),
-                  label: const Text('Self-collect location'),
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final booking = snapshot.data;
+                if (booking == null) {
+                  return const Center(child: Text('Booking not found.'));
+                }
+                _viewIfNeeded(booking);
+                _hasTestPayment = booking.hasTestPayment;
+                if (!_initialPaymentCheck &&
+                    booking.hasTestPayment &&
+                    booking.paymentStatus != 'unpaid') {
+                  _initialPaymentCheck = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && !_busy) {
+                      unawaited(
+                          _act(() => _service.refreshPayment(booking.id)));
+                    }
+                  });
+                }
+                return ListView(padding: const EdgeInsets.all(18), children: [
+                  Text(
+                      widget.isVendor
+                          ? booking.customerName
+                          : booking.stallName,
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 6),
+                  if (booking.createdAt != null)
+                    Text(
+                        '${booking.checkoutFirst ? 'Started' : 'Requested'} ${_dateTime(booking.createdAt!)}'),
+                  const SizedBox(height: 18),
+                  Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Progress',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                const SizedBox(height: 10),
+                                if (booking.isActive ||
+                                    booking.status == 'collected')
+                                  _progress(booking)
+                                else
+                                  Text(
+                                      demoOrderStatusLabel(
+                                          booking.effectiveStatus),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                if (booking.effectiveStatus == 'requested' &&
+                                    booking.expiresAt != null)
+                                  Text(
+                                      'Vendor reply due by ${_dateTime(booking.expiresAt!)}'),
+                              ]))),
+                  const SizedBox(height: 12),
+                  Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Items',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                const SizedBox(height: 8),
+                                for (final item in booking.items)
+                                  Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 3),
+                                      child: Row(children: [
+                                        Expanded(
+                                            child: Text(
+                                                '${item.quantity}× ${item.name}')),
+                                        Text(
+                                            'RM ${(item.subtotalCents / 100).toStringAsFixed(2)}'),
+                                      ])),
+                                const Divider(),
+                                Row(children: [
+                                  const Expanded(child: Text('Total')),
+                                  Text(
+                                      'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
+                                ]),
+                              ]))),
+                  if (booking.hasTestPayment) ...[
+                    const SizedBox(height: 12),
+                    BookingPaymentCard(
+                        booking: booking,
+                        isVendor: widget.isVendor,
+                        busy: _busy,
+                        busyLabel: switch (_paymentTransition) {
+                          _PaymentTransition.openingCheckout =>
+                            'Opening checkout…',
+                          _PaymentTransition.checkingPayment =>
+                            'Checking payment…',
+                          null => 'Processing…',
+                        },
+                        onPay: () => _runPaymentTransition(
+                            _pay, _PaymentTransition.openingCheckout),
+                        onRefresh: () => _checkPayment()),
+                  ],
+                  if (booking.pickupLatitude != null &&
+                      booking.pickupLongitude != null)
+                    TextButton.icon(
+                      onPressed: () => launchUrl(Uri.parse(
+                          'https://www.google.com/maps/search/?api=1&query=${booking.pickupLatitude},${booking.pickupLongitude}')),
+                      icon: const Icon(Icons.place_outlined),
+                      label: const Text('Self-collect location'),
+                    ),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
+                  const SizedBox(height: 8),
+                  if (!booking.hasTestPayment)
+                    const Text(
+                        'This earlier booking uses payment arranged directly with the stall.'),
+                ]);
+              },
+            ),
+          ),
+          if (_paymentTransition != null)
+            Positioned.fill(
+              child: AbsorbPointer(
+                child: Material(
+                  color: AppColors.background,
+                  child: SafeArea(child: _paymentTransitionView()),
                 ),
-              const SizedBox(height: 10),
-              Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
-              const SizedBox(height: 8),
-              if (!booking.hasTestPayment)
-                const Text(
-                    'This earlier booking uses payment arranged directly with the stall.'),
-            ]);
-          },
-        ),
+              ),
+            ),
+        ],
       );
 }

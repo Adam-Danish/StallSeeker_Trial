@@ -1446,7 +1446,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ),
                   Positioned(
                       right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      bottom: useSidePanel ? navClearance + 80 : 12,
+                      bottom: useSidePanel ? navClearance + 40 : 12,
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         FloatingActionButton.small(
                           heroTag: 'compass_button',
