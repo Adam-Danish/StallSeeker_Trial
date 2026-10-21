@@ -1125,363 +1125,482 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           final navClearance = MediaQuery.paddingOf(context).bottom + 12;
 
           const headerHeight = 52.0;
-          final cardAreaHeight = shortViewport ? 0.0 : 144.0;
-
+          final cardAreaHeight =
+              shortViewport ? 0.0 : (showingDishResults ? 144.0 : 112.0);
           final panelHeight = headerHeight + cardAreaHeight + navClearance;
 
+          final resultCount =
+              showingDishResults ? dishResults.length : onScreenVendors.length;
+          final resultLabel = showingDishResults
+              ? (resultCount == 1 ? 'dish nearby' : 'dishes nearby')
+              : query.isEmpty
+                  ? (resultCount == 1
+                      ? 'stall in this area'
+                      : 'stalls in this area')
+                  : (resultCount == 1
+                      ? 'matching stall in this area'
+                      : 'matching stalls in this area');
+
+          final useSidePanel =
+              constraints.maxWidth >= 900 && constraints.maxHeight >= 600;
+          final sidePanelWidth = math.min(420.0, constraints.maxWidth * .38);
+
           final cardWidth = constraints.maxWidth >= 600
-              ? 320.0
-              : (constraints.maxWidth * .78).clamp(220.0, 320.0).toDouble();
+              ? (!showingDishResults && onScreenVendors.length == 1
+                  ? math.min(520.0, constraints.maxWidth - 32)
+                  : 320.0)
+              : (constraints.maxWidth * .84).clamp(220.0, 360.0).toDouble();
 
-          final overlayWidth = math.max(0.0, constraints.maxWidth - 24);
+          final overlayWidth = math.max(
+            0.0,
+            constraints.maxWidth - (useSidePanel ? sidePanelWidth + 40 : 24),
+          );
+          final sidePanelHeight = math.min(
+            math.max(
+              180.0,
+              constraints.maxHeight - 12 - navClearance - 80,
+            ),
+            74.0 +
+                math.max(1, resultCount) * (showingDishResults ? 144.0 : 112.0),
+          );
 
-          _cardExtent = cardWidth + 12;
-
-          // Keep the existing return Column(...) below.
-          return Column(children: [
-            Expanded(
+          _cardExtent = useSidePanel
+              ? (showingDishResults ? 144.0 : 112.0)
+              : cardWidth + 12;
+          // Full map with a floating results panel on tablets.
+          return Stack(children: [
+            Positioned.fill(
+                bottom: useSidePanel ? 0 : panelHeight,
                 child: Stack(children: [
-              Positioned.fill(
-                  child: GoogleMap(
-                style: _mapStyle,
-                initialCameraPosition: _defaultPosition,
-                markers: markers,
-                myLocationEnabled: _locationPermissionGranted,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                compassEnabled: false,
-                padding: const EdgeInsets.fromLTRB(12, 206, 12, 12),
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                  if (_customerPosition != null) {
-                    _expectProgrammaticCameraMove();
-                    controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(_customerPosition!, 15));
-                  }
-                  _updateVisibleBounds();
-                },
-                onCameraMove: (position) {
-                  _mapCenter = position.target;
-                  _lastCameraPosition = position;
-                  if ((_mapBearing.value - position.bearing).abs() > .1) {
-                    _mapBearing.value = position.bearing;
-                  }
-                },
-                onCameraMoveStarted: () {
-                  _boundsRequest++;
-                  if (!_programmaticCameraMove) _cameraMovedByUser = true;
-                },
-                onCameraIdle: _updateVisibleBounds,
-                onTap: (_) {
-                  FocusScope.of(context).unfocus();
-                },
-              )),
-              Positioned(
-                  top: 12,
-                  left: 12,
-                  child: SizedBox(width: overlayWidth, child: _mapHeader())),
-              Positioned(
-                  top: 76,
-                  left: 12,
-                  child: SizedBox(
-                      width: overlayWidth,
-                      child: Material(
-                        elevation: 3,
-                        shadowColor: const Color(0x22000000),
-                        color: AppColors.cardColor.withValues(alpha: .94),
-                        borderRadius: BorderRadius.circular(25),
-                        child: TextField(
-                          controller: _searchController,
-                          focusNode: _searchFocus,
-                          textInputAction: TextInputAction.search,
-                          onTap: () => setState(() {}),
-                          onChanged: (value) => setState(() {
-                            _searchQuery = value;
-                            _selectedVendorId = null;
-                          }),
-                          onSubmitted: _submitSearch,
-                          decoration: InputDecoration(
-                            filled: false,
-                            hintText: 'Search dishes or stalls…',
-                            hintStyle: const TextStyle(
-                                fontSize: 13, color: AppColors.textMuted),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 16),
-                            prefixIcon: const Icon(Icons.search_rounded,
-                                color: AppColors.textMuted),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    tooltip: 'Clear search',
-                                    icon: const Icon(Icons.close_rounded),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() => _searchQuery = '');
-                                    })
-                                : AppDropdown<String>(
-                                    value: _category ?? 'All',
-                                    iconOnly: true,
-                                    icon: Icons.tune_rounded,
-                                    hint: 'Filter category',
-                                    options: {
-                                      'All': 'All',
-                                      for (final category in stallCategories)
-                                        category: category,
-                                    },
-                                    onChanged: (value) => setState(() {
-                                      _category = value == 'All' ? null : value;
+                  Positioned.fill(
+                      child: GoogleMap(
+                    style: _mapStyle,
+                    initialCameraPosition: _defaultPosition,
+                    markers: markers,
+                    myLocationEnabled: _locationPermissionGranted,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                    compassEnabled: false,
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      206,
+                      useSidePanel ? sidePanelWidth + 28 : 12,
+                      useSidePanel ? navClearance + 80 : 12,
+                    ),
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                      if (_customerPosition != null) {
+                        _expectProgrammaticCameraMove();
+                        controller.animateCamera(
+                            CameraUpdate.newLatLngZoom(_customerPosition!, 15));
+                      }
+                      _updateVisibleBounds();
+                    },
+                    onCameraMove: (position) {
+                      _mapCenter = position.target;
+                      _lastCameraPosition = position;
+                      if ((_mapBearing.value - position.bearing).abs() > .1) {
+                        _mapBearing.value = position.bearing;
+                      }
+                    },
+                    onCameraMoveStarted: () {
+                      _boundsRequest++;
+                      if (!_programmaticCameraMove) _cameraMovedByUser = true;
+                    },
+                    onCameraIdle: _updateVisibleBounds,
+                    onTap: (_) {
+                      FocusScope.of(context).unfocus();
+                    },
+                  )),
+                  Positioned(
+                      top: 12,
+                      left: 12,
+                      child:
+                          SizedBox(width: overlayWidth, child: _mapHeader())),
+                  Positioned(
+                      top: 76,
+                      left: 12,
+                      child: SizedBox(
+                          width: overlayWidth,
+                          child: Material(
+                            elevation: 3,
+                            shadowColor: const Color(0x22000000),
+                            color: AppColors.cardColor.withValues(alpha: .94),
+                            borderRadius: BorderRadius.circular(25),
+                            child: TextField(
+                              controller: _searchController,
+                              focusNode: _searchFocus,
+                              textInputAction: TextInputAction.search,
+                              onTap: () => setState(() {}),
+                              onChanged: (value) => setState(() {
+                                _searchQuery = value;
+                                _selectedVendorId = null;
+                              }),
+                              onSubmitted: _submitSearch,
+                              decoration: InputDecoration(
+                                filled: false,
+                                hintText: 'Search dishes or stalls…',
+                                hintStyle: const TextStyle(
+                                    fontSize: 13, color: AppColors.textMuted),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                prefixIcon: const Icon(Icons.search_rounded,
+                                    color: AppColors.textMuted),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                        tooltip: 'Clear search',
+                                        icon: const Icon(Icons.close_rounded),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() => _searchQuery = '');
+                                        })
+                                    : AppDropdown<String>(
+                                        value: _category ?? 'All',
+                                        iconOnly: true,
+                                        icon: Icons.tune_rounded,
+                                        hint: 'Filter category',
+                                        options: {
+                                          'All': 'All',
+                                          for (final category
+                                              in stallCategories)
+                                            category: category,
+                                        },
+                                        onChanged: (value) => setState(() {
+                                          _category =
+                                              value == 'All' ? null : value;
+                                          _selectedVendorId = null;
+                                        }),
+                                      ),
+                              ),
+                            ),
+                          ))),
+                  Positioned(
+                      top: 134,
+                      left: 12,
+                      right: useSidePanel ? sidePanelWidth + 28 : 12,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          ActionChip(
+                              avatar: const Icon(
+                                  Icons.edit_location_alt_outlined,
+                                  size: 18),
+                              label: const Text('Set location'),
+                              onPressed: _chooseLocationSource),
+                          const SizedBox(width: 8),
+                          AppDropdown<String>(
+                            value: _statusFilter,
+                            displayText:
+                                _openingTime != null ? 'Scheduled' : null,
+                            width: 155,
+                            compact: true,
+                            hint: 'Choose stall status',
+                            icon: Icons.storefront_outlined,
+                            options: const {
+                              'Open': 'Open now',
+                              'Closed': 'Closed',
+                              'All': 'All stalls',
+                            },
+                            onChanged: (status) => setState(() {
+                              _statusFilter = status;
+                              _openingTime = null;
+                            }),
+                          ),
+                          const SizedBox(width: 8),
+                          AppDropdown<String>(
+                            value: _category ?? 'All',
+                            displayText: _category ?? 'All categories',
+                            width: 190,
+                            compact: true,
+                            hint: 'Choose category',
+                            icon: Icons.category_outlined,
+                            options: {
+                              'All': 'All',
+                              for (final category in stallCategories)
+                                category: category,
+                            },
+                            onChanged: (value) => setState(() {
+                              _category = value == 'All' ? null : value;
+                              _selectedVendorId = null;
+                            }),
+                          ),
+                          const SizedBox(width: 8),
+                          InputChip(
+                            avatar:
+                                const Icon(Icons.payments_outlined, size: 18),
+                            label: Text(_priceRange?.label ?? 'Any price'),
+                            onPressed: _choosePriceRange,
+                            onDeleted: _priceRange == null
+                                ? null
+                                : () => setState(() {
+                                      _priceRange = null;
                                       _selectedVendorId = null;
                                     }),
-                                  ),
+                          ),
+                          const SizedBox(width: 8),
+                          InputChip(
+                            avatar: const Icon(Icons.schedule, size: 18),
+                            label: Text(_openingTime?.label ?? 'Open at…'),
+                            onPressed: _chooseOpeningTime,
+                            onDeleted: _openingTime == null
+                                ? null
+                                : () => setState(() {
+                                      _openingTime = null;
+                                      _statusFilter = 'Open';
+                                    }),
+                          ),
+                          if (_searchCenter != null ||
+                              _customerPosition != null) ...[
+                            const SizedBox(width: 8),
+                            AppDropdown<double>(
+                              value: _searchRadiusKm,
+                              width: 165,
+                              compact: true,
+                              hint: 'Choose distance',
+                              icon: Icons.radar,
+                              options: {
+                                for (final radius in [5.0, 10.0, 25.0, 50.0])
+                                  radius:
+                                      'Within ${radius.toStringAsFixed(0)} km',
+                              },
+                              onChanged: _setSearchRadius,
+                            ),
+                          ],
+                        ]),
+                      )),
+                  if (_showSearchArea)
+                    Positioned(
+                        top: 196,
+                        left: 0,
+                        right: useSidePanel ? sidePanelWidth + 28 : 0,
+                        child: Center(
+                            child: ElevatedButton.icon(
+                          onPressed: _searchThisArea,
+                          icon: const Icon(Icons.search, size: 18),
+                          label: const Text('Search this area'),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.cardColor,
+                              foregroundColor: AppColors.primary,
+                              elevation: 3),
+                        ))),
+                  if (_locationError != null)
+                    Positioned(
+                        top: _showSearchArea ? 250 : 202,
+                        left: 12,
+                        right: useSidePanel ? sidePanelWidth + 28 : 68,
+                        child: Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(children: [
+                              Expanded(
+                                  child: Text(_locationError!,
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12))),
+                              TextButton(
+                                  onPressed: _enterCustomerLocationManually,
+                                  child: const Text('Enter manually')),
+                            ]),
+                          ),
+                        ))
+                  else if (!shortViewport && _isLocatingCustomer)
+                    Positioned(
+                      top: _showSearchArea ? 250 : 202,
+                      left: 12,
+                      right: useSidePanel ? null : 68,
+                      child: Material(
+                        color: Colors.white,
+                        elevation: 3,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Finding your location…',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ],
                           ),
                         ),
-                      ))),
-              Positioned(
-                  top: 134,
-                  left: 12,
-                  right: 12,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(children: [
-                      ActionChip(
-                          avatar: const Icon(Icons.edit_location_alt_outlined,
-                              size: 18),
-                          label: const Text('Set location'),
-                          onPressed: _chooseLocationSource),
-                      const SizedBox(width: 8),
-                      AppDropdown<String>(
-                        value: _statusFilter,
-                        displayText: _openingTime != null ? 'Scheduled' : null,
-                        width: 155,
-                        compact: true,
-                        hint: 'Choose stall status',
-                        icon: Icons.storefront_outlined,
-                        options: const {
-                          'Open': 'Open now',
-                          'Closed': 'Closed',
-                          'All': 'All stalls',
-                        },
-                        onChanged: (status) => setState(() {
-                          _statusFilter = status;
-                          _openingTime = null;
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      AppDropdown<String>(
-                        value: _category ?? 'All',
-                        displayText: _category ?? 'All categories',
-                        width: 190,
-                        compact: true,
-                        hint: 'Choose category',
-                        icon: Icons.category_outlined,
-                        options: {
-                          'All': 'All',
-                          for (final category in stallCategories)
-                            category: category,
-                        },
-                        onChanged: (value) => setState(() {
-                          _category = value == 'All' ? null : value;
-                          _selectedVendorId = null;
-                        }),
-                      ),
-                      const SizedBox(width: 8),
-                      InputChip(
-                        avatar: const Icon(Icons.payments_outlined, size: 18),
-                        label: Text(_priceRange?.label ?? 'Any price'),
-                        onPressed: _choosePriceRange,
-                        onDeleted: _priceRange == null
-                            ? null
-                            : () => setState(() {
-                                  _priceRange = null;
-                                  _selectedVendorId = null;
-                                }),
-                      ),
-                      const SizedBox(width: 8),
-                      InputChip(
-                        avatar: const Icon(Icons.schedule, size: 18),
-                        label: Text(_openingTime?.label ?? 'Open at…'),
-                        onPressed: _chooseOpeningTime,
-                        onDeleted: _openingTime == null
-                            ? null
-                            : () => setState(() {
-                                  _openingTime = null;
-                                  _statusFilter = 'Open';
-                                }),
-                      ),
-                      if (_searchCenter != null ||
-                          _customerPosition != null) ...[
-                        const SizedBox(width: 8),
-                        AppDropdown<double>(
-                          value: _searchRadiusKm,
-                          width: 165,
-                          compact: true,
-                          hint: 'Choose distance',
-                          icon: Icons.radar,
-                          options: {
-                            for (final radius in [5.0, 10.0, 25.0, 50.0])
-                              radius: 'Within ${radius.toStringAsFixed(0)} km',
-                          },
-                          onChanged: _setSearchRadius,
-                        ),
-                      ],
-                    ]),
-                  )),
-              if (_showSearchArea)
-                Positioned(
-                    top: 196,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                        child: ElevatedButton.icon(
-                      onPressed: _searchThisArea,
-                      icon: const Icon(Icons.search, size: 18),
-                      label: const Text('Search this area'),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.cardColor,
-                          foregroundColor: AppColors.primary,
-                          elevation: 3),
-                    ))),
-              if (_locationError != null)
-                Positioned(
-                    top: _showSearchArea ? 250 : 202,
-                    left: 12,
-                    right: 68,
-                    child: Material(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Row(children: [
-                          Expanded(
-                              child: Text(_locationError!,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12))),
-                          TextButton(
-                              onPressed: _enterCustomerLocationManually,
-                              child: const Text('Enter manually')),
-                        ]),
-                      ),
-                    ))
-              else if (!shortViewport && _isLocatingCustomer)
-                Positioned(
-                    top: 202,
-                    left: 12,
-                    right: 68,
-                    child: Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Text('Finding your location…',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12))))),
-              Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    FloatingActionButton.small(
-                      heroTag: 'compass_button',
-                      tooltip: 'Reset compass',
-                      backgroundColor: Colors.white,
-                      foregroundColor: AppColors.textDark,
-                      onPressed: _resetCompass,
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: _mapBearing,
-                        child: const Icon(Icons.navigation_rounded),
-                        builder: (context, bearing, child) => Transform.rotate(
-                          angle: -bearing * math.pi / 180,
-                          child: child,
-                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton.small(
-                      heroTag: 'recenter_button',
-                      tooltip: 'My location',
-                      backgroundColor: Colors.white,
-                      foregroundColor: AppColors.textDark,
-                      onPressed: _getCustomerLocation,
-                      child: _isLocatingCustomer
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.my_location_rounded),
+                  Positioned(
+                      right: useSidePanel ? sidePanelWidth + 28 : 12,
+                      bottom: useSidePanel ? navClearance + 80 : 12,
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        FloatingActionButton.small(
+                          heroTag: 'compass_button',
+                          tooltip: 'Reset compass',
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppColors.textDark,
+                          onPressed: _resetCompass,
+                          child: ValueListenableBuilder<double>(
+                            valueListenable: _mapBearing,
+                            child: const Icon(Icons.navigation_rounded),
+                            builder: (context, bearing, child) =>
+                                Transform.rotate(
+                              angle: -bearing * math.pi / 180,
+                              child: child,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        FloatingActionButton.small(
+                          heroTag: 'recenter_button',
+                          tooltip: 'My location',
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppColors.textDark,
+                          onPressed: _getCustomerLocation,
+                          child: _isLocatingCustomer
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.my_location_rounded),
+                        ),
+                      ])),
+                  if (showSuggestions)
+                    Positioned(
+                      top: 135,
+                      left: 12,
+                      child: SizedBox(
+                          width: useSidePanel
+                              ? math.max(
+                                  0.0,
+                                  constraints.maxWidth - sidePanelWidth - 40,
+                                )
+                              : overlayWidth,
+                          child: _suggestionPanel(suggestions)),
                     ),
-                  ])),
-              if (showSuggestions)
-                Positioned(
-                  top: 135,
-                  left: 12,
-                  child: SizedBox(
-                      width: overlayWidth,
-                      child: _suggestionPanel(suggestions)),
-                ),
-            ])),
-            SizedBox(
-                height: panelHeight,
+                ])),
+            Positioned(
+                top: useSidePanel ? 12 : null,
+                left: useSidePanel ? null : 0,
+                right: useSidePanel ? 16 : 0,
+                bottom: useSidePanel ? null : 0,
+                width: useSidePanel ? sidePanelWidth : null,
+                height: useSidePanel ? sidePanelHeight : panelHeight,
                 child: Material(
-                  color: AppColors.cardColor,
+                  color: AppColors.background,
                   elevation: 10,
                   shadowColor: const Color(0x26000000),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(26)),
+                  borderRadius: useSidePanel
+                      ? BorderRadius.circular(26)
+                      : const BorderRadius.vertical(top: Radius.circular(26)),
                   clipBehavior: Clip.antiAlias,
                   child: Column(children: [
-                    const SizedBox(
+                    if (useSidePanel)
+                      const SizedBox(height: 12)
+                    else
+                      const SizedBox(
                         height: 10,
                         child: Center(
-                            child: SizedBox(
-                          width: 36,
-                          height: 4,
-                          child: DecoratedBox(
+                          child: SizedBox(
+                            width: 36,
+                            height: 4,
+                            child: DecoratedBox(
                               decoration: BoxDecoration(
-                            color: AppColors.border,
-                            borderRadius: BorderRadius.all(Radius.circular(4)),
-                          )),
-                        ))),
+                                color: AppColors.border,
+                                borderRadius:
+                                    BorderRadius.all(Radius.circular(4)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     SizedBox(
-                        height: 42,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 16, right: 8),
-                          child: Row(children: [
-                            Expanded(
+                      height: 42,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 16, right: 8),
+                        child: Row(
+                          children: [
+                            if (!snapshot.hasError &&
+                                snapshot.connectionState !=
+                                    ConnectionState.waiting) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.mint,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                                 child: Text(
-                                    snapshot.hasError
-                                        ? 'Could not load stalls'
-                                        : snapshot.connectionState ==
-                                                ConnectionState.waiting
-                                            ? 'Finding stalls…'
-                                            : showingDishResults
-                                                ? '${dishResults.length} dishes nearby'
-                                                : query.isEmpty
-                                                    ? '${onScreenVendors.length} stalls in this area'
-                                                    : '${onScreenVendors.length} matching stalls in this area',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700))),
-                            TextButton(
+                                  '$resultCount',
+                                  style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: Text(
+                                snapshot.hasError
+                                    ? 'Could not load stalls'
+                                    : snapshot.connectionState ==
+                                            ConnectionState.waiting
+                                        ? 'Finding stalls…'
+                                        : resultLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (snapshot.hasError ||
+                                (snapshot.connectionState !=
+                                        ConnectionState.waiting &&
+                                    resultCount > 1))
+                              TextButton(
                                 onPressed: snapshot.hasError
                                     ? () => setState(() => _vendors =
                                         _vendorService.getAllVendors())
                                     : showingDishResults
                                         ? () => _showAllDishes(
-                                            dishResults, filteredVendorById)
-                                        : onScreenVendors.isEmpty
-                                            ? null
-                                            : () =>
-                                                _showAllStalls(onScreenVendors),
+                                              dishResults,
+                                              filteredVendorById,
+                                            )
+                                        : () => _showAllStalls(onScreenVendors),
                                 child: Text(
-                                    snapshot.hasError ? 'Retry' : 'View all')),
-                          ]),
-                        )),
+                                  snapshot.hasError ? 'Retry' : 'View all',
+                                  style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                     if (!shortViewport)
                       Expanded(
                           child: snapshot.connectionState ==
@@ -1490,20 +1609,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               : showingDishResults
                                   ? ListView.builder(
                                       controller: _stallScrollController,
-                                      scrollDirection: Axis.horizontal,
-                                      padding: const EdgeInsets.fromLTRB(
-                                          16, 0, 4, 10),
+                                      scrollDirection: useSidePanel
+                                          ? Axis.vertical
+                                          : Axis.horizontal,
+                                      padding: useSidePanel
+                                          ? const EdgeInsets.fromLTRB(
+                                              12, 8, 12, 12)
+                                          : const EdgeInsets.fromLTRB(
+                                              16, 0, 4, 10),
                                       itemCount: dishResults.length,
                                       itemExtent: _cardExtent,
                                       itemBuilder: (context, index) {
                                         final dish = dishResults[index];
                                         return Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 12),
+                                          padding: useSidePanel
+                                              ? const EdgeInsets.only(bottom: 8)
+                                              : const EdgeInsets.only(
+                                                  right: 12),
                                           child: _dishCard(
-                                              dish,
-                                              filteredVendorById[
-                                                  dish.vendorId]!),
+                                            dish,
+                                            filteredVendorById[dish.vendorId]!,
+                                          ),
                                         );
                                       },
                                     )
@@ -1545,20 +1671,40 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                                       fontSize: 13))))
                                       : ListView.builder(
                                           controller: _stallScrollController,
-                                          scrollDirection: Axis.horizontal,
-                                          padding: const EdgeInsets.fromLTRB(
-                                              16, 0, 4, 4),
+                                          scrollDirection: useSidePanel
+                                              ? Axis.vertical
+                                              : Axis.horizontal,
+                                          padding: useSidePanel
+                                              ? const EdgeInsets.fromLTRB(
+                                                  12, 8, 12, 12)
+                                              : EdgeInsets.fromLTRB(
+                                                  onScreenVendors.length == 1
+                                                      ? math.max(
+                                                          16.0,
+                                                          (constraints.maxWidth -
+                                                                  _cardExtent) /
+                                                              2,
+                                                        )
+                                                      : 16,
+                                                  0,
+                                                  4,
+                                                  8,
+                                                ),
                                           itemCount: onScreenVendors.length,
                                           itemExtent: _cardExtent,
                                           itemBuilder: (context, index) =>
                                               Padding(
-                                            padding: const EdgeInsets.only(
-                                                right: 12),
+                                            padding: useSidePanel
+                                                ? const EdgeInsets.only(
+                                                    bottom: 8)
+                                                : const EdgeInsets.only(
+                                                    right: 12),
                                             child: _stallCard(
-                                                onScreenVendors[index]),
+                                              onScreenVendors[index],
+                                            ),
                                           ),
                                         )),
-                    SizedBox(height: navClearance),
+                    SizedBox(height: useSidePanel ? 0 : navClearance),
                   ]),
                 )),
           ]);
@@ -1681,81 +1827,97 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Widget _stallCard(VendorModel vendor) {
     final selected = vendor.vendorId == _selectedVendorId;
+    final distance = _distanceTo(vendor);
+
     return Material(
       color: selected ? AppColors.mint : AppColors.cardColor,
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.5 : 1)),
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(
+          color: selected ? AppColors.primary : AppColors.border,
+          width: selected ? 1.5 : 1,
+        ),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _selectVendor(vendor),
         onDoubleTap: () => _openVendorDetails(vendor),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 8, 6),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const SizedBox(height: 4),
-            Row(children: [
-              _stallPhoto(vendor),
-              const SizedBox(width: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              _stallPhoto(vendor, size: 48),
+              const SizedBox(width: 12),
               Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(vendor.stallName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 3),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                        [
-                          vendor.category,
-                          _stallStatus(vendor),
-                          if (_distanceTo(vendor) != null) _distanceTo(vendor)!
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xFF64748B))),
-                  ])),
-              if (selected)
-                const Padding(
-                    padding: EdgeInsets.only(left: 4),
-                    child: Icon(Icons.location_on_rounded,
-                        color: AppColors.primary, size: 18)),
-            ]),
-            const Spacer(),
-            Row(children: [
-              Icon(
-                  vendor.hasFreshLocation
-                      ? Icons.circle
-                      : Icons.history_rounded,
-                  size: 10,
-                  color: vendor.hasFreshLocation
-                      ? const Color(0xFF15803D)
-                      : const Color(0xFF92400E)),
-              const SizedBox(width: 5),
-              Expanded(
-                  child: Text(
-                      vendor.hasFreshLocation
-                          ? 'Location updated'
-                          : 'Last known location',
+                      vendor.stallName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 10, color: Color(0xFF64748B)))),
-              TextButton(
-                  onPressed: () => _openVendorDetails(vendor),
-                  style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      visualDensity: VisualDensity.compact),
-                  child:
-                      const Text('View stall', style: TextStyle(fontSize: 11))),
-            ]),
-          ]),
+                        color: AppColors.textDark,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        vendor.category,
+                        _stallStatus(vendor),
+                        if (distance != null) distance,
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          vendor.hasFreshLocation
+                              ? Icons.circle
+                              : Icons.history_rounded,
+                          size: 11,
+                          color: vendor.hasFreshLocation
+                              ? AppColors.openGreen
+                              : AppColors.primary,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            vendor.hasFreshLocation
+                                ? 'Location updated'
+                                : 'Last known location',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'View stall',
+                onPressed: () => _openVendorDetails(vendor),
+                icon: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
