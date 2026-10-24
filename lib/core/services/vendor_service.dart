@@ -27,10 +27,22 @@ class VendorService {
 // update stall infroamtion
   Future<void> saveVendorProfile(VendorModel vendor) async {
     try {
-      await _vendorsRef.doc(vendor.vendorId).set(
-            vendor.toProfileMap(),
-            SetOptions(merge: true),
-          );
+      final ref = _vendorsRef.doc(vendor.vendorId);
+      await _firestore.runTransaction((transaction) async {
+        final existing = await transaction.get(ref);
+        final data = existing.data() as Map<String, dynamic>?;
+        final firstProfile = !existing.exists ||
+            (data?['stallName'] as String? ?? '').trim().isEmpty;
+        transaction.set(
+            ref,
+            {
+              ...vendor.toProfileMap(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              if (firstProfile && data?['createdAt'] == null)
+                'createdAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true));
+      });
     } catch (e) {
       debugPrint('Error saving vendor profile: $e');
       rethrow;
@@ -53,11 +65,8 @@ class VendorService {
 
 // update location
   Future<void> updateVendorLocation(
-    String vendorId,
-    double latitude,
-    double longitude,
-    {bool sharingActive = true}
-  ) async {
+      String vendorId, double latitude, double longitude,
+      {bool sharingActive = true}) async {
     try {
       await _vendorsRef.doc(vendorId).set({
         'vendorId': vendorId,

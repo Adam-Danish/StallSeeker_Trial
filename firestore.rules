@@ -68,6 +68,40 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/users/$(userId)).data.role == 'customer';
     }
 
+    function validSavedSearch(data) {
+      let f = data.filters;
+      return data.keys().hasOnly(['name', 'filters', 'savedAt'])
+          && data.keys().hasAll(['name', 'filters', 'savedAt'])
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+          && data.savedAt == request.time
+          && f is map
+          && f.keys().hasOnly(['query', 'category', 'minimum', 'maximum',
+              'radius', 'status', 'sort', 'availableOnly', 'selfCollectOnly',
+              'recentOnly', 'listOnly', 'latitude', 'longitude',
+              'openingStart', 'openingEnd', 'openingLabel'])
+          && f.keys().hasAll(['query', 'category', 'minimum', 'maximum',
+              'radius', 'status', 'sort', 'availableOnly', 'selfCollectOnly',
+              'recentOnly', 'listOnly', 'latitude', 'longitude',
+              'openingStart', 'openingEnd', 'openingLabel'])
+          && f.query is string && f.query.size() <= 100
+          && (f.category == null || (f.category is string && f.category.size() <= 80))
+          && (f.minimum == null || (f.minimum is number && f.minimum >= 0 && f.minimum <= 100000))
+          && (f.maximum == null || (f.maximum is number && f.maximum >= 0 && f.maximum <= 100000))
+          && (f.minimum == null || f.maximum == null || f.minimum <= f.maximum)
+          && f.radius in [5, 10, 25, 50]
+          && f.status in ['Open', 'Closed', 'All']
+          && f.sort in ['distance', 'price', 'rating', 'newest', 'updated']
+          && f.availableOnly is bool && f.selfCollectOnly is bool
+          && f.recentOnly is bool && f.listOnly is bool
+          && ((f.latitude == null && f.longitude == null)
+              || (f.latitude is number && f.latitude >= -90 && f.latitude <= 90
+                  && f.longitude is number && f.longitude >= -180 && f.longitude <= 180))
+          && ((f.openingStart == null && f.openingEnd == null && f.openingLabel == null)
+              || (f.openingStart is int && f.openingStart >= 0
+                  && (f.openingEnd == null || (f.openingEnd is int && f.openingEnd > f.openingStart))
+                  && f.openingLabel is string && f.openingLabel.size() <= 100));
+    }
+
     function validDishFollow(data, userId, followId) {
       return data.keys().hasOnly(['customerId', 'vendorId', 'itemId', 'followedAt'])
           && data.keys().hasAll(['customerId', 'vendorId', 'itemId', 'followedAt'])
@@ -169,6 +203,13 @@ service cloud.firestore {
         allow read, delete: if ownsCustomer(userId);
         allow create, update: if ownsCustomer(userId)
             && validSavedLocation(request.resource.data, locationId);
+      }
+
+      match /savedSearches/{searchId} {
+        allow read, delete: if ownsCustomer(userId);
+        allow create, update: if ownsCustomer(userId)
+            && searchId.size() <= 1400
+            && validSavedSearch(request.resource.data);
       }
 
       match /dishFollows/{followId} {

@@ -9,6 +9,11 @@ class MenuItemModel {
   final String imageUrl;
   final String section;
   final DateTime? statusUpdatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final String description;
+  final String portionSize;
+  final List<String> ingredients;
 
   MenuItemModel({
     required this.itemId,
@@ -18,6 +23,11 @@ class MenuItemModel {
     this.imageUrl = '',
     this.section = 'Main menu',
     this.statusUpdatedAt,
+    this.createdAt,
+    this.updatedAt,
+    this.description = '',
+    this.portionSize = '',
+    this.ingredients = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -28,8 +38,14 @@ class MenuItemModel {
       'status': status,
       'imageUrl': imageUrl,
       'section': section,
+      'description': description,
+      'portionSize': portionSize,
+      'ingredients': ingredients,
+      if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
       'statusUpdatedAt': statusUpdatedAt == null
-          ? FieldValue.serverTimestamp() : Timestamp.fromDate(statusUpdatedAt!),
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(statusUpdatedAt!),
     };
   }
 
@@ -41,8 +57,16 @@ class MenuItemModel {
       status: map['status'] ?? 'available',
       imageUrl: map['imageUrl'] ?? '',
       section: (map['section'] as String?)?.trim().isNotEmpty == true
-          ? map['section'] as String : 'Main menu',
+          ? map['section'] as String
+          : 'Main menu',
       statusUpdatedAt: (map['statusUpdatedAt'] as Timestamp?)?.toDate(),
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
+      description: map['description'] as String? ?? '',
+      portionSize: map['portionSize'] as String? ?? '',
+      ingredients: map['ingredients'] is List
+          ? (map['ingredients'] as List).whereType<String>().toList()
+          : const [],
     );
   }
 }

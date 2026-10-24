@@ -58,6 +58,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   final _dishSearch = TextEditingController();
   String _dishQuery = '';
   String? _focusedDishId;
+  final _selectedDishKey = GlobalKey();
+  bool _revealedSelectedDish = false;
   final _followedDishIds = <String>{};
   final _savingDishes = <String>{};
   StreamSubscription<List<DishFollowModel>>? _dishFollowSub;
@@ -593,8 +595,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                 : const Color(0xFFB42318),
             Icons.circle,
           ),
-          if (_vendor.category.isNotEmpty)
-            _badge(_vendor.category, const Color(0xFF64748B),
+          if (_vendor.categoryLabel.isNotEmpty)
+            _badge(_vendor.categoryLabel, const Color(0xFF64748B),
                 Icons.restaurant_outlined),
         ],
       ),
@@ -744,7 +746,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Row(children: [
-            const Expanded(child: Text('Showing your followed dish')),
+            const Expanded(child: Text('Showing the selected dish')),
             TextButton(
               onPressed: () => setState(() => _focusedDishId = null),
               child: const Text('Show all dishes'),
@@ -818,6 +820,16 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
             );
           }
           final sections = <String, List<MenuItemModel>>{};
+          if (_focusedDishId != null && !_revealedSelectedDish) {
+            _revealedSelectedDish = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final target = _selectedDishKey.currentContext;
+              if (mounted && target != null) {
+                Scrollable.ensureVisible(target,
+                    duration: const Duration(milliseconds: 300), alignment: .1);
+              }
+            });
+          }
           for (final item in filtered) {
             sections.putIfAbsent(item.section, () => []).add(item);
           }
@@ -827,15 +839,26 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
               for (final entry in sections.entries) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    entry.key,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                        color: AppColors.mint,
+                        borderRadius: BorderRadius.circular(16)),
+                    child: Row(children: [
+                      Expanded(
+                          child: Text(entry.key,
+                              style: const TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w700))),
+                      Text('${entry.value.length}',
+                          style: const TextStyle(color: AppColors.primary)),
+                    ]),
                   ),
                 ),
-                ...entry.value.map(_menuCard),
+                ...entry.value.map((item) => KeyedSubtree(
+                    key:
+                        item.itemId == _focusedDishId ? _selectedDishKey : null,
+                    child: _menuCard(item))),
               ],
             ],
           );
@@ -975,6 +998,22 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppColors.primary)),
+                const SizedBox(height: 8),
+                if (item.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(item.description,
+                      style: const TextStyle(color: AppColors.textMuted)),
+                ],
+                if (item.portionSize.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text('Portion: ${item.portionSize}'),
+                ],
+                if (item.ingredients.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text('Ingredients: ${item.ingredients.join(', ')}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ],
                 const SizedBox(height: 8),
                 _badge(_statusLabel(item.status), _statusColor(item.status),
                     Icons.circle),

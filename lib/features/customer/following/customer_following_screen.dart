@@ -285,7 +285,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                 fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
         subtitle: Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(vendor.category,
+            child: Text(vendor.categoryLabel,
                 style: const TextStyle(
                     fontSize: 14, color: Color(0xFF8E8E93), letterSpacing: 0))),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [

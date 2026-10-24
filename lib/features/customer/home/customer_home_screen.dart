@@ -1,3 +1,6 @@
+import 'discovery_options.dart';
+import '../../../core/services/stall_review_service.dart';
+import '../../../core/services/saved_search_service.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/demo_order_service.dart';
 import '../notifications/customer_notifications_screen.dart';
@@ -69,6 +72,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Timer? _cameraMoveGuard;
   bool _cameraMovedByUser = false;
   int _boundsRequest = 0;
+  DiscoverySort _sort = DiscoverySort.distance;
+  bool _listOnly = false;
+  bool _availableOnly = false;
+  bool _selfCollectOnly = false;
+  bool _recentOnly = false;
+  final _reviewService = StallReviewService();
+  final _savedSearches = SavedSearchService();
+  final _ratings = <String, StallRatingSummary>{};
+  final _ratingErrors = <String>{};
+  final _ratingSubscriptions = <String, StreamSubscription<dynamic>>{};
+  static const _clusterId = ClusterManagerId('nearby-stalls');
   OpeningTimeFilter? _openingTime;
   MenuPriceRange? _priceRange;
 
@@ -129,7 +143,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _vendors = _vendorService.getAllVendors();
+    _vendors = _watchVendors();
     _searchFocus.addListener(_onSearchFocusChanged);
     _dishSubscription = _dishSearchService.watchAllDishes().listen(
       (dishes) {
@@ -173,6 +187,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ..removeListener(_onSearchFocusChanged)
       ..dispose();
     _dishSubscription?.cancel();
+    for (final subscription in _ratingSubscriptions.values) {
+      subscription.cancel();
+    }
     _mapController?.dispose();
     _mapBearing.dispose();
     _stallScrollController.dispose();
@@ -952,30 +969,477 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       );
 
+  Stream<List<VendorModel>> _watchVendors() =>
+      _vendorService.getAllVendors().map((vendors) {
+        final ids = vendors.map((vendor) => vendor.vendorId).toSet();
+        for (final id in _ratingSubscriptions.keys.toList()) {
+          if (!ids.contains(id)) {
+            _ratingSubscriptions.remove(id)?.cancel();
+            _ratings.remove(id);
+            _ratingErrors.remove(id);
+          }
+        }
+        for (final id in ids) {
+          _ratingSubscriptions.putIfAbsent(
+              id,
+              () => _reviewService.watchReviews(id).listen((reviews) {
+                    if (!mounted) return;
+                    setState(() {
+                      _ratingErrors.remove(id);
+                      _ratings[id] = StallRatingSummary(
+                          reviews.isEmpty
+                              ? 0
+                              : reviews.fold<int>(
+                                      0, (sum, review) => sum + review.rating) /
+                                  reviews.length,
+                          reviews.length);
+                    });
+                  }, onError: (Object _) {
+                    if (mounted) setState(() => _ratingErrors.add(id));
+                  }));
+        }
+        return vendors;
+      });
+
+  Widget _ratingLine(VendorModel vendor) {
+    final summary = _ratings[vendor.vendorId];
+    final text = _ratingErrors.contains(vendor.vendorId)
+        ? 'Rating unavailable'
+        : summary == null
+            ? 'Loading rating…'
+            : summary.count == 0
+                ? 'No reviews yet'
+                : '${summary.average.toStringAsFixed(1)} (${summary.count} ${summary.count == 1 ? 'review' : 'reviews'})';
+    return Row(children: [
+      const Icon(Icons.star_rounded, size: 15, color: Color(0xFF946000)),
+      const SizedBox(width: 4),
+      Expanded(
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textMuted))),
+    ]);
+  }
+
+  Future<void> _zoomToCluster(Cluster cluster) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    try {
+      if (cluster.bounds.southwest == cluster.bounds.northeast) {
+        final zoom = await controller.getZoomLevel();
+        await controller.animateCamera(CameraUpdate.newLatLngZoom(
+            cluster.position, (zoom + 2).clamp(0, 21).toDouble()));
+      } else {
+        await controller
+            .animateCamera(CameraUpdate.newLatLngBounds(cluster.bounds, 60));
+      }
+    } catch (_) {
+      // The map may have been closed while its camera was updating.
+    }
+  }
+
+  bool get _canSaveSearch =>
+      FirebaseAuth.instance.currentUser != null &&
+      FirebaseAuth.instance.currentUser!.isAnonymous == false &&
+      FirebaseAuth.instance.currentUser!.emailVerified;
+
+  List<Widget> _extraDiscoveryControls() => [
+        ActionChip(
+            avatar: Icon(
+                _listOnly ? Icons.map_outlined : Icons.view_list_outlined,
+                size: 18),
+            label: Text(_listOnly ? 'Map view' : 'List view'),
+            onPressed: () {
+              _searchFocus.unfocus();
+              setState(() {
+                _listOnly = !_listOnly;
+                _selectedVendorId = null;
+                _visibleBounds = null;
+                if (_listOnly) _mapController = null;
+              });
+            }),
+        const SizedBox(width: 8),
+        AppDropdown<DiscoverySort>(
+            value: _sort,
+            width: 210,
+            compact: true,
+            hint: 'Sort results',
+            icon: Icons.sort,
+            options: {
+              for (final sort in DiscoverySort.values) sort: sort.label
+            },
+            onChanged: (sort) => setState(() {
+                  _sort = sort;
+                  _selectedVendorId = null;
+                })),
+        const SizedBox(width: 8),
+        FilterChip(
+            label: const Text('Available dishes'),
+            selected: _availableOnly,
+            onSelected: (value) => setState(() {
+                  _availableOnly = value;
+                  _selectedVendorId = null;
+                })),
+        const SizedBox(width: 8),
+        FilterChip(
+            label: const Text('Self-collect'),
+            selected: _selfCollectOnly,
+            onSelected: (value) => setState(() {
+                  _selfCollectOnly = value;
+                  _selectedVendorId = null;
+                })),
+        const SizedBox(width: 8),
+        FilterChip(
+            label: const Text('Updated in 24h'),
+            selected: _recentOnly,
+            onSelected: (value) => setState(() {
+                  _recentOnly = value;
+                  _selectedVendorId = null;
+                })),
+        if (_canSaveSearch) ...[
+          const SizedBox(width: 8),
+          ActionChip(
+              avatar: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: const Text('Save search'),
+              onPressed: _saveCurrentSearch),
+          const SizedBox(width: 8),
+          ActionChip(
+              avatar: const Icon(Icons.bookmarks_outlined, size: 18),
+              label: const Text('Saved searches'),
+              onPressed: _showSavedSearches),
+        ],
+        const SizedBox(width: 8),
+      ];
+
+  Widget _buildDiscoveryList(
+      AsyncSnapshot<List<VendorModel>> snapshot,
+      List<VendorModel> vendors,
+      List<DishSearchEntry> dishes,
+      Map<String, VendorModel> vendorById,
+      List<DiscoverySuggestion> suggestions) {
+    final showDishes = _searchQuery.trim().isNotEmpty && dishes.isNotEmpty;
+    final count = showDishes ? dishes.length : vendors.length;
+    return Column(children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: _mapHeader()),
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocus,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() {
+                    _searchQuery = value;
+                    _selectedVendorId = null;
+                  }),
+              onSubmitted: _submitSearch,
+              decoration: InputDecoration(
+                  hintText: 'Search dishes or stalls…',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                                _selectedVendorId = null;
+                              }))))),
+      Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 0, 4),
+          child: _standardDiscoveryFilters()),
+      if (suggestions.isNotEmpty)
+        ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: _suggestionPanel(suggestions)),
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(children: [
+            Expanded(
+                child: Text('$count ${showDishes ? 'dishes' : 'stalls'}',
+                    style: const TextStyle(fontWeight: FontWeight.w700))),
+            if ((_searchCenter ?? _customerPosition) == null)
+              const Flexible(
+                  child: Text('Set a location for distance sorting',
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted))),
+          ])),
+      Expanded(
+          child: snapshot.hasError
+              ? Center(
+                  child: TextButton(
+                      onPressed: () =>
+                          setState(() => _vendors = _watchVendors()),
+                      child: const Text('Retry loading stalls')))
+              : snapshot.connectionState == ConnectionState.waiting
+                  ? const Center(child: CircularProgressIndicator())
+                  : count == 0
+                      ? Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                  _dishesLoading
+                                      ? 'Loading dishes…'
+                                      : _dishSearchError ??
+                                          'No results match these filters. Try another search or a wider area.',
+                                  textAlign: TextAlign.center)))
+                      : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(16, 4, 16,
+                              MediaQuery.paddingOf(context).bottom + 24),
+                          itemCount: count,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final scaled =
+                                MediaQuery.textScalerOf(context).scale(14) > 19;
+                            return SizedBox(
+                                height: scaled
+                                    ? 210
+                                    : showDishes
+                                        ? 144
+                                        : 136,
+                                child: showDishes
+                                    ? _dishCard(dishes[index],
+                                        vendorById[dishes[index].vendorId]!)
+                                    : _stallCard(vendors[index]));
+                          })),
+    ]);
+  }
+
+  Map<String, dynamic> _currentSearchFilters() {
+    final center = _searchCenter ?? _customerPosition;
+    return {
+      'query': _searchController.text.trim(),
+      'category': _category,
+      'minimum': _priceRange?.minimum,
+      'maximum': _priceRange?.maximum,
+      'radius': _searchRadiusKm,
+      'status': _statusFilter,
+      'sort': _sort.name,
+      'availableOnly': _availableOnly,
+      'selfCollectOnly': _selfCollectOnly,
+      'recentOnly': _recentOnly,
+      'listOnly': _listOnly,
+      'latitude': center?.latitude,
+      'longitude': center?.longitude,
+      'openingStart': _openingTime?.start.millisecondsSinceEpoch,
+      'openingEnd': _openingTime?.end?.millisecondsSinceEpoch,
+      'openingLabel': _openingTime?.label,
+    };
+  }
+
+  Future<void> _saveCurrentSearch() async {
+    if (!_canSaveSearch) return;
+    _searchFocus.unfocus();
+    final filters = _currentSearchFilters();
+    final query = _searchController.text.trim();
+    var name =
+        '${query.isEmpty ? 'Nearby stalls' : query}${_priceRange == null ? '' : ' · ${_priceRange!.label}'} · within ${_searchRadiusKm.toStringAsFixed(0)} km';
+    if (name.length > 80) name = name.substring(0, 80);
+    final chosen = await showDialog<String>(
+        context: context,
+        builder: (dialog) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+                    title: const Text('Save this search'),
+                    content: TextFormField(
+                        initialValue: name,
+                        maxLength: 80,
+                        decoration:
+                            const InputDecoration(labelText: 'Search name'),
+                        onChanged: (value) => update(() => name = value)),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialog),
+                          child: const Text('Cancel')),
+                      FilledButton(
+                          onPressed: name.trim().isEmpty
+                              ? null
+                              : () => Navigator.pop(dialog, name.trim()),
+                          child: const Text('Save')),
+                    ])));
+    if (chosen == null || !mounted || !_canSaveSearch) return;
+    try {
+      await _savedSearches.save(chosen, filters);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Search saved.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not save this search. Please retry.')));
+      }
+    }
+  }
+
+  Future<void> _showSavedSearches() async {
+    if (!_canSaveSearch) return;
+    _searchFocus.unfocus();
+    var future = _savedSearches.load();
+    final selected = await showModalBottomSheet<SavedDiscoverySearch>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (sheet) => StatefulBuilder(
+            builder: (context, update) => SizedBox(
+                height: MediaQuery.sizeOf(context).height * .65,
+                child: Column(children: [
+                  ListTile(
+                      title: const Text('Saved searches'),
+                      trailing: IconButton(
+                          tooltip: 'Close',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(sheet))),
+                  Expanded(
+                      child: FutureBuilder<List<SavedDiscoverySearch>>(
+                          future: future,
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return Center(
+                                  child: TextButton(
+                                      onPressed: () => update(
+                                          () => future = _savedSearches.load()),
+                                      child: const Text(
+                                          'Retry loading saved searches')));
+                            }
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
+                            final searches = snapshot.data!;
+                            if (searches.isEmpty) {
+                              return const Center(
+                                  child: Text('No saved searches yet.'));
+                            }
+                            return ListView.builder(
+                                itemCount: searches.length,
+                                itemBuilder: (context, index) {
+                                  final search = searches[index];
+                                  return ListTile(
+                                      title: Text(search.name),
+                                      leading:
+                                          const Icon(Icons.bookmark_outline),
+                                      onTap: () => Navigator.pop(sheet, search),
+                                      trailing: IconButton(
+                                          tooltip: 'Delete saved search',
+                                          icon:
+                                              const Icon(Icons.delete_outline),
+                                          onPressed: () async {
+                                            try {
+                                              await _savedSearches
+                                                  .remove(search.id);
+                                              if (context.mounted) {
+                                                update(() => future =
+                                                    _savedSearches.load());
+                                              }
+                                            } catch (_) {
+                                              if (sheet.mounted) {
+                                                ScaffoldMessenger.of(sheet)
+                                                    .showSnackBar(const SnackBar(
+                                                        content: Text(
+                                                            'Could not delete this search.')));
+                                              }
+                                            }
+                                          }));
+                                });
+                          })),
+                ]))));
+    if (selected == null || !mounted || !_canSaveSearch) return;
+    final filters = selected.filters;
+    setState(() {
+      _searchQuery = filters['query'] as String;
+      _searchController.text = _searchQuery;
+      _searchController.selection =
+          TextSelection.collapsed(offset: _searchQuery.length);
+      _category = filters['category'] as String?;
+      final minimum = (filters['minimum'] as num?)?.toDouble();
+      final maximum = (filters['maximum'] as num?)?.toDouble();
+      _priceRange = minimum == null && maximum == null
+          ? null
+          : MenuPriceRange(minimum: minimum, maximum: maximum);
+      _searchRadiusKm = (filters['radius'] as num).toDouble();
+      _statusFilter = filters['status'] as String;
+      _sort = DiscoverySort.values.firstWhere(
+          (sort) => sort.name == filters['sort'],
+          orElse: () => DiscoverySort.distance);
+      _availableOnly = filters['availableOnly'] == true;
+      _selfCollectOnly = filters['selfCollectOnly'] == true;
+      _recentOnly = filters['recentOnly'] == true;
+      _listOnly = filters['listOnly'] == true;
+      _searchCenter = filters['latitude'] == null
+          ? null
+          : LatLng((filters['latitude'] as num).toDouble(),
+              (filters['longitude'] as num).toDouble());
+      _openingTime = filters['openingStart'] == null
+          ? null
+          : OpeningTimeFilter(
+              DateTime.fromMillisecondsSinceEpoch(
+                  filters['openingStart'] as int),
+              filters['openingLabel'] as String,
+              end: filters['openingEnd'] == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(
+                      filters['openingEnd'] as int));
+      _selectedVendorId = null;
+      _visibleBounds = null;
+      if (_listOnly) _mapController = null;
+    });
+    if (!_listOnly && _searchCenter != null && _mapController != null) {
+      try {
+        await _mapController!
+            .animateCamera(CameraUpdate.newLatLngZoom(_searchCenter!, 14));
+      } catch (_) {/* The map may still be mounting. */}
+    }
+  }
+
   Widget _buildMapTab() {
     return StreamBuilder<List<VendorModel>>(
       stream: _vendors,
       builder: (context, snapshot) {
+        final eligibleDishes = _allDishes
+            .where((dish) => !_availableOnly || dishIsAvailable(dish))
+            .toList();
         final allVendors = (snapshot.data ?? [])
             .where((v) =>
                 v.hasValidLocation &&
-                (_category == null || v.category == _category))
+                (_category == null || v.hasCategory(_category!)))
             .toList();
 
         final query = normalizeDiscoveryQuery(_searchQuery);
         final dishesByVendor = <String, List<DishSearchEntry>>{};
-        for (final dish in _allDishes) {
+        for (final dish in eligibleDishes) {
           (dishesByVendor[dish.vendorId] ??= []).add(dish);
         }
+        final sortMenus = _sort == DiscoverySort.price && _priceRange != null
+            ? {
+                for (final entry in dishesByVendor.entries)
+                  entry.key: entry.value.where(_priceRange!.contains).toList()
+              }
+            : dishesByVendor;
+        final currentRatings = {
+          for (final entry in _ratings.entries)
+            if (!_ratingErrors.contains(entry.key)) entry.key: entry.value
+        };
         final matchingDishVendorIds = query.isEmpty
             ? const <String>{}
-            : _allDishes
+            : eligibleDishes
                 .where((dish) =>
-                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
+                    discoveryMatches(query, dish.item.name) &&
                     (_priceRange == null || _priceRange!.contains(dish)))
                 .map((dish) => dish.vendorId)
                 .toSet();
         final matchingVendors = allVendors.where((vendor) {
+          final menu =
+              dishesByVendor[vendor.vendorId] ?? const <DishSearchEntry>[];
+          if (_availableOnly &&
+              (!vendor.isOpenNow || !menu.any(dishIsAvailable))) {
+            return false;
+          }
+          if (_selfCollectOnly && !vendor.selfCollectEnabled) return false;
+          if (_recentOnly && !stallUpdatedRecently(vendor, menu)) return false;
           final dishMatches = matchingDishVendorIds.contains(vendor.vendorId);
           // A dish search must show every nearby seller, including closed
           // stalls, so the customer can compare availability and status.
@@ -1003,28 +1467,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         };
         final dishResults = query.isEmpty
             ? <DishSearchEntry>[]
-            : _allDishes
+            : eligibleDishes
                 .where((dish) =>
-                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
+                    discoveryMatches(query, dish.item.name) &&
                     (_priceRange == null || _priceRange!.contains(dish)) &&
                     filteredVendorById.containsKey(dish.vendorId))
                 .toList()
-          ..sort((a, b) {
-            final vendorA = filteredVendorById[a.vendorId]!;
-            final vendorB = filteredVendorById[b.vendorId]!;
-            final center = _searchCenter ?? _customerPosition;
-            if (center != null) {
-              final distanceA = Geolocator.distanceBetween(center.latitude,
-                  center.longitude, vendorA.latitude, vendorA.longitude);
-              final distanceB = Geolocator.distanceBetween(center.latitude,
-                  center.longitude, vendorB.latitude, vendorB.longitude);
-              final distanceOrder = distanceA.compareTo(distanceB);
-              if (distanceOrder != 0) return distanceOrder;
-            }
-            return a.item.name
-                .toLowerCase()
-                .compareTo(b.item.name.toLowerCase());
-          });
+          ..sort((a, b) => compareDiscoveryDishes(a, b,
+              sort: _sort,
+              vendors: filteredVendorById,
+              center: _searchCenter ?? _customerPosition,
+              ratings: currentRatings,
+              dishes: sortMenus,
+              query: query));
         final suggestionVendors = allVendors.where((vendor) {
           final center = _searchCenter ?? _customerPosition;
           return center == null ||
@@ -1035,7 +1490,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         final suggestions = buildDiscoverySuggestions(
           query: _searchController.text,
           vendors: suggestionVendors,
-          dishes: _allDishes,
+          dishes: eligibleDishes,
           categories: stallCategories,
           recentSearches: _recentSearches,
           priceRange: _priceRange,
@@ -1048,7 +1503,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         // NEW: Filter to only vendors that are physically inside the current map view
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
 
-        if (_visibleBounds != null) {
+        if (!_listOnly && _visibleBounds != null) {
           final southWest = _visibleBounds!.southwest;
           final northEast = _visibleBounds!.northeast;
 
@@ -1060,26 +1515,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           }).toList();
         }
 
-        // Sort by distance for easier viewing
-        onScreenVendors.sort((a, b) {
-          final sortCenter = _searchCenter ?? _customerPosition;
-          if (sortCenter == null) {
-            return 0;
-          }
-          final distA = Geolocator.distanceBetween(
-            sortCenter.latitude,
-            sortCenter.longitude,
-            a.latitude,
-            a.longitude,
-          );
-          final distB = Geolocator.distanceBetween(
-            sortCenter.latitude,
-            sortCenter.longitude,
-            b.latitude,
-            b.longitude,
-          );
-          return distA.compareTo(distB);
-        });
+        onScreenVendors.sort((a, b) => compareDiscoveryVendors(a, b,
+            sort: _sort,
+            center: _searchCenter ?? _customerPosition,
+            ratings: currentRatings,
+            dishes: sortMenus,
+            query: query));
 
         _visibleVendors = onScreenVendors;
 
@@ -1087,6 +1528,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             .map(
               (v) => Marker(
                 markerId: MarkerId(v.vendorId),
+                clusterManagerId:
+                    v.vendorId == _selectedVendorId ? null : _clusterId,
                 position: LatLng(v.latitude, v.longitude),
                 icon: BitmapDescriptor.defaultMarkerWithHue(
                   v.vendorId == _selectedVendorId
@@ -1095,7 +1538,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 infoWindow: InfoWindow(
                   title: v.stallName,
-                  snippet: '${v.category} · ${_stallStatus(v)}',
+                  snippet: '${v.categoryLabel} · ${_stallStatus(v)}',
                   onTap: () => _openVendorDetails(v),
                 ),
                 consumeTapEvents: true,
@@ -1118,6 +1561,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ));
         }
 
+        if (_listOnly) {
+          return _buildDiscoveryList(snapshot, onScreenVendors, dishResults,
+              filteredVendorById, showSuggestions ? suggestions : const []);
+        }
+
         return LayoutBuilder(builder: (context, constraints) {
           final shortViewport = constraints.maxHeight < 400;
 
@@ -1134,7 +1582,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               : MapMarkerGuide.heightFor(context,
                   useSidePanel ? sidePanelWidth : constraints.maxWidth);
           final cardAreaHeight =
-              shortViewport ? 0.0 : (showingDishResults ? 144.0 : 112.0);
+              shortViewport ? 0.0 : (showingDishResults ? 144.0 : 136.0);
           final panelHeight =
               headerHeight + guideHeight + cardAreaHeight + navClearance;
 
@@ -1167,11 +1615,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             ),
             74.0 +
                 guideHeight +
-                math.max(1, resultCount) * (showingDishResults ? 144.0 : 112.0),
+                math.max(1, resultCount) * (showingDishResults ? 144.0 : 136.0),
           );
 
           _cardExtent = useSidePanel
-              ? (showingDishResults ? 144.0 : 112.0)
+              ? (showingDishResults ? 144.0 : 136.0)
               : cardWidth + 12;
           // Full map with a floating results panel on tablets.
           return Stack(children: [
@@ -1181,8 +1629,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   Positioned.fill(
                       child: GoogleMap(
                     style: _mapStyle,
-                    initialCameraPosition: _defaultPosition,
+                    initialCameraPosition: CameraPosition(
+                        target: _searchCenter ??
+                            _customerPosition ??
+                            _defaultPosition.target,
+                        zoom: 14),
                     markers: markers,
+                    clusterManagers: {
+                      ClusterManager(
+                        clusterManagerId: _clusterId,
+                        onClusterTap: (cluster) => _zoomToCluster(cluster),
+                      )
+                    },
                     myLocationEnabled: _locationPermissionGranted,
                     myLocationButtonEnabled: false,
                     zoomControlsEnabled: false,
@@ -1288,96 +1746,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       top: 134,
                       left: 12,
                       right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(children: [
-                          ActionChip(
-                              avatar: const Icon(
-                                  Icons.edit_location_alt_outlined,
-                                  size: 18),
-                              label: const Text('Set location'),
-                              onPressed: _chooseLocationSource),
-                          const SizedBox(width: 8),
-                          AppDropdown<String>(
-                            value: _statusFilter,
-                            displayText:
-                                _openingTime != null ? 'Scheduled' : null,
-                            width: 155,
-                            compact: true,
-                            hint: 'Choose stall status',
-                            icon: Icons.storefront_outlined,
-                            options: const {
-                              'Open': 'Open now',
-                              'Closed': 'Closed',
-                              'All': 'All stalls',
-                            },
-                            onChanged: (status) => setState(() {
-                              _statusFilter = status;
-                              _openingTime = null;
-                            }),
-                          ),
-                          const SizedBox(width: 8),
-                          AppDropdown<String>(
-                            value: _category ?? 'All',
-                            displayText: _category ?? 'All categories',
-                            width: 190,
-                            compact: true,
-                            hint: 'Choose category',
-                            icon: Icons.category_outlined,
-                            options: {
-                              'All': 'All',
-                              for (final category in stallCategories)
-                                category: category,
-                            },
-                            onChanged: (value) => setState(() {
-                              _category = value == 'All' ? null : value;
-                              _selectedVendorId = null;
-                            }),
-                          ),
-                          const SizedBox(width: 8),
-                          InputChip(
-                            avatar:
-                                const Icon(Icons.payments_outlined, size: 18),
-                            label: Text(_priceRange?.label ?? 'Any price'),
-                            onPressed: _choosePriceRange,
-                            onDeleted: _priceRange == null
-                                ? null
-                                : () => setState(() {
-                                      _priceRange = null;
-                                      _selectedVendorId = null;
-                                    }),
-                          ),
-                          const SizedBox(width: 8),
-                          InputChip(
-                            avatar: const Icon(Icons.schedule, size: 18),
-                            label: Text(_openingTime?.label ?? 'Open at…'),
-                            onPressed: _chooseOpeningTime,
-                            onDeleted: _openingTime == null
-                                ? null
-                                : () => setState(() {
-                                      _openingTime = null;
-                                      _statusFilter = 'Open';
-                                    }),
-                          ),
-                          if (_searchCenter != null ||
-                              _customerPosition != null) ...[
-                            const SizedBox(width: 8),
-                            AppDropdown<double>(
-                              value: _searchRadiusKm,
-                              width: 165,
-                              compact: true,
-                              hint: 'Choose distance',
-                              icon: Icons.radar,
-                              options: {
-                                for (final radius in [5.0, 10.0, 25.0, 50.0])
-                                  radius:
-                                      'Within ${radius.toStringAsFixed(0)} km',
-                              },
-                              onChanged: _setSearchRadius,
-                            ),
-                          ],
-                        ]),
-                      )),
+                      child: _standardDiscoveryFilters()),
                   if (_showSearchArea)
                     Positioned(
                         top: 196,
@@ -1587,8 +1956,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                     resultCount > 1))
                               TextButton(
                                 onPressed: snapshot.hasError
-                                    ? () => setState(() => _vendors =
-                                        _vendorService.getAllVendors())
+                                    ? () => setState(
+                                        () => _vendors = _watchVendors())
                                     : showingDishResults
                                         ? () => _showAllDishes(
                                               dishResults,
@@ -1720,6 +2089,91 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
+  Widget _standardDiscoveryFilters() => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          ..._extraDiscoveryControls(),
+          ActionChip(
+              avatar: const Icon(Icons.edit_location_alt_outlined, size: 18),
+              label: const Text('Set location'),
+              onPressed: _chooseLocationSource),
+          const SizedBox(width: 8),
+          AppDropdown<String>(
+            value: _statusFilter,
+            displayText: _openingTime != null ? 'Scheduled' : null,
+            width: 155,
+            compact: true,
+            hint: 'Choose stall status',
+            icon: Icons.storefront_outlined,
+            options: const {
+              'Open': 'Open now',
+              'Closed': 'Closed',
+              'All': 'All stalls',
+            },
+            onChanged: (status) => setState(() {
+              _statusFilter = status;
+              _openingTime = null;
+            }),
+          ),
+          const SizedBox(width: 8),
+          AppDropdown<String>(
+            value: _category ?? 'All',
+            displayText: _category ?? 'All categories',
+            width: 190,
+            compact: true,
+            hint: 'Choose category',
+            icon: Icons.category_outlined,
+            options: {
+              'All': 'All',
+              for (final category in stallCategories) category: category,
+            },
+            onChanged: (value) => setState(() {
+              _category = value == 'All' ? null : value;
+              _selectedVendorId = null;
+            }),
+          ),
+          const SizedBox(width: 8),
+          InputChip(
+            avatar: const Icon(Icons.payments_outlined, size: 18),
+            label: Text(_priceRange?.label ?? 'Any price'),
+            onPressed: _choosePriceRange,
+            onDeleted: _priceRange == null
+                ? null
+                : () => setState(() {
+                      _priceRange = null;
+                      _selectedVendorId = null;
+                    }),
+          ),
+          const SizedBox(width: 8),
+          InputChip(
+            avatar: const Icon(Icons.schedule, size: 18),
+            label: Text(_openingTime?.label ?? 'Open at…'),
+            onPressed: _chooseOpeningTime,
+            onDeleted: _openingTime == null
+                ? null
+                : () => setState(() {
+                      _openingTime = null;
+                      _statusFilter = 'Open';
+                    }),
+          ),
+          if (_searchCenter != null || _customerPosition != null) ...[
+            const SizedBox(width: 8),
+            AppDropdown<double>(
+              value: _searchRadiusKm,
+              width: 165,
+              compact: true,
+              hint: 'Choose distance',
+              icon: Icons.radar,
+              options: {
+                for (final radius in [5.0, 10.0, 25.0, 50.0])
+                  radius: 'Within ${radius.toStringAsFixed(0)} km',
+              },
+              onChanged: _setSearchRadius,
+            ),
+          ],
+        ]),
+      );
+
   String? _distanceTo(VendorModel vendor) {
     final position = _searchCenter ?? _customerPosition;
     if (position == null) {
@@ -1767,7 +2221,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _openVendorDetails(vendor),
+          onTap: () => _openVendorDetails(vendor, dishId: dish.item.itemId),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1835,6 +2289,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _stallCard(VendorModel vendor) {
     final selected = vendor.vendorId == _selectedVendorId;
     final distance = _distanceTo(vendor);
+    final pricedMenu = _allDishes.where((dish) =>
+        dish.vendorId == vendor.vendorId &&
+        (!_availableOnly || dishIsAvailable(dish)) &&
+        (_priceRange == null || _priceRange!.contains(dish)));
+    final fromPrice = lowestDishPrice(pricedMenu, _searchQuery);
 
     return Material(
       color: selected ? AppColors.mint : AppColors.cardColor,
@@ -1847,7 +2306,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _selectVendor(vendor),
+        onTap: _listOnly
+            ? () => _openVendorDetails(vendor)
+            : () => _selectVendor(vendor),
         onDoubleTap: () => _openVendorDetails(vendor),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1873,7 +2334,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 3),
                     Text(
                       [
-                        vendor.category,
+                        vendor.categoryLabel,
                         _stallStatus(vendor),
                         if (distance != null) distance,
                       ].join(' · '),
@@ -1884,7 +2345,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
+                    Row(children: [
+                      Expanded(child: _ratingLine(vendor)),
+                      if (fromPrice != null) ...[
+                        const SizedBox(width: 6),
+                        Text('From RM ${fromPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.primary)),
+                      ],
+                    ]),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
                         Icon(
@@ -1962,7 +2433,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   leading: _stallPhoto(vendor),
                   title: Text(vendor.stallName),
                   subtitle: Text([
-                    vendor.category,
+                    vendor.categoryLabel,
                     _stallStatus(vendor),
                     if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                   ].join(' · ')),
@@ -1982,7 +2453,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _showAllDishes(
       List<DishSearchEntry> dishes, Map<String, VendorModel> vendors) async {
     _searchFocus.unfocus();
-    final selected = await showModalBottomSheet<VendorModel>(
+    final selected = await showModalBottomSheet<DishSearchEntry>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -2025,7 +2496,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     _stallStatus(vendor),
                   ].join(' · ')),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.pop(context, vendor),
+                  onTap: () => Navigator.pop(context, dish),
                 );
               },
             ),
@@ -2033,13 +2504,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ]),
       ),
     );
-    if (mounted && selected != null) _openVendorDetails(selected);
+    if (mounted && selected != null) {
+      _openVendorDetails(vendors[selected.vendorId]!,
+          dishId: selected.item.itemId);
+    }
   }
 
-  void _openVendorDetails(VendorModel vendor) {
+  void _openVendorDetails(VendorModel vendor, {String? dishId}) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
+      MaterialPageRoute(
+          builder: (_) =>
+              VendorDetailsScreen(vendor: vendor, initialDishId: dishId)),
     );
   }
 }

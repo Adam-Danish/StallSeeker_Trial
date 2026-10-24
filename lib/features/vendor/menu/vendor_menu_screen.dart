@@ -260,6 +260,9 @@ class _MenuEditorState extends State<_MenuEditor> {
   late final TextEditingController _name;
   late final TextEditingController _price;
   late final TextEditingController _section;
+  late final TextEditingController _description;
+  late final TextEditingController _portion;
+  late final TextEditingController _ingredients;
   late final String _itemId;
   File? _image;
   bool _saving = false;
@@ -271,6 +274,10 @@ class _MenuEditorState extends State<_MenuEditor> {
     _price = TextEditingController(
         text: widget.item?.price.toStringAsFixed(2) ?? '');
     _section = TextEditingController(text: widget.item?.section ?? 'Main menu');
+    _description = TextEditingController(text: widget.item?.description ?? '');
+    _portion = TextEditingController(text: widget.item?.portionSize ?? '');
+    _ingredients =
+        TextEditingController(text: widget.item?.ingredients.join(', ') ?? '');
     // Reuse the same ID on retries so an uncertain network result cannot duplicate a dish.
     _itemId = widget.item?.itemId ?? widget.menu.newMenuItemId(widget.uid);
   }
@@ -280,6 +287,9 @@ class _MenuEditorState extends State<_MenuEditor> {
     _name.dispose();
     _price.dispose();
     _section.dispose();
+    _description.dispose();
+    _portion.dispose();
+    _ingredients.dispose();
     super.dispose();
   }
 
@@ -313,11 +323,30 @@ class _MenuEditorState extends State<_MenuEditor> {
       if (widget.item == null) {
         await widget.menu.addMenuItem(
             widget.uid, _name.text.trim(), double.parse(_price.text.trim()),
-            itemId: _itemId, imageUrl: imageUrl, section: _section.text.trim());
+            itemId: _itemId,
+            imageUrl: imageUrl,
+            section: _section.text.trim(),
+            description: _description.text.trim(),
+            portionSize: _portion.text.trim(),
+            ingredients: _ingredients.text
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty)
+                .toSet()
+                .toList());
       } else {
         await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(),
             double.parse(_price.text.trim()),
-            imageUrl: imageUrl, section: _section.text.trim());
+            imageUrl: imageUrl,
+            section: _section.text.trim(),
+            description: _description.text.trim(),
+            portionSize: _portion.text.trim(),
+            ingredients: _ingredients.text
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty)
+                .toSet()
+                .toList());
       }
       if (mounted) {
         setState(() => _saving = false);
@@ -422,6 +451,32 @@ class _MenuEditorState extends State<_MenuEditor> {
                           }
                           return null;
                         }),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _description,
+                        enabled: !_saving,
+                        maxLength: 500,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                            labelText: 'Description',
+                            hintText: 'What makes this dish special?')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _portion,
+                        enabled: !_saving,
+                        maxLength: 80,
+                        decoration: const InputDecoration(
+                            labelText: 'Portion size',
+                            hintText: 'e.g. 1 bowl, 6 pieces, serves 2')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _ingredients,
+                        enabled: !_saving,
+                        maxLength: 500,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                            labelText: 'Ingredients',
+                            hintText: 'Separate ingredients with commas')),
                     if (_error != null)
                       Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),

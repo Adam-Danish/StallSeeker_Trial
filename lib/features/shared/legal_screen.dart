@@ -56,7 +56,7 @@ class LegalScreen extends StatelessWidget {
 
   static const _privacySections = <MapEntry<String, String>>[
     MapEntry('Information we collect',
-        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Bookings are shared between the customer and vendor through Firebase. Older bookings stored locally remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. Bookings use Stripe checkout. We store payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
+        'We store your name, email address, account type, followed stalls, search history, saved searches, notification history, self-collect bookings and device notification token. Bookings are shared between the customer and vendor through Firebase. Older bookings stored locally remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. Bookings use Stripe checkout. We store payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
     MapEntry('How we use it',
         'We use this information to run your account, show nearby stalls and dishes, provide search suggestions, save favourites, send stall updates and keep the service secure.'),
     MapEntry('Location',

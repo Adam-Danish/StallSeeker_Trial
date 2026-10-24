@@ -14,7 +14,9 @@ class StorageService {
       maxWidth: 1080,
       imageQuality: 80,
     );
-    if (picked == null) { return null; }
+    if (picked == null) {
+      return null;
+    }
     return File(picked.path);
   }
 
@@ -23,8 +25,14 @@ class StorageService {
   // unused files in Storage.
   Future<String> uploadStallImage(String vendorId, File imageFile) async {
     final ref = _storage.ref().child('stall_images/$vendorId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
+    final upload = await ref.putFile(imageFile);
+    final url = Uri.parse(await ref.getDownloadURL());
+    // Reusing the storage object must still refresh Image.network caches.
+    return url.replace(queryParameters: {
+      ...url.queryParameters,
+      'v': upload.metadata?.generation ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+    }).toString();
   }
 
   // Uploads a photo for one menu item. Named by itemId so each dish has
@@ -40,20 +48,25 @@ class StorageService {
   }
 
   Future<List<File>> pickReviewImages(int remaining) async {
-    final picked = await _picker.pickMultiImage(maxWidth: 1080, imageQuality: 75);
-    return picked.take(remaining.clamp(0, 5))
-        .map((image) => File(image.path)).toList();
+    final picked =
+        await _picker.pickMultiImage(maxWidth: 1080, imageQuality: 75);
+    return picked
+        .take(remaining.clamp(0, 5))
+        .map((image) => File(image.path))
+        .toList();
   }
 
   Future<String> uploadReviewImage(String vendorId, String customerId,
       String imageId, File imageFile) async {
-    final ref = _storage.ref().child('review_images/$vendorId/$customerId/$imageId.jpg');
+    final ref = _storage
+        .ref()
+        .child('review_images/$vendorId/$customerId/$imageId.jpg');
     await ref.putFile(imageFile);
     return ref.getDownloadURL();
   }
 
-  Future<void> deleteReviewImageUrl(String vendorId, String customerId,
-      String url) async {
+  Future<void> deleteReviewImageUrl(
+      String vendorId, String customerId, String url) async {
     final ref = _storage.refFromURL(url);
     if (!ref.fullPath.startsWith('review_images/$vendorId/$customerId/')) {
       throw ArgumentError('Review photo does not belong to this customer.');

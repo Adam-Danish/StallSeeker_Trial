@@ -1,3 +1,4 @@
+import 'discovery_options.dart';
 import '../../../core/models/dish_search_entry.dart';
 import '../../../core/models/vendor_model.dart';
 
@@ -41,13 +42,12 @@ bool vendorMatchesQueryAndPrice({
   MenuPriceRange? priceRange,
 }) {
   final normalized = normalizeDiscoveryQuery(query);
-  final vendorMatches =
-      normalizeDiscoveryQuery(vendor.stallName).contains(normalized) ||
-          normalizeDiscoveryQuery(vendor.category).contains(normalized);
+  final vendorMatches = discoveryMatches(normalized, vendor.stallName) ||
+      vendor.allCategories
+          .any((category) => discoveryMatches(normalized, category));
   final matchingDishes = normalized.isEmpty
       ? dishes
-      : dishes.where((dish) =>
-          normalizeDiscoveryQuery(dish.item.name).contains(normalized));
+      : dishes.where((dish) => discoveryMatches(normalized, dish.item.name));
   if (priceRange == null || !priceRange.isActive) {
     return normalized.isEmpty || vendorMatches || matchingDishes.isNotEmpty;
   }
@@ -95,7 +95,9 @@ List<DiscoverySuggestion> buildDiscoverySuggestions({
   void add(String rawLabel, DiscoverySuggestionKind kind) {
     final label = rawLabel.trim().replaceAll(RegExp(r'\s+'), ' ');
     final key = normalizeDiscoveryQuery(label);
-    if (key.isEmpty || (typed.isNotEmpty && !key.contains(typed))) return;
+    if (key.isEmpty || (typed.isNotEmpty && !discoveryMatches(typed, key))) {
+      return;
+    }
     final current = suggestions[key];
     if (current == null || kind.index < current.kind.index) {
       suggestions[key] = DiscoverySuggestion(
@@ -132,7 +134,7 @@ List<DiscoverySuggestion> buildDiscoverySuggestions({
     add(vendor.stallName, DiscoverySuggestionKind.stall);
   }
   final offeredCategories = eligibleVendors
-      .map((vendor) => normalizeDiscoveryQuery(vendor.category))
+      .expand((vendor) => vendor.allCategories.map(normalizeDiscoveryQuery))
       .toSet();
   for (final category in categories) {
     if (offeredCategories.contains(normalizeDiscoveryQuery(category))) {

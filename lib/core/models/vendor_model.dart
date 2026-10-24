@@ -7,6 +7,15 @@ class VendorModel {
   final String stallName;
   final String description;
   final String category;
+  final List<String> categories;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  List<String> get allCategories => categories.isNotEmpty
+      ? categories
+      : (category.trim().isEmpty ? const [] : [category]);
+  String get categoryLabel => allCategories.join(' · ');
+  bool hasCategory(String value) => allCategories.contains(value);
   final String openingHours;
   final bool isOpen;
   final double latitude;
@@ -61,6 +70,9 @@ class VendorModel {
     required this.description,
     required this.category,
     required this.openingHours,
+    this.categories = const [],
+    this.createdAt,
+    this.updatedAt,
     this.isOpen = false,
     this.latitude = 0.0,
     this.longitude = 0.0,
@@ -78,7 +90,8 @@ class VendorModel {
         'vendorId': vendorId,
         'stallName': stallName,
         'description': description,
-        'category': category,
+        'category': allCategories.isEmpty ? '' : allCategories.first,
+        'categories': allCategories,
         'openingHours': openingHours,
         'imageUrl': imageUrl,
         'phoneNumber': phoneNumber,
@@ -92,7 +105,8 @@ class VendorModel {
       'vendorId': vendorId,
       'stallName': stallName,
       'description': description,
-      'category': category,
+      'category': allCategories.isEmpty ? '' : allCategories.first,
+      'categories': allCategories,
       'openingHours': openingHours,
       'isOpen': isOpen,
       'latitude': latitude,
@@ -112,6 +126,16 @@ class VendorModel {
       stallName: map['stallName'] ?? '',
       description: map['description'] ?? '',
       category: map['category'] ?? '',
+      categories: map['categories'] is List
+          ? (map['categories'] as List)
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList()
+          : const [],
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
       openingHours: map['openingHours'] ?? '',
       isOpen: map['isOpen'] ?? false,
       latitude: (map['latitude'] ?? 0.0).toDouble(),
@@ -136,6 +160,7 @@ class VendorModel {
     String? stallName,
     String? description,
     String? category,
+    List<String>? categories,
     String? openingHours,
     bool? isOpen,
     double? latitude,
@@ -151,6 +176,10 @@ class VendorModel {
       stallName: stallName ?? this.stallName,
       description: description ?? this.description,
       category: category ?? this.category,
+      categories:
+          categories ?? (category == null ? this.categories : [category]),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
       openingHours: openingHours ?? this.openingHours,
       isOpen: isOpen ?? this.isOpen,
       latitude: latitude ?? this.latitude,

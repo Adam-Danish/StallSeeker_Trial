@@ -263,15 +263,38 @@ class VendorDashboardView extends StatelessWidget {
 
   Widget _header(BuildContext context) {
     final identity = Row(children: [
-      ClipOval(
-        child: SizedBox(
-          width: 54,
-          height: 54,
-          child: vendor?.imageUrl.isNotEmpty == true
-              ? Image.network(vendor!.imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _stallPlaceholder())
-              : _stallPlaceholder(),
+      Tooltip(
+        message: 'Change stall photo',
+        child: Semantics(
+          label: 'Change stall photo',
+          button: true,
+          child: InkWell(
+            onTap: onEditStall,
+            customBorder: const CircleBorder(),
+            child: Stack(children: [
+              ClipOval(
+                  child: SizedBox(
+                width: 54,
+                height: 54,
+                child: vendor?.imageUrl.isNotEmpty == true
+                    ? Image.network(vendor!.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _stallPlaceholder())
+                    : _stallPlaceholder(),
+              )),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                      color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.camera_alt_outlined,
+                      size: 12, color: Colors.white),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
       const SizedBox(width: 12),
