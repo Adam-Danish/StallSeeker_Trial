@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -454,7 +455,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
+      appBar: AppPageAppBar(
         title: Text(widget.previewOnly ? 'Stall preview' : 'Stall details'),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,

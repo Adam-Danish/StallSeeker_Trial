@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/app_top_action.dart';
 
 class ProfileAvatar extends StatelessWidget {
   const ProfileAvatar(
@@ -48,21 +48,6 @@ class ProfileTopAction extends StatelessWidget {
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.white,
-        elevation: 4,
-        shadowColor: const Color(0x14000000),
-        shape: const StadiumBorder(),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: icon == null
-                ? Text(label,
-                    style: const TextStyle(fontSize: 17, color: Colors.black))
-                : Icon(icon, size: 22, color: Colors.black),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) =>
+      AppTopAction(label: label, onTap: onTap, icon: icon);
 }

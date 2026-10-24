@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_back_button.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -200,6 +201,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: const Color(0xFFD2D2D5),
                     borderRadius: BorderRadius.circular(3))),
           ],
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: AppBackButton(
+                  label: 'Cancel', enabled: !_busy, onPressed: _close)),
           Expanded(
               child: SingleChildScrollView(
             controller: widget.scrollController,
@@ -216,15 +221,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                            tooltip: 'Close',
-                            onPressed: _busy ? null : _close,
-                            style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFEAEAEC)),
-                            icon: const Icon(Icons.close_rounded,
-                                color: Color(0xFF73737A)))),
                     Center(
                         child: Image.asset('assets/app_logo.png',
                             width: 54, height: 54)),

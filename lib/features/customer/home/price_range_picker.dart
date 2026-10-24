@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_sheet_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -123,22 +124,10 @@ class _PriceRangePickerState extends State<_PriceRangePicker> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    const Expanded(
-                      child: Text('Dish price range',
-                          style: TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.w600)),
-                    ),
-                    Material(
-                      color: Colors.white,
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: 'Close price filter',
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ),
-                  ]),
+                  const AppSheetHeader(
+                      title: Text('Dish price range'),
+                      padding: EdgeInsets.zero),
+                  const SizedBox(height: 8),
                   const Text(
                     'Find stalls with a dish in your budget. Leave a price blank for any amount.',
                     style: TextStyle(color: AppColors.textMuted, fontSize: 13),

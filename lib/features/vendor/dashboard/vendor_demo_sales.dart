@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -139,7 +140,7 @@ class _VendorPaymentHistoryScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Payment history')),
+      appBar: AppPageAppBar(title: const Text('Payment history')),
       body: StreamBuilder<List<DemoOrder>>(
           stream: _orders,
           builder: (context, snapshot) {

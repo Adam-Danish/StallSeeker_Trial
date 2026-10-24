@@ -1,3 +1,4 @@
+import '../../core/widgets/app_page_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
@@ -52,7 +53,7 @@ class _DemoOrdersScreenState extends State<DemoOrdersScreen> {
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
+          appBar: AppPageAppBar(
             title: Text(widget.isVendor ? 'Stall bookings' : 'My bookings'),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(50),

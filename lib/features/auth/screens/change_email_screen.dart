@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -103,7 +104,7 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Change Email')),
+        appBar: AppPageAppBar(title: const Text('Change Email')),
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),

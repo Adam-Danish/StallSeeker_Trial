@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -75,7 +76,7 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Your order')),
+        appBar: AppPageAppBar(title: const Text('Your order')),
         body: StreamBuilder<List<MenuItemModel>>(
           stream: _menu,
           builder: (context, snapshot) {

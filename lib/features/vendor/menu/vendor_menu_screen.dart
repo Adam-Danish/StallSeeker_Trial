@@ -1,3 +1,5 @@
+import '../../../core/widgets/app_back_button.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -118,7 +120,7 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
+        appBar: AppPageAppBar(
             title: Text(widget.stockOnly ? 'Update stock' : 'Menu & stock')),
         floatingActionButton: _uid == null || widget.stockOnly
             ? null
@@ -376,11 +378,10 @@ class _MenuEditorState extends State<_MenuEditor> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(children: [
-                      TextButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
+                      AppBackButton(
+                          label: 'Cancel',
+                          enabled: !_saving,
+                          onPressed: () => Navigator.pop(context)),
                       Expanded(
                         child: Text(
                           widget.item == null ? 'Add dish' : 'Edit dish',

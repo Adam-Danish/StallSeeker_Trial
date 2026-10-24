@@ -1,3 +1,4 @@
+import '../../core/widgets/app_page_app_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/constants/app_colors.dart';
@@ -56,7 +57,7 @@ class _PinLocationScreenState extends State<PinLocationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Pin a location')),
+        appBar: AppPageAppBar(title: const Text('Pin a location')),
         body: Column(children: [
           Padding(
               padding: const EdgeInsets.all(16),

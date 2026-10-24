@@ -1,3 +1,4 @@
+import '../../core/widgets/app_page_app_bar.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -18,6 +19,7 @@ class InfoPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: const AppPageAppBar(showBackButton: true),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.all(tablet ? 24 : 8),
@@ -37,17 +39,6 @@ class InfoPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            tooltip: 'Back',
-                            onPressed: () => Navigator.maybePop(context),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                          ),
-                        ),
-                      ),
                       Expanded(
                         child: DefaultTextStyle.merge(
                           style: const TextStyle(

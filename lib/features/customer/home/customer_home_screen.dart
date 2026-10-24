@@ -1,3 +1,5 @@
+import '../../../core/widgets/app_sheet_header.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'discovery_options.dart';
 import '../../../core/services/stall_review_service.dart';
 import '../../../core/services/saved_search_service.dart';
@@ -763,7 +765,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _selectedIndex == 3 ? ProfilePage.background : AppColors.background,
       appBar: _selectedIndex == 0 || _selectedIndex == 3
           ? null
-          : AppBar(
+          : AppPageAppBar(
               title: Text(
                 _tabTitles[_selectedIndex],
                 overflow: TextOverflow.ellipsis,
@@ -1287,12 +1289,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             builder: (context, update) => SizedBox(
                 height: MediaQuery.sizeOf(context).height * .65,
                 child: Column(children: [
-                  ListTile(
+                  AppSheetHeader(
                       title: const Text('Saved searches'),
-                      trailing: IconButton(
-                          tooltip: 'Close',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(sheet))),
+                      onBack: () => Navigator.pop(sheet)),
                   Expanded(
                       child: FutureBuilder<List<SavedDiscoverySearch>>(
                           future: future,
@@ -2412,14 +2411,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * .6,
         child: Column(children: [
-          ListTile(
-              title: const Text('Stalls in this area',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Choose a stall to find it on the map'),
-              trailing: IconButton(
-                  tooltip: 'Close list',
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context))),
+          const AppSheetHeader(
+              title: Text('Stalls in this area'),
+              subtitle: Text('Choose a stall to find it on the map')),
           const Divider(height: 1),
           Expanded(
               child: ListView.separated(
@@ -2462,16 +2456,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * .72,
         child: Column(children: [
-          ListTile(
-            title: Text('${dishes.length} nearby dish results',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text('Results for “${_searchController.text.trim()}”'),
-            trailing: IconButton(
-              tooltip: 'Close results',
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
+          AppSheetHeader(
+              title: Text('${dishes.length} nearby dish results'),
+              subtitle: Text('Results for “${_searchController.text.trim()}”')),
           const Divider(height: 1),
           Expanded(
             child: ListView.separated(

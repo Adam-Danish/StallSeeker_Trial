@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_back_button.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
@@ -104,14 +105,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         if (!_loginOpen)
                           Positioned(
                               top: 12,
-                              right: 18,
-                              child: IconButton(
-                                  tooltip: 'Continue as guest',
-                                  onPressed: _busy ? null : _guest,
-                                  style: IconButton.styleFrom(
-                                      backgroundColor: const Color(0xFFEAEAEC)),
-                                  icon: const Icon(Icons.close_rounded,
-                                      color: Color(0xFF73737A)))),
+                              left: 18,
+                              child: AppBackButton(
+                                  label: 'Continue as guest',
+                                  enabled: !_busy,
+                                  onPressed: _guest)),
                         Center(
                             child: Transform.translate(
                                 offset: const Offset(0, -20),

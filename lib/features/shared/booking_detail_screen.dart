@@ -1,3 +1,4 @@
+import '../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -436,7 +437,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
   Widget build(BuildContext context) => Stack(
         children: [
           Scaffold(
-            appBar: AppBar(title: const Text('Booking details')),
+            appBar: AppPageAppBar(title: const Text('Booking details')),
             body: StreamBuilder<DemoOrder?>(
               stream: _booking,
               builder: (context, snapshot) {

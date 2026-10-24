@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_back_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
@@ -95,168 +96,172 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) => Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-          child: Center(
-              child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Form(
-                key: _formKey,
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                              tooltip: 'Continue as guest',
-                              onPressed: _busy ? null : _guest,
-                              style: IconButton.styleFrom(
-                                  backgroundColor: const Color(0xFFF0F0F2)),
-                              icon: const Icon(Icons.close_rounded,
-                                  color: Color(0xFF6E6E73)))),
-                      const SizedBox(height: 18),
-                      const Icon(Icons.storefront_rounded,
-                          size: 46, color: AppColors.primary),
-                      const SizedBox(height: 14),
-                      const Text('Create your account',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 27,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -.4)),
-                      const SizedBox(height: 7),
-                      const Text(
-                          'Save favourite stalls and receive live updates.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              color: Color(0xFF707078))),
-                      const SizedBox(height: 28),
-                      TextFormField(
-                          controller: _name,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Full name'),
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Enter your name.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Email address'),
-                          validator: (v) => v == null || !v.trim().contains('@')
-                              ? 'Enter a valid email address.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _password,
-                          obscureText: _hidePassword,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Password',
-                              suffix: IconButton(
-                                  onPressed: () => setState(
-                                      () => _hidePassword = !_hidePassword),
-                                  icon: Icon(_hidePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined))),
-                          validator: (v) => v == null || v.length < 6
-                              ? 'Use at least 6 characters.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _confirm,
-                          obscureText: _hidePassword,
-                          textInputAction: TextInputAction.done,
-                          decoration: _field('Confirm password'),
-                          validator: (v) => v != _password.text
-                              ? 'Passwords do not match.'
-                              : null),
-                      const SizedBox(height: 18),
-                      const Text('Account type',
-                          style: TextStyle(
-                              fontSize: 13, color: Color(0xFF707078))),
-                      const SizedBox(height: 8),
-                      SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(
-                                value: 'customer',
-                                icon: Icon(Icons.person_outline),
-                                label: Text('Customer')),
-                            ButtonSegment(
-                                value: 'vendor',
-                                icon: Icon(Icons.storefront_outlined),
-                                label: Text('Vendor')),
-                          ],
-                          selected: {
-                            _role
-                          },
-                          onSelectionChanged: _busy
-                              ? null
-                              : (v) => setState(() => _role = v.first),
-                          style: ButtonStyle(
-                              shape: WidgetStatePropertyAll(
-                                  RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(16))))),
-                      if (_role == 'vendor') ...[
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: AppBackButton(
+                label: 'Continue as guest',
+                enabled: !_busy,
+                onPressed: _guest)),
+        Expanded(
+            child: Center(
+                child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Form(
+                  key: _formKey,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 18),
+                        const Icon(Icons.storefront_rounded,
+                            size: 46, color: AppColors.primary),
+                        const SizedBox(height: 14),
+                        const Text('Create your account',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 27,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -.4)),
+                        const SizedBox(height: 7),
+                        const Text(
+                            'Save favourite stalls and receive live updates.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: Color(0xFF707078))),
+                        const SizedBox(height: 28),
+                        TextFormField(
+                            controller: _name,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Full name'),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Enter your name.'
+                                : null),
                         const SizedBox(height: 12),
                         TextFormField(
-                            controller: _phone,
-                            keyboardType: TextInputType.phone,
-                            textInputAction: TextInputAction.done,
-                            decoration: _field('Business phone number'),
-                            validator: (value) =>
-                                normalizeVendorPhone(value ?? '') == null
-                                    ? 'Enter a valid Malaysian phone number.'
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Email address'),
+                            validator: (v) =>
+                                v == null || !v.trim().contains('@')
+                                    ? 'Enter a valid email address.'
                                     : null),
-                        const Padding(
-                            padding: EdgeInsets.only(top: 6),
-                            child: Text(
-                                'Customers can see and call this number from your stall listing.',
-                                style: TextStyle(
-                                    fontSize: 12, color: Color(0xFF707078)))),
-                      ],
-                      const SizedBox(height: 24),
-                      SizedBox(
-                          height: 56,
-                          child: FilledButton(
-                              onPressed: _busy ? null : _register,
-                              style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(28))),
-                              child: _busy
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 2))
-                                  : const Text('Create account',
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _password,
+                            obscureText: _hidePassword,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Password',
+                                suffix: IconButton(
+                                    onPressed: () => setState(
+                                        () => _hidePassword = !_hidePassword),
+                                    icon: Icon(_hidePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined))),
+                            validator: (v) => v == null || v.length < 6
+                                ? 'Use at least 6 characters.'
+                                : null),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _confirm,
+                            obscureText: _hidePassword,
+                            textInputAction: TextInputAction.done,
+                            decoration: _field('Confirm password'),
+                            validator: (v) => v != _password.text
+                                ? 'Passwords do not match.'
+                                : null),
+                        const SizedBox(height: 18),
+                        const Text('Account type',
+                            style: TextStyle(
+                                fontSize: 13, color: Color(0xFF707078))),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(
+                                  value: 'customer',
+                                  icon: Icon(Icons.person_outline),
+                                  label: Text('Customer')),
+                              ButtonSegment(
+                                  value: 'vendor',
+                                  icon: Icon(Icons.storefront_outlined),
+                                  label: Text('Vendor')),
+                            ],
+                            selected: {
+                              _role
+                            },
+                            onSelectionChanged: _busy
+                                ? null
+                                : (v) => setState(() => _role = v.first),
+                            style: ButtonStyle(
+                                shape: WidgetStatePropertyAll(
+                                    RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(16))))),
+                        if (_role == 'vendor') ...[
+                          const SizedBox(height: 12),
+                          TextFormField(
+                              controller: _phone,
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.done,
+                              decoration: _field('Business phone number'),
+                              validator: (value) =>
+                                  normalizeVendorPhone(value ?? '') == null
+                                      ? 'Enter a valid Malaysian phone number.'
+                                      : null),
+                          const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Text(
+                                  'Customers can see and call this number from your stall listing.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Color(0xFF707078)))),
+                        ],
+                        const SizedBox(height: 24),
+                        SizedBox(
+                            height: 56,
+                            child: FilledButton(
+                                onPressed: _busy ? null : _register,
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(28))),
+                                child: _busy
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2))
+                                    : const Text('Create account',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600)))),
+                        const SizedBox(height: 18),
+                        Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text('Already have an account? ',
+                                  style: TextStyle(color: Color(0xFF707078))),
+                              TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const LoginScreen())),
+                                  child: const Text('Sign in',
                                       style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600)))),
-                      const SizedBox(height: 18),
-                      Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text('Already have an account? ',
-                                style: TextStyle(color: Color(0xFF707078))),
-                            TextButton(
-                                onPressed: _busy
-                                    ? null
-                                    : () => Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const LoginScreen())),
-                                child: const Text('Sign in',
-                                    style: TextStyle(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w600))),
-                          ]),
-                    ]))),
-      ))));
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w600))),
+                            ]),
+                      ]))),
+        ))),
+      ])));
 }

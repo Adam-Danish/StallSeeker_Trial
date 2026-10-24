@@ -1,3 +1,4 @@
+import '../../../core/widgets/app_page_app_bar.dart';
 import 'unsaved_stall_changes_guard.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -256,12 +257,11 @@ class _EditStallScreenState extends State<EditStallScreen> {
         saving: _isSaving,
         onSave: _saveStallProfile,
         child: Scaffold(
-          appBar: AppBar(
-            leadingWidth: 88,
-            leading: TextButton(
-              onPressed: _isSaving ? null : _requestLeave,
-              child: const Text('Cancel'),
-            ),
+          appBar: AppPageAppBar(
+            showBackButton: true,
+            backLabel: 'Cancel',
+            backEnabled: !_isSaving,
+            onBack: _requestLeave,
             title: const Text('Edit stall'),
             actions: [
               TextButton(

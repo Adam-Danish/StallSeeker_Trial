@@ -1,3 +1,4 @@
+import '../../core/widgets/app_page_app_bar.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -19,31 +20,21 @@ class AccountLayout extends StatelessWidget {
         canPop: !busy,
         child: Scaffold(
           backgroundColor: background,
-          appBar: AppBar(
-              title: Text(title),
-              centerTitle: true,
-              backgroundColor: background,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              titleTextStyle: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                  letterSpacing: 0),
-              leading: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Material(
-                  color: Colors.white,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: 'Back',
-                    icon:
-                        const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-                    onPressed: busy ? null : () => Navigator.maybePop(context),
-                  ),
-                ),
-              )),
+          appBar: AppPageAppBar(
+            title: Text(title),
+            centerTitle: true,
+            backgroundColor: background,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            titleTextStyle: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+                letterSpacing: 0),
+            showBackButton: true,
+            backEnabled: !busy,
+          ),
           body: SafeArea(
               top: false,
               child: Align(

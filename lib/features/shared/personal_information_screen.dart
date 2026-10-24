@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -99,7 +98,6 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
                     top: 0,
                     child: ProfileTopAction(
                       label: 'Back',
-                      icon: CupertinoIcons.back,
                       onTap: () => Navigator.pop(context),
                     ),
                   ),

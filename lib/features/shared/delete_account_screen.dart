@@ -189,20 +189,6 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             color: AppColors.closedRed,
             onPressed: _delete,
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
-              onPressed: _busy ? null : () => Navigator.pop(context),
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppColors.textDark,
-                minimumSize: const Size.fromHeight(54),
-                shape: const StadiumBorder(),
-              ),
-              child: const Text('Cancel'),
-            ),
-          ),
         ],
       );
 }
