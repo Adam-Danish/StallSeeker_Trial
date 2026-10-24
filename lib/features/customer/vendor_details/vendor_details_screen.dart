@@ -25,12 +25,19 @@ class VendorDetailsScreen extends StatefulWidget {
   final VendorModel vendor;
   final String? initialDishId;
   final bool previewOnly;
+  // Freeze profile fields for the unsaved Edit stall preview.
+  final bool draftPreview;
+  final File? draftPhoto;
 
   const VendorDetailsScreen(
       {super.key,
       required this.vendor,
       this.initialDishId,
-      this.previewOnly = false});
+      this.previewOnly = false,
+      this.draftPreview = false,
+      this.draftPhoto})
+      : assert(!draftPreview || previewOnly),
+        assert(draftPhoto == null || draftPreview);
 
   @override
   State<VendorDetailsScreen> createState() => _VendorDetailsScreenState();
@@ -84,31 +91,33 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     _focusedDishId = widget.initialDishId;
     _menuStream = _menuService.getMenuItems(_vendor.vendorId);
     _reviewStream = _reviews.watchReviews(_vendor.vendorId);
-    _vendorSub = _vendorService.watchVendorProfile(_vendor.vendorId).listen(
-      (vendor) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _vendorDeleted = vendor == null;
-          if (vendor != null) {
-            _vendor = vendor;
+    if (!widget.draftPreview) {
+      _vendorSub = _vendorService.watchVendorProfile(_vendor.vendorId).listen(
+        (vendor) {
+          if (!mounted) {
+            return;
           }
-          _vendorError = null;
-        });
-      },
-      onError: (Object error) {
+          setState(() {
+            _vendorDeleted = vendor == null;
+            if (vendor != null) {
+              _vendor = vendor;
+            }
+            _vendorError = null;
+          });
+        },
+        onError: (Object error) {
+          if (mounted) {
+            setState(() => _vendorError =
+                'Could not update this stall. Showing last known details.');
+          }
+        },
+      );
+      _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
         if (mounted) {
-          setState(() => _vendorError =
-              'Could not update this stall. Showing last known details.');
+          setState(() {});
         }
-      },
-    );
-    _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
+      });
+    }
 
     final user = FirebaseAuth.instance.currentUser;
     final customerId = user?.uid;
@@ -144,6 +153,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   }
 
   Future<void> _refreshVendor() async {
+    if (widget.draftPreview) return;
     setState(() => _isRefreshing = true);
     final updated = await _vendorService.getVendorProfile(_vendor.vendorId);
     if (mounted) {
@@ -461,17 +471,18 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: 'Refresh stall status',
-            onPressed: _isRefreshing ? null : _refreshVendor,
-          ),
+          if (!widget.draftPreview)
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh stall status',
+              onPressed: _isRefreshing ? null : _refreshVendor,
+            ),
           if (!widget.previewOnly && customerId != null)
             isGuest
                 ? IconButton(
@@ -561,7 +572,10 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
       child: SizedBox(
         height: height,
         width: double.infinity,
-        child: _vendor.imageUrl.isNotEmpty
+        child: widget.draftPhoto != null
+            ? Image.file(widget.draftPhoto!, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _photoPlaceholder())
+            : _vendor.imageUrl.isNotEmpty
             ? Image.network(
                 _vendor.imageUrl,
                 fit: BoxFit.cover,
@@ -574,6 +588,12 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
 
   List<Widget> _buildStallInfoWidgets({required bool isTablet}) {
     return [
+      if (widget.draftPreview)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Text('Preview of your changes. Save changes to publish.',
+              style: TextStyle(color: AppColors.primary, fontSize: 13)),
+        ),
       if (_vendorDeleted || _vendorError != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),

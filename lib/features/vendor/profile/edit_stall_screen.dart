@@ -1,4 +1,3 @@
-import '../../../core/widgets/app_page_app_bar.dart';
 import 'unsaved_stall_changes_guard.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -10,8 +9,9 @@ import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/storage_service.dart';
-import '../../../core/utils/vendor_phone.dart';
-import 'stall_schedule_editor.dart';
+import 'edit_stall_view.dart';
+import 'stall_profile_draft.dart';
+import '../../customer/vendor_details/vendor_details_screen.dart';
 
 class EditStallScreen extends StatefulWidget {
   const EditStallScreen({super.key});
@@ -39,7 +39,8 @@ class _EditStallScreenState extends State<EditStallScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isPickingImage = false;
-  bool _isOpen = false;
+  VendorModel? _loadedVendor;
+  String? _loadError;
   Map<int, List<StallHoursInterval>> _weeklyHours = {};
   List<TemporaryClosure> _temporaryClosures = [];
 
@@ -56,25 +57,41 @@ class _EditStallScreenState extends State<EditStallScreen> {
 
   // Fetch vendor info from Firestore to pre-fill the form
   Future<void> _loadExistingVendorData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     final user = _auth.currentUser;
-    if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
-      if (!mounted) return;
-      if (vendor != null) {
-        _stallNameController.text = vendor.stallName;
-        _descriptionController.text = vendor.description;
-        _openingHoursController.text = vendor.openingHours;
-        _weeklyHours = vendor.weeklyHours;
-        _temporaryClosures = vendor.temporaryClosures;
-        _phoneController.text = vendor.phoneNumber;
-        _isOpen = vendor.isOpen;
-        _existingImageUrl = vendor.imageUrl;
-        _selectedCategories
-          ..clear()
-          ..addAll(vendor.allCategories);
-        if (_selectedCategories.isEmpty) _selectedCategories.add('Beverages');
-      }
+    if (user == null) {
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Sign in again to edit your stall.';
+      });
+      return;
     }
+    VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+    if (!mounted) return;
+    _loadedVendor = vendor ??
+        VendorModel(
+            vendorId: user.uid,
+            stallName: '',
+            description: '',
+            category: 'Beverages',
+            openingHours: '');
+    if (vendor != null) {
+      _stallNameController.text = vendor.stallName;
+      _descriptionController.text = vendor.description;
+      _openingHoursController.text = vendor.openingHours;
+      _weeklyHours = vendor.weeklyHours;
+      _temporaryClosures = vendor.temporaryClosures;
+      _phoneController.text = vendor.phoneNumber;
+      _existingImageUrl = vendor.imageUrl;
+      _selectedCategories
+        ..clear()
+        ..addAll(vendor.allCategories);
+      if (_selectedCategories.isEmpty) _selectedCategories.add('Beverages');
+    }
+
     if (!mounted) return;
     setState(() {
       _isLoading = false;
@@ -132,19 +149,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
             await _storageService.uploadStallImage(user.uid, _pickedImage!);
       }
 
-      final vendor = VendorModel(
-        vendorId: user.uid,
-        stallName: _stallNameController.text.trim(),
-        description: _descriptionController.text.trim(),
-        category: _selectedCategories.isEmpty ? '' : _selectedCategories.first,
-        categories: _selectedCategories.toList(),
-        openingHours: _openingHoursController.text.trim(),
-        isOpen: _isOpen,
-        imageUrl: imageUrl,
-        phoneNumber: normalizeVendorPhone(_phoneController.text) ?? '',
-        weeklyHours: _weeklyHours,
-        temporaryClosures: _temporaryClosures,
-      );
+      final vendor = _draftVendor(imageUrl: imageUrl);
 
       await _vendorService.saveVendorProfile(vendor);
 
@@ -195,212 +200,127 @@ class _EditStallScreenState extends State<EditStallScreen> {
 
   bool get _hasUnsavedChanges =>
       !_isLoading &&
+      _loadError == null &&
+      _loadedVendor != null &&
       (_pickedImage != null || _currentValues() != _initialValues);
 
   void _requestLeave() => _exitGuard.currentState?.requestLeave();
 
-  Widget _buildImagePicker() {
-    Widget imageContent;
-    if (_pickedImage != null) {
-      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
-    } else if (_existingImageUrl.isNotEmpty) {
-      imageContent = Image.network(
-        _existingImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.storefront, size: 48, color: Colors.grey),
+  VendorModel _draftVendor({String? imageUrl}) => buildStallProfileDraft(
+        original: _loadedVendor!,
+        name: _stallNameController.text,
+        description: _descriptionController.text,
+        phone: _phoneController.text,
+        legacyHours: _openingHoursController.text,
+        categories: _selectedCategories,
+        hours: _weeklyHours,
+        closures: _temporaryClosures,
+        imageUrl: imageUrl,
       );
-    } else {
-      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
-    }
 
-    return Semantics(
-      label: 'Choose stall photo',
-      button: true,
-      child: InkWell(
-        onTap: _isSaving || _isPickingImage ? null : _pickImage,
-        borderRadius: BorderRadius.circular(26),
-        child: Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              width: double.infinity,
-              height: 160,
-              decoration: BoxDecoration(
-                color: AppColors.mint,
-                borderRadius: BorderRadius.circular(26),
+  void _preview() {
+    if (_isLoading || _isSaving || _isPickingImage || _loadedVendor == null) {
+      return;
+    }
+    if (_auth.currentUser?.uid != _loadedVendor!.vendorId) return;
+    FocusScope.of(context).unfocus();
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => VendorDetailsScreen(
+                vendor: _draftVendor(),
+                previewOnly: true,
+                draftPreview: true,
+                draftPhoto: _pickedImage)));
+  }
+
+  Widget _buildImagePicker() {
+    final placeholder = const Center(
+        child: Icon(Icons.storefront_outlined,
+            size: 52, color: AppColors.primary));
+    final image = _pickedImage != null
+        ? Image.file(_pickedImage!,
+            fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder)
+        : _existingImageUrl.isNotEmpty
+            ? Image.network(_existingImageUrl,
+                fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder)
+            : placeholder;
+    return LayoutBuilder(
+        builder: (context, constraints) => SizedBox(
+              height:
+                  (constraints.maxWidth * 9 / 16).clamp(160, 260).toDouble(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Material(
+                    color: AppColors.mint,
+                    child: InkWell(
+                      onTap: _isSaving || _isPickingImage ? null : _pickImage,
+                      child: Stack(fit: StackFit.expand, children: [
+                        image,
+                        Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                            child: Center(
+                                child: FilledButton.icon(
+                                    onPressed: _isSaving || _isPickingImage
+                                        ? null
+                                        : _pickImage,
+                                    style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: AppColors.primary,
+                                        minimumSize: const Size(48, 48),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 18, vertical: 12)),
+                                    icon: const Icon(Icons.camera_alt_outlined,
+                                        size: 20),
+                                    label: Text(_isPickingImage
+                                        ? 'Opening photos…'
+                                        : 'Change photo')))),
+                      ]),
+                    )),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: imageContent,
-            ),
-            Container(
-              margin: const EdgeInsets.all(8),
-              padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-              child:
-                  const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-            ),
-          ],
-        ),
-      ),
-    );
+            ));
   }
 
   @override
-  Widget build(BuildContext context) {
-    return UnsavedStallChangesGuard(
+  Widget build(BuildContext context) => UnsavedStallChangesGuard(
         key: _exitGuard,
         hasChanges: _hasUnsavedChanges,
         saving: _isSaving,
         onSave: _saveStallProfile,
-        child: Scaffold(
-          appBar: AppPageAppBar(
-            showBackButton: true,
-            backLabel: 'Cancel',
-            backEnabled: !_isSaving,
-            onBack: _requestLeave,
-            title: const Text('Edit stall'),
-            actions: [
-              TextButton(
-                onPressed: _isLoading || _isSaving || _isPickingImage
-                    ? null
-                    : _saveStallProfile,
-                child: Text(_isSaving ? 'Saving…' : 'Done'),
-              ),
-            ],
-          ),
-          body: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Form(
-                    key: _formKey,
-                    onChanged: () => setState(() {}),
-                    child: ListView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      children: [
-                        // Stall Photo
-                        _buildImagePicker(),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: _isSaving || _isPickingImage
-                                ? null
-                                : _pickImage,
-                            icon:
-                                const Icon(Icons.add_photo_alternate_outlined),
-                            label: Text(_isPickingImage
-                                ? 'Opening photos…'
-                                : _pickedImage != null ||
-                                        _existingImageUrl.isNotEmpty
-                                    ? 'Change photo'
-                                    : 'Add stall photo'),
-                          ),
-                        ),
-                        const Text(
-                            'This photo appears on your stall and dashboard.',
-                            style: TextStyle(
-                                color: AppColors.textMuted, fontSize: 13)),
-                        if (_pickedImage != null)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 6),
-                            child: Text('New photo selected. Tap Done to save.',
-                                style: TextStyle(
-                                    color: AppColors.primary, fontSize: 13)),
-                          ),
-                        const SizedBox(height: 16),
-
-                        // Stall Name
-                        TextFormField(
-                          controller: _stallNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Stall Name',
-                            hintText: 'e.g. Uncle John Drink Stall',
-                          ),
-                          validator: (val) => val == null || val.isEmpty
-                              ? 'Enter stall name'
-                              : null,
-                        ),
-                        const SizedBox(height: 16),
-
-                        Text('Food categories',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        Wrap(spacing: 8, runSpacing: 8, children: [
-                          for (final category in {
-                            ..._categories,
-                            ..._selectedCategories
-                          })
-                            FilterChip(
-                                label: Text(category),
-                                selected:
-                                    _selectedCategories.contains(category),
-                                onSelected: _isSaving
-                                    ? null
-                                    : (selected) => setState(() {
-                                          if (selected) {
-                                            _selectedCategories.add(category);
-                                          } else {
-                                            _selectedCategories
-                                                .remove(category);
-                                          }
-                                        })),
-                        ]),
-                        const SizedBox(height: 16),
-
-                        // Description
-                        TextFormField(
-                          controller: _descriptionController,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
-                            labelText: 'Description',
-                            hintText: 'Describe your food/drinks offered...',
-                          ),
-                          validator: (val) => val == null || val.isEmpty
-                              ? 'Enter description'
-                              : null,
-                        ),
-                        const SizedBox(height: 16),
-
-                        if (_openingHoursController.text.isNotEmpty &&
-                            _weeklyHours.isEmpty)
-                          Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Text(
-                                  'Previous hours: ${_openingHoursController.text}. Set your weekly hours below.')),
-                        StallScheduleEditor(
-                            hours: _weeklyHours,
-                            closures: _temporaryClosures,
-                            onChanged: (hours, closures) => setState(() {
-                                  _weeklyHours = hours;
-                                  _temporaryClosures = closures;
-                                })),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
-                            labelText: 'Business phone number',
-                            hintText: 'e.g. 012-345 6789',
-                          ),
-                          validator: (value) =>
-                              normalizeVendorPhone(value ?? '') == null
-                                  ? 'Enter a valid Malaysian phone number.'
-                                  : null,
-                        ),
-                        const SizedBox(height: 24),
-
-                        if (_isSaving) const LinearProgressIndicator(),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
-                ),
-        ));
-  }
+        child: EditStallView(
+          formKey: _formKey,
+          nameController: _stallNameController,
+          descriptionController: _descriptionController,
+          phoneController: _phoneController,
+          image: _buildImagePicker(),
+          categoryOptions: _categories,
+          selectedCategories: _selectedCategories,
+          legacyHours: _openingHoursController.text,
+          hours: _weeklyHours,
+          closures: _temporaryClosures,
+          loading: _isLoading,
+          saving: _isSaving,
+          pickingImage: _isPickingImage,
+          newPhoto: _pickedImage != null,
+          error: _loadError,
+          onRetry: _loadExistingVendorData,
+          onFormChanged: () => setState(() {}),
+          onCancel: _requestLeave,
+          onSave: _saveStallProfile,
+          onPreview: _preview,
+          onCategoryChanged: (category, selected) => setState(() {
+            if (selected) {
+              _selectedCategories.add(category);
+            } else {
+              _selectedCategories.remove(category);
+            }
+          }),
+          onScheduleChanged: (hours, closures) => setState(() {
+            _weeklyHours = hours;
+            _temporaryClosures = closures;
+          }),
+        ),
+      );
 }

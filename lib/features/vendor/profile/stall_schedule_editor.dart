@@ -6,10 +6,16 @@ class StallScheduleEditor extends StatelessWidget {
       {super.key,
       required this.hours,
       required this.closures,
-      required this.onChanged});
+      required this.onChanged,
+      this.showHours = true,
+      this.showClosures = true,
+      this.showSectionTitles = true});
 
   final Map<int, List<StallHoursInterval>> hours;
   final List<TemporaryClosure> closures;
+  final bool showHours;
+  final bool showClosures;
+  final bool showSectionTitles;
   final void Function(
       Map<int, List<StallHoursInterval>>, List<TemporaryClosure>) onChanged;
 
@@ -89,69 +95,89 @@ class StallScheduleEditor extends StatelessWidget {
     return '${my.day}/${my.month}/${my.year} ${formatStallTime(my.hour * 60 + my.minute)}';
   }
 
+  Widget _timeInterval(BuildContext context, int day, int index) {
+    final interval = hours[day]![index];
+    final opens = OutlinedButton(
+        style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+        onPressed: () => _pickTime(context, day, index, opening: true),
+        child: Text('Opens ${formatStallTime(interval.openMinute)}',
+            textAlign: TextAlign.center));
+    final closes = OutlinedButton(
+        style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+        onPressed: () => _pickTime(context, day, index, opening: false),
+        child: Text('Closes ${formatStallTime(interval.closeMinute)}',
+            textAlign: TextAlign.center));
+    final remove = IconButton(
+        tooltip: 'Remove time',
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        icon: const Icon(Icons.close),
+        onPressed: () {
+          final next = _copyHours();
+          next[day]!.removeAt(index);
+          onChanged(next, closures);
+        });
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: LayoutBuilder(builder: (context, constraints) {
+          if (constraints.maxWidth < 400 ||
+              MediaQuery.textScalerOf(context).scale(14) > 19) {
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  opens,
+                  const SizedBox(height: 8),
+                  closes,
+                  Align(alignment: Alignment.centerRight, child: remove),
+                ]);
+          }
+          return Row(children: [
+            Expanded(child: opens),
+            const SizedBox(width: 8),
+            Expanded(child: closes),
+            remove
+          ]);
+        }));
+  }
+
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Weekly opening hours',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 5),
-          const Text(
-              'These are planned hours. Use the Open switch when you start serving.'),
-          const SizedBox(height: 8),
-          Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Column(children: [
-                for (var day = 1; day <= 7; day++) ...[
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(_days[day - 1]),
-                    subtitle: Text(
-                        (hours[day] ?? []).isEmpty ? 'Closed' : 'Scheduled'),
-                    value: (hours[day] ?? []).isNotEmpty,
-                    onChanged: (enabled) {
-                      final next = _copyHours();
-                      next[day] = enabled
-                          ? [const StallHoursInterval(9 * 60, 17 * 60)]
-                          : [];
-                      onChanged(next, closures);
-                    },
-                  ),
-                  for (var index = 0;
-                      index < (hours[day] ?? []).length;
-                      index++)
-                    Padding(
-                        padding: const EdgeInsets.only(left: 12, bottom: 8),
-                        child: Row(children: [
-                          Expanded(
-                              child: OutlinedButton(
-                                  onPressed: () => _pickTime(
-                                      context, day, index, opening: true),
-                                  child: Text(formatStallTime(
-                                      hours[day]![index].openMinute)))),
-                          const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 5),
-                              child: Text('to')),
-                          Expanded(
-                              child: OutlinedButton(
-                                  onPressed: () => _pickTime(
-                                      context, day, index, opening: false),
-                                  child: Text(formatStallTime(
-                                      hours[day]![index].closeMinute)))),
-                          IconButton(
-                              tooltip: 'Remove time',
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                final next = _copyHours();
-                                next[day]!.removeAt(index);
-                                onChanged(next, closures);
-                              }),
-                        ])),
-                  if ((hours[day] ?? []).isNotEmpty && hours[day]!.length < 3)
-                    TextButton.icon(
+          if (showHours) ...[
+            if (showSectionTitles) ...[
+              Text('Weekly opening hours',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 5),
+            ],
+            const Text(
+                'Planned hours · Malaysia time. Manage your live Open / Closed status from the dashboard.'),
+            const SizedBox(height: 12),
+            for (var day = 1; day <= 7; day++) ...[
+              SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_days[day - 1]),
+                  subtitle:
+                      Text((hours[day] ?? []).isEmpty ? 'Closed' : 'Scheduled'),
+                  value: (hours[day] ?? []).isNotEmpty,
+                  onChanged: (enabled) {
+                    final next = _copyHours();
+                    next[day] = enabled
+                        ? [const StallHoursInterval(9 * 60, 17 * 60)]
+                        : [];
+                    onChanged(next, closures);
+                  }),
+              for (var index = 0; index < (hours[day] ?? []).length; index++)
+                _timeInterval(context, day, index),
+              if ((hours[day] ?? []).isNotEmpty && hours[day]!.length < 3)
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48)),
                         onPressed: () {
                           final next = _copyHours();
                           next[day]!
@@ -159,35 +185,45 @@ class StallScheduleEditor extends StatelessWidget {
                           onChanged(next, closures);
                         },
                         icon: const Icon(Icons.add),
-                        label: const Text('Add time')),
-                  if (day < 7) const Divider(height: .5, thickness: .5),
-                ],
-              ]),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Temporary closures',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 5),
-          const Text(
-              'Choose dates and times for breaks or days off. Your stall will close during a break. Use the Open switch to reopen afterward.'),
-          for (var index = 0; index < closures.length; index++)
-            ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('${_formatClosure(closures[index].start)} –'),
-                subtitle: Text(_formatClosure(closures[index].end)),
-                trailing: IconButton(
-                    tooltip: 'Remove closure',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () {
-                      final next = [...closures]..removeAt(index);
-                      onChanged(hours, next);
-                    })),
-          TextButton.icon(
-              onPressed:
-                  closures.length >= 20 ? null : () => _addClosure(context),
-              icon: const Icon(Icons.event_busy_outlined),
-              label: const Text('Add closure')),
+                        label: const Text('Add time'))),
+              if (day < 7) const Divider(height: 16),
+            ],
+          ],
+          if (showHours && showClosures) const SizedBox(height: 20),
+          if (showClosures) ...[
+            if (showSectionTitles) ...[
+              Text('Temporary closures',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 5),
+            ],
+            const Text(
+                'Plan breaks or days off. Your stall closes during these dates. Reopen it from the dashboard afterward.'),
+            const SizedBox(height: 12),
+            if (closures.isEmpty)
+              const Text('No temporary closures scheduled.'),
+            for (var index = 0; index < closures.length; index++)
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('${_formatClosure(closures[index].start)} –'),
+                  subtitle: Text(_formatClosure(closures[index].end)),
+                  trailing: IconButton(
+                      tooltip: 'Remove closure',
+                      constraints:
+                          const BoxConstraints(minWidth: 48, minHeight: 48),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () {
+                        final next = [...closures]..removeAt(index);
+                        onChanged(hours, next);
+                      })),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+                style:
+                    OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed:
+                    closures.length >= 20 ? null : () => _addClosure(context),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Add closure')),
+          ],
         ],
       );
 }
