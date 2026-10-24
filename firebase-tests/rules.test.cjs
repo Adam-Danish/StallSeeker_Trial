@@ -252,6 +252,7 @@ test('search history is private, owner-writable and schema validated', async () 
 });
 
 test('reviews require customer ownership, valid stars and at most five photos', async () => {
+  await seedDish();
   const owner = client('customer-a').firestore();
   const other = client('customer-b').firestore();
   const vendor = client('vendor-a').firestore();

@@ -151,14 +151,14 @@ void main() {
     if (!const bool.fromEnvironment('DASHBOARD_PREVIEW')) return;
     const fontRoot = String.fromEnvironment('PREVIEW_FONT_ROOT');
     final fonts = FontLoader('Roboto');
-    for (final name in ['regular', 'medium', 'bold', 'black']) {
-      final bytes = await File('$fontRoot/roboto-$name.ttf').readAsBytes();
+    for (final name in ['Regular', 'Medium']) {
+      final bytes = await File('$fontRoot/Roboto-$name.ttf').readAsBytes();
       fonts.addFont(Future.value(ByteData.sublistView(bytes)));
     }
     await fonts.load();
     final fallback = FontLoader('Ahem')
       ..addFont(Future.value(ByteData.sublistView(
-          await File('$fontRoot/roboto-regular.ttf').readAsBytes())));
+          await File('$fontRoot/Roboto-Regular.ttf').readAsBytes())));
     await fallback.load();
     final icons = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
@@ -170,9 +170,10 @@ void main() {
     _viewport(tester, const Size(390, 844));
     final actions = <String>[];
     await tester.pumpWidget(_app(onAction: actions.add));
-    expect(tester.getTopLeft(find.text('Your stall is open')).dy,
+    expect(tester.getTopLeft(find.text('Stall open')).dy,
         lessThan(tester.getTopLeft(find.text('Quick actions')).dy));
     await tester.tap(find.text('Preview'));
+    await tester.tap(find.text('Edit stall'));
     await tester.tap(find.text('Menu'));
     await tester.tap(find.text('Stock'));
     await tester.tap(find.text('Bookings').first);
@@ -180,6 +181,7 @@ void main() {
     await tester.tap(find.byType(Switch).last);
     expect(actions, [
       'preview',
+      'edit',
       'menu',
       'stock',
       'bookings',
@@ -202,7 +204,9 @@ void main() {
     expect(find.text('Old request'), findsNothing);
     expect(tester.getTopLeft(find.text('Aisyah')).dy,
         lessThan(tester.getTopLeft(find.text('Daniel')).dy));
+    await _show(tester, find.text('Review booking'));
     await tester.tap(find.text('Review booking'));
+    await _show(tester, find.text('Mark ready'));
     await tester.tap(find.text('Mark ready'));
     expect(actions, ['view:Aisyah', 'advance:Daniel']);
     expect(find.textContaining('Collect at'), findsNothing);
@@ -277,10 +281,63 @@ void main() {
       ]));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await _show(tester, find.text('Edit my stall'));
+      await _show(tester, find.text('Today’s overview'));
       expect(tester.takeException(), isNull);
     });
   }
+
+  for (final size in [
+    const Size(320, 900),
+    const Size(390, 1100),
+    const Size(768, 1024),
+    const Size(960, 700),
+    const Size(1280, 800),
+  ]) {
+    testWidgets('responsive dashboard at ${size.width} × ${size.height}',
+        (tester) async {
+      _viewport(tester, size);
+      await tester.pumpWidget(_app(bookings: [
+        _booking('Aina', 'requested'),
+        _booking('Daniel', 'preparing'),
+        _booking('Farah', 'ready'),
+      ]));
+      await tester.pumpAndSettle();
+      final wide = size.width >= 900;
+      expect(
+          find.byKey(
+              Key(wide ? 'dashboard-two-columns' : 'dashboard-single-column')),
+          findsOneWidget);
+      final bookings = tester.getTopLeft(find.text('Active bookings'));
+      final quickActions = tester.getTopLeft(find.text('Quick actions'));
+      if (wide) {
+        expect(bookings.dx, lessThan(quickActions.dx));
+        expect(bookings.dy, closeTo(quickActions.dy, 1));
+        expect(tester.getTopLeft(find.text('Today’s overview')).dx,
+            quickActions.dx);
+      } else {
+        expect(bookings.dy, greaterThan(quickActions.dy));
+        if (size.width <= 600) {
+          final button = find.widgetWithText(FilledButton, 'Review booking');
+          expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+          expect(tester.getSize(button).width, greaterThan(size.width - 120));
+        }
+      }
+      expect(find.text('RM 12.00'), findsNWidgets(3));
+      expect(tester.takeException(), isNull);
+      await _preview(tester, 'dashboard-${size.width.toInt()}');
+    });
+  }
+
+  testWidgets('tablet window switches to one column when resized',
+      (tester) async {
+    _viewport(tester, const Size(1280, 800));
+    await tester.pumpWidget(_app());
+    expect(find.byKey(const Key('dashboard-two-columns')), findsOneWidget);
+    tester.view.physicalSize = const Size(700, 800);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dashboard-single-column')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('loading and failure do not present zero sales as real data',
       (tester) async {

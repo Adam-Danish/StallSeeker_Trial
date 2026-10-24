@@ -1,3 +1,4 @@
+import '../../shared/stall_review_card.dart';
 import '../../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
 import 'dart:io';
@@ -1062,42 +1063,64 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     return '${my.day}/${my.month}/${my.year} $hour:$minute ${my.hour < 12 ? 'AM' : 'PM'}';
   }
 
-  Widget _reviewCard(StallReview review) => Card(
-      margin: const EdgeInsets.only(top: 10),
-      child: Padding(
-          padding: const EdgeInsets.all(14),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                  child: Text(review.customerName,
-                      style: const TextStyle(fontWeight: FontWeight.w700))),
-              Text('${review.rating} ★')
-            ]),
-            if (review.text.isNotEmpty)
-              Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(review.text)),
-            if (review.photoUrls.isNotEmpty)
-              Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: SizedBox(
-                      height: 90,
-                      child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: review.photoUrls.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) => ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(review.photoUrls[index],
-                                  width: 90,
-                                  height: 90,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                      width: 90,
-                                      child: Icon(
-                                          Icons.broken_image_outlined))))))),
-          ])));
+  Future<void> _deleteReview(StallReview review) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null ||
+        user.isAnonymous ||
+        user.uid != review.customerId ||
+        !_customerAccount ||
+        widget.previewOnly) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your review?'),
+        content: const Text(
+          'Your rating, review, photos, and any stall owner reply will be removed from this stall.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete review'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _reviews.deleteReview(_vendor.vendorId, review.customerId);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Review deleted.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete your review. Please retry.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _reviewCard(StallReview review) {
+    final canEdit = !widget.previewOnly &&
+        _customerAccount &&
+        FirebaseAuth.instance.currentUser?.uid == review.customerId;
+    return StallReviewCard(
+      review: review,
+      stallName: _vendor.stallName,
+      onEditReview: canEdit ? () => _editReview(review) : null,
+      onDeleteReview: canEdit ? () => _deleteReview(review) : null,
+    );
+  }
 }
 
 class _ReviewEditor extends StatefulWidget {
@@ -1163,7 +1186,8 @@ class _ReviewEditorState extends State<_ReviewEditor> {
             _photos[i]));
       }
       await _service.saveReview(widget.vendorId, widget.customerId,
-          widget.customerName, _rating, _text.text, urls);
+          widget.customerName, _rating, _text.text, urls,
+          customerAvatarUrl: FirebaseAuth.instance.currentUser?.photoURL ?? '');
       final removed = (widget.existing?.photoUrls ?? <String>[])
           .where((url) => !urls.contains(url));
       for (final url in removed) {

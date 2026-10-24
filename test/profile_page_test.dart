@@ -4,6 +4,7 @@ import 'package:stallseeker/features/shared/profile_page.dart';
 
 ProfilePage page({
   bool guest = false,
+  bool vendor = false,
   String name = 'Adam Danish',
   String email = 'adam@example.com',
   VoidCallback? onHome,
@@ -14,7 +15,7 @@ ProfilePage page({
   return ProfilePage(
     name: name,
     email: email,
-    isVendor: false,
+    isVendor: vendor,
     isGuest: guest,
     canChangePassword: true,
     location: 'Johor Bahru, Johor',
@@ -37,6 +38,20 @@ ProfilePage page({
 }
 
 void main() {
+  testWidgets('follow notification settings are available only to customers',
+      (tester) async {
+    for (final vendor in [false, true]) {
+      await tester
+          .pumpWidget(MaterialApp(home: Scaffold(body: page(vendor: vendor))));
+      await tester.drag(find.byType(ListView), const Offset(0, -350));
+      await tester.pumpAndSettle();
+      expect(find.text('Notifications and Sounds'),
+          vendor ? findsNothing : findsOneWidget);
+      expect(find.text('Privacy Policy'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets(
       'saved pin rows invoke their actions and remain available to guests',
       (tester) async {

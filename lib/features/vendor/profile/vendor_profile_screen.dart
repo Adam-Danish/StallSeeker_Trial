@@ -3,7 +3,6 @@ import '../../shared/profile_page.dart';
 import '../../shared/edit_profile_screen.dart';
 import '../../shared/personal_information_screen.dart';
 import '../../shared/change_password_screen.dart';
-import '../../shared/notification_settings_screen.dart';
 import '../../shared/legal_screen.dart';
 import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
@@ -213,10 +212,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
       onAbout: () => Navigator.push(
           context, MaterialPageRoute(builder: (_) => const AboutScreen())),
-      onNotificationSettings: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => const NotificationSettingsScreen())),
       onPrivacyPolicy: () => Navigator.push(
           context,
           MaterialPageRoute(

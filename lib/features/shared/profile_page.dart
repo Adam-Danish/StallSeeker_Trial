@@ -25,7 +25,7 @@ class ProfilePage extends StatelessWidget {
     required this.onAbout,
     required this.onLogout,
     required this.onSignIn,
-    required this.onNotificationSettings,
+    this.onNotificationSettings,
     required this.onPrivacyPolicy,
     required this.onTerms,
     required this.onDeleteAccount,
@@ -56,7 +56,7 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onAbout;
   final VoidCallback onLogout;
   final VoidCallback onSignIn;
-  final VoidCallback onNotificationSettings;
+  final VoidCallback? onNotificationSettings;
   final VoidCallback onPrivacyPolicy;
   final VoidCallback onTerms;
   final VoidCallback onDeleteAccount;
@@ -341,8 +341,12 @@ class ProfilePage extends StatelessWidget {
                   if (!isGuest) ...[
                     const SizedBox(height: 24),
                     _group([
-                      _row(CupertinoIcons.bell_fill, const Color(0xFFFF5555),
-                          'Notifications and Sounds', onNotificationSettings),
+                      if (!isVendor && onNotificationSettings != null)
+                        _row(
+                            CupertinoIcons.bell_fill,
+                            const Color(0xFFFF5555),
+                            'Notifications and Sounds',
+                            onNotificationSettings!),
                       _row(CupertinoIcons.lock_fill, const Color(0xFF949499),
                           'Privacy Policy', onPrivacyPolicy),
                       _row(CupertinoIcons.doc_text_fill,

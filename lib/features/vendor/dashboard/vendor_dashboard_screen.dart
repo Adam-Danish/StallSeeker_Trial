@@ -15,6 +15,7 @@ import '../../shared/demo_orders_screen.dart';
 import '../../shared/booking_detail_screen.dart';
 import '../../customer/vendor_details/vendor_details_screen.dart';
 import 'vendor_dashboard_view.dart';
+import '../reviews/vendor_reviews_dashboard_card.dart';
 import '../../../core/utils/vendor_phone.dart';
 import 'vendor_demo_sales.dart';
 
@@ -301,6 +302,12 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
       stream: _bookings,
       builder: (context, snapshot) => VendorDashboardView(
         vendor: _vendor,
+        reviewsCard: _vendor == null
+            ? null
+            : VendorReviewsDashboardCard(
+                key: ValueKey(_vendor!.vendorId),
+                vendorId: _vendor!.vendorId,
+                stallName: _vendor!.stallName),
         bookings: snapshot.data ?? const [],
         bookingsLoading: !snapshot.hasData && !snapshot.hasError,
         bookingsError: snapshot.hasError,

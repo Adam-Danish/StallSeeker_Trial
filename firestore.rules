@@ -170,26 +170,67 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Public review snapshot. Exactly one optional owner reply lives in the
+    // review document, so deleting the review also removes the public reply.
+    function validStallReview(data, customerId) {
+      return data.keys().hasOnly(['customerId', 'customerName', 'customerAvatarUrl',
+              'rating', 'text', 'photoUrls', 'createdAt', 'updatedAt', 'edited', 'vendorReply'])
+          && data.keys().hasAll(['customerId', 'customerName', 'rating', 'text', 'photoUrls', 'updatedAt'])
+          && data.customerId == customerId
+          && data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 80
+          && data.rating is int && data.rating >= 1 && data.rating <= 5
+          && data.text is string && data.text.size() <= 1000
+          && validReviewPhotoUrls(data.photoUrls)
+          && data.updatedAt is timestamp
+          && (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time))
+          && data.get('edited', false) is bool
+          && data.get('customerAvatarUrl', '') is string
+          && data.get('customerAvatarUrl', '').size() <= 2048
+          && (data.get('customerAvatarUrl', '') == '' || data.customerAvatarUrl.matches('https://.*'));
+    }
+
+    function validOwnerReply(reply) {
+      return reply is map
+          && reply.keys().hasOnly(['text', 'createdAt', 'updatedAt', 'edited', 'reviewUpdatedAt'])
+          && reply.keys().hasAll(['text', 'createdAt', 'updatedAt', 'edited', 'reviewUpdatedAt'])
+          && reply.text is string && reply.text.size() > 0 && reply.text.size() <= 1000
+          && reply.text.matches('[\\s\\S]*\\S[\\s\\S]*')
+          && reply.createdAt is timestamp && reply.createdAt <= request.time
+          && reply.updatedAt == request.time && reply.edited is bool
+          && reply.reviewUpdatedAt is timestamp
+          && reply.reviewUpdatedAt <= resource.data.updatedAt;
+    }
+
     match /stallReviews/{vendorId}/entries/{customerId} {
-        allow read: if true;
-        allow create, update: if verifiedAccount()
-            && request.auth.uid == customerId
-            && customerId != vendorId
-            && get(/databases/$(database)/documents/users/$(customerId)).data.role == 'customer'
-            && request.resource.data.keys().hasOnly([
-                'customerId', 'customerName', 'rating', 'text',
-                'photoUrls', 'updatedAt'
-              ])
-            && request.resource.data.customerId == customerId
-            && request.resource.data.customerName is string
-            && request.resource.data.customerName.size() <= 80
-            && request.resource.data.rating is int
-            && request.resource.data.rating >= 1
-            && request.resource.data.rating <= 5
-            && request.resource.data.text is string
-            && request.resource.data.text.size() <= 1000
-            && validReviewPhotoUrls(request.resource.data.photoUrls)
-            && request.resource.data.updatedAt == request.time;
+      allow read: if true;
+      allow create: if ownsCustomer(customerId) && customerId != vendorId
+          && exists(/databases/$(database)/documents/vendors/$(vendorId))
+          && validStallReview(request.resource.data, customerId)
+          && !('vendorReply' in request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && (!('createdAt' in request.resource.data) || request.resource.data.createdAt == request.time)
+          && request.resource.data.get('edited', false) == false;
+      allow update: if (ownsCustomer(customerId) && customerId != vendorId
+          && validStallReview(request.resource.data, customerId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'customerName', 'customerAvatarUrl', 'rating', 'text', 'photoUrls', 'createdAt', 'updatedAt', 'edited'])
+          && request.resource.data.updatedAt == request.time
+          && (('createdAt' in resource.data && request.resource.data.createdAt == resource.data.createdAt)
+              || (!('createdAt' in resource.data) && (!('createdAt' in request.resource.data)
+                  || request.resource.data.createdAt == resource.data.updatedAt)))
+          && (!('edited' in resource.data) || request.resource.data.edited == true))
+          || (ownsVendor(vendorId)
+              && validStallReview(request.resource.data, customerId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vendorReply'])
+              && ( !('vendorReply' in request.resource.data)
+                  || (validOwnerReply(request.resource.data.vendorReply)
+                      && (('vendorReply' in resource.data
+                          && request.resource.data.vendorReply.createdAt == resource.data.vendorReply.createdAt
+                          && request.resource.data.vendorReply.edited == true)
+                        || (!('vendorReply' in resource.data)
+                          && request.resource.data.vendorReply.createdAt == request.time
+                          && request.resource.data.vendorReply.edited == false)))));
+      allow delete: if ownsCustomer(customerId) && customerId != vendorId;
     }
 
     match /users/{userId} {
