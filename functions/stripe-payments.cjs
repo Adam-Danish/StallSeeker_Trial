@@ -131,9 +131,9 @@ exports.stripePaymentReturn = onRequest({invoker: 'public', maxInstances: 5}, (r
 body{font-family:system-ui,sans-serif;background:#fff8f2;color:#242424;margin:0;padding:32px 20px}
 main{max-width:440px;margin:10vh auto;background:white;border-radius:24px;padding:32px;box-shadow:0 8px 40px #0000000d}
 small{color:#80532c}h1{font-size:28px}p{line-height:1.6}
-</style></head><body><main><small>STALLSEEKER · TEST MODE</small>
+</style></head><body><main><small>STALLSEEKER</small>
 <h1>Return to your booking</h1><p>You can close this page and return to StallSeeker.
 Your booking will show the verified payment status. Tap <strong>Check payment</strong>
-if it has not updated yet.</p><p>No real money is charged in this prototype.</p>
+if it has not updated yet.</p>
 </main></body></html>`);
 });

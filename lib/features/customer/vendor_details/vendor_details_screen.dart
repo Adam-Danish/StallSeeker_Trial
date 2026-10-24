@@ -22,9 +22,13 @@ import '../orders/demo_order_cart_screen.dart';
 class VendorDetailsScreen extends StatefulWidget {
   final VendorModel vendor;
   final String? initialDishId;
+  final bool previewOnly;
 
   const VendorDetailsScreen(
-      {super.key, required this.vendor, this.initialDishId});
+      {super.key,
+      required this.vendor,
+      this.initialDishId,
+      this.previewOnly = false});
 
   @override
   State<VendorDetailsScreen> createState() => _VendorDetailsScreenState();
@@ -104,7 +108,9 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
 
     final user = FirebaseAuth.instance.currentUser;
     final customerId = user?.uid;
-    if (customerId != null && user?.isAnonymous == false) {
+    if (!widget.previewOnly &&
+        customerId != null &&
+        user?.isAnonymous == false) {
       _followSub = _followService
           .isFollowing(customerId, _vendor.vendorId)
           .listen((value) {
@@ -113,9 +119,13 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         }
       });
     }
-    _dishAuthSub = FirebaseAuth.instance.userChanges().listen((_) {
-      unawaited(_listenDishFollows());
-    });
+    if (!widget.previewOnly) {
+      _dishAuthSub = FirebaseAuth.instance.userChanges().listen((_) {
+        unawaited(_listenDishFollows());
+      });
+    } else {
+      _dishFollowLoading = false;
+    }
   }
 
   @override
@@ -443,7 +453,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Stall details'),
+        title: Text(widget.previewOnly ? 'Stall preview' : 'Stall details'),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
@@ -458,7 +468,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
             tooltip: 'Refresh stall status',
             onPressed: _isRefreshing ? null : _refreshVendor,
           ),
-          if (customerId != null)
+          if (!widget.previewOnly && customerId != null)
             isGuest
                 ? IconButton(
                     icon: const Icon(Icons.favorite_border),
@@ -478,7 +488,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         ],
       ),
       // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
-      bottomNavigationBar: isTablet
+      bottomNavigationBar: isTablet || widget.previewOnly
           ? null
           : SafeArea(
               minimum: const EdgeInsets.all(16),
@@ -517,7 +527,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
             children: [
               ..._buildStallInfoWidgets(isTablet: true),
               const SizedBox(height: 20),
-              _buildActionButtons(isGuest: isGuest),
+              if (!widget.previewOnly) _buildActionButtons(isGuest: isGuest),
             ],
           ),
         ),
@@ -871,12 +881,13 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                   ),
               ]),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => _editReview(mine),
-                icon: const Icon(Icons.rate_review_outlined),
-                label:
-                    Text(mine == null ? 'Write a review' : 'Edit your review'),
-              ),
+              if (!widget.previewOnly)
+                OutlinedButton.icon(
+                  onPressed: () => _editReview(mine),
+                  icon: const Icon(Icons.rate_review_outlined),
+                  label: Text(
+                      mine == null ? 'Write a review' : 'Edit your review'),
+                ),
               if (reviews.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -975,30 +986,31 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                           fontSize: 11, color: Color(0xFF64748B))),
                 ],
                 const SizedBox(height: 6),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerLeft),
-                  onPressed: _vendorDeleted ||
-                          _savingDishes.contains(item.itemId) ||
-                          _dishFollowLoading ||
-                          _dishFollowError
-                      ? null
-                      : () => _toggleDishFollow(item),
-                  icon: _savingDishes.contains(item.itemId)
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Icon(
-                          _followedDishIds.contains(item.itemId)
-                              ? Icons.notifications_active_outlined
-                              : Icons.notifications_none_outlined,
-                          size: 18),
-                  label: Text(_followedDishIds.contains(item.itemId)
-                      ? 'Following dish'
-                      : 'Follow dish'),
-                ),
+                if (!widget.previewOnly)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        alignment: Alignment.centerLeft),
+                    onPressed: _vendorDeleted ||
+                            _savingDishes.contains(item.itemId) ||
+                            _dishFollowLoading ||
+                            _dishFollowError
+                        ? null
+                        : () => _toggleDishFollow(item),
+                    icon: _savingDishes.contains(item.itemId)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(
+                            _followedDishIds.contains(item.itemId)
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_none_outlined,
+                            size: 18),
+                    label: Text(_followedDishIds.contains(item.itemId)
+                        ? 'Following dish'
+                        : 'Follow dish'),
+                  ),
               ])),
         ]),
       );

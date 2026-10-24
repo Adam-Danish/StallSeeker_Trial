@@ -289,7 +289,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Test mode · No real charge',
+                  'Secure payment with Stripe',
                   style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
               ],
@@ -316,8 +316,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
       builder: (dialogContext) => AlertDialog(
         title: const Text('Cancel this booking?'),
         content: Text(paid
-            ? 'The full test payment will be refunded to the original payment method. Refund status may take time to update.'
-            : 'The booking will be cancelled. Any open test checkout will close.'),
+            ? 'The full payment will be refunded to the original payment method. Refund status may take time to update.'
+            : 'The booking will be cancelled. Any open checkout will close.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -421,7 +421,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
             Expanded(
                 child: Text(
                     steps[i] == 'payment_confirmed'
-                        ? 'Test payment confirmed'
+                        ? 'Payment confirmed'
                         : steps[i] == 'checkout_started'
                             ? 'Checkout started'
                             : demoOrderStatusLabel(steps[i]),

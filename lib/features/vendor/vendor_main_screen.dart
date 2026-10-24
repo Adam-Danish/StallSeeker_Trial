@@ -22,46 +22,21 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
       FirebaseAuth.instance.currentUser?.uid ?? '',
       isVendor: true);
 
-  static const _titles = ['Vendor Dashboard', 'Settings'];
-
-  // Key to call dashboard refresh method
-  final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
-
-  void _refreshDashboard() {
-    _dashboardKey.currentState?.fetchVendorDetails();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
       backgroundColor:
           _selectedIndex == 1 ? ProfilePage.background : AppColors.background,
-      appBar: _selectedIndex == 1
-          ? null
-          : AppBar(
-              title: Text(
-                _titles[_selectedIndex],
-              ),
-              centerTitle: true,
-              elevation: 0,
-              systemOverlayStyle: SystemUiOverlayStyle.dark,
-              actions: [
-                // Refresh button only on Dashboard
-                if (_selectedIndex == 0)
-                  IconButton(
-                    icon: const Icon(Icons.refresh, color: AppColors.textDark),
-                    tooltip: 'Refresh',
-                    onPressed: _refreshDashboard,
-                  ),
-              ],
-            ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          VendorDashboardScreen(key: _dashboardKey),
-          const VendorProfileScreen(),
-        ],
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            const SafeArea(bottom: false, child: VendorDashboardScreen()),
+            const VendorProfileScreen(),
+          ],
+        ),
       ),
       bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,

@@ -97,11 +97,8 @@ class DemoSalesCard extends StatelessWidget {
               const Icon(Icons.payments_outlined),
               const SizedBox(width: 10),
               Expanded(
-                  child: Text('Demo sales',
+                  child: Text('Sales',
                       style: Theme.of(context).textTheme.titleLarge)),
-              const Chip(
-                  label: Text('TEST MODE'),
-                  visualDensity: VisualDensity.compact),
             ]),
             const SizedBox(height: 12),
             if (hasError)
@@ -121,9 +118,6 @@ class DemoSalesCard extends StatelessWidget {
                   '${summary.paidOrders} paid orders · RM ${(summary.totalCents / 100).toStringAsFixed(2)} total'),
             ],
             const SizedBox(height: 12),
-            const Text(
-                'Test payments enabled. Simulated sales only — no bank deposits or payouts.'),
-            const SizedBox(height: 8),
             TextButton.icon(
                 onPressed: onHistory,
                 icon: const Icon(Icons.receipt_long_outlined),
@@ -145,7 +139,7 @@ class _VendorPaymentHistoryScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Demo payment history')),
+      appBar: AppBar(title: const Text('Payment history')),
       body: StreamBuilder<List<DemoOrder>>(
           stream: _orders,
           builder: (context, snapshot) {
@@ -161,14 +155,11 @@ class _VendorPaymentHistoryScreenState
                     order.hasTestPayment && order.paymentStatus != 'unpaid')
                 .toList();
             return ListView(padding: const EdgeInsets.all(16), children: [
-              const Text(
-                  'Test transactions only. These amounts are not real earnings.'),
-              const SizedBox(height: 16),
               if (orders.isEmpty)
                 const Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                        'No test payments yet. Paid bookings will appear here.')),
+                        'No payments yet. Paid bookings will appear here.')),
               for (final order in orders)
                 Card(
                     child: ListTile(

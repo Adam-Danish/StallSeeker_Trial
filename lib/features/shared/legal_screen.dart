@@ -56,7 +56,7 @@ class LegalScreen extends StatelessWidget {
 
   static const _privacySections = <MapEntry<String, String>>[
     MapEntry('Information we collect',
-        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Live bookings are shared between the customer and vendor through Firebase. Older same-phone demo bookings remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. New bookings use Stripe sandbox checkout. We store test payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
+        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Bookings are shared between the customer and vendor through Firebase. Older bookings stored locally remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. Bookings use Stripe checkout. We store payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
     MapEntry('How we use it',
         'We use this information to run your account, show nearby stalls and dishes, provide search suggestions, save favourites, send stall updates and keep the service secure.'),
     MapEntry('Location',
@@ -78,8 +78,8 @@ class LegalScreen extends StatelessWidget {
         'Use correct information, protect your password and do not use another person’s account. You are responsible for activity under your account.'),
     MapEntry('Vendor information',
         'Vendors are responsible for keeping their location, opening status, menu, prices and stock information accurate.'),
-    MapEntry('Prototype payments',
-        'Payments and refunds use Stripe Test Mode. Use test payment details only. No real money is charged, deposited or paid out to vendors. Demo sales are simulated amounts. Payment must be confirmed before preparation; cancelled paid bookings request a simulated refund, whose status is shown in the booking.'),
+    MapEntry('Payments and refunds',
+        'Payments and refunds are processed through Stripe. Payment must be confirmed before preparation. Cancelled paid bookings request a refund to the original payment method; refund status is shown in the booking.'),
     MapEntry('Acceptable use',
         'Do not misuse the service, post harmful or false content, interfere with the app, scrape private data or break applicable laws.'),
     MapEntry('Availability',

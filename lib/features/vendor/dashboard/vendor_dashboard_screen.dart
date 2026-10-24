@@ -4,13 +4,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/models/vendor_model.dart';
+import '../../../core/models/demo_order.dart';
+import '../../../core/services/demo_order_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/vendor_location_service.dart';
 import '../profile/edit_stall_screen.dart';
 import '../menu/vendor_menu_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/demo_orders_screen.dart';
-import '../../shared/live_booking_section.dart';
+import '../../shared/booking_detail_screen.dart';
+import '../../customer/vendor_details/vendor_details_screen.dart';
+import 'vendor_dashboard_view.dart';
 import '../../../core/utils/vendor_phone.dart';
 import 'vendor_demo_sales.dart';
 
@@ -22,6 +26,10 @@ class VendorDashboardScreen extends StatefulWidget {
 
 class VendorDashboardScreenState extends State<VendorDashboardScreen> {
   final _vendorService = VendorService();
+  final _orders = DemoOrderService();
+  late Stream<List<DemoOrder>> _bookings;
+  final _busyBookings = <String>{};
+  Timer? _clock;
   final _location = VendorLocationService.instance;
   StreamSubscription<VendorModel?>? _subscription;
   VendorModel? _vendor;
@@ -32,6 +40,10 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _listenBookings();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     _location.addListener(_locationChanged);
     fetchVendorDetails();
   }
@@ -46,6 +58,7 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
   void dispose() {
     _location.removeListener(_locationChanged);
     _subscription?.cancel();
+    _clock?.cancel();
     super.dispose();
   }
 
@@ -238,6 +251,37 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
   }
 
+  void _listenBookings() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _bookings = uid == null
+        ? Stream.value(<DemoOrder>[])
+        : _orders.watchVendorOrders(uid);
+  }
+
+  Future<void> _refresh() async {
+    setState(_listenBookings);
+    await fetchVendorDetails();
+  }
+
+  void _push(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _advanceBooking(DemoOrder booking) async {
+    if (_busyBookings.contains(booking.id)) return;
+    setState(() => _busyBookings.add(booking.id));
+    try {
+      await _orders.advance(booking.id, booking.effectiveStatus);
+      _message(booking.effectiveStatus == 'preparing'
+          ? 'Booking is ready for collection.'
+          : 'Booking is now being prepared.');
+    } catch (_) {
+      _message('Could not update this booking. Please retry.');
+    } finally {
+      if (mounted) setState(() => _busyBookings.remove(booking.id));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -245,116 +289,43 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
     if (_error != null) {
       return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(_error!, textAlign: TextAlign.center),
-        TextButton(onPressed: fetchVendorDetails, child: const Text('Retry')),
-      ]));
+          child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_error!, textAlign: TextAlign.center),
+          TextButton(onPressed: _refresh, child: const Text('Retry')),
+        ]),
+      ));
     }
-    final open = _vendor?.isOpen ?? false;
-    return RefreshIndicator(
-      onRefresh: fetchVendorDetails,
-      child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
-          children: [
-            Text(
-                _vendor?.stallName.isNotEmpty == true
-                    ? _vendor!.stallName
-                    : 'Set up your stall',
-                style: Theme.of(context).textTheme.headlineSmall),
-            const LiveBookingSection(isVendor: true),
-            const VendorDemoSales(),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(_vendor?.isTemporarilyClosed == true
-                                  ? 'Temporary closure active'
-                                  : open
-                                      ? 'Stall open'
-                                      : 'Stall closed'),
-                              subtitle: Text(_vendor?.isTemporarilyClosed ==
-                                      true
-                                  ? 'Customers see your stall as closed. The Open switch will turn off shortly.'
-                                  : 'Control whether customers can find you on the live map'),
-                              value: open,
-                              onChanged: _saving ? null : _toggle),
-                          if (_saving) const LinearProgressIndicator(),
-                          const Divider(),
-                          Text(!open
-                              ? 'Location sharing off'
-                              : _location.error ??
-                                  (_location.isSharing
-                                      ? 'Location sharing active in the background'
-                                      : 'Location sharing paused')),
-                          if (open && !_location.isSharing)
-                            TextButton.icon(
-                                onPressed: _saving ? null : _resume,
-                                icon: const Icon(Icons.my_location),
-                                label: const Text('Resume sharing')),
-                        ]))),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(children: [
-                SwitchListTile(
-                  title: const Text('Self-collect bookings'),
-                  subtitle:
-                      const Text('Allow customers to book for collection.'),
-                  value: _vendor?.selfCollectEnabled ?? false,
-                  onChanged: _saving ? null : _toggleDemoSelfCollect,
-                ),
-                SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const DemoOrdersScreen(isVendor: true))),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('View current and past bookings'),
-                    )),
-              ]),
-            )),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const VendorMenuScreen())),
-                icon: const Icon(Icons.restaurant_menu),
-                label: const Text('Manage menu & stock')),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Stall information',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 8),
-                          Text(_vendor?.category ?? 'Choose a food category'),
-                          Text(_vendor?.hoursToday ?? 'Add your opening hours'),
-                          const SizedBox(height: 8),
-                          Text(_vendor?.description ??
-                              'Tell customers what you sell.'),
-                          TextButton.icon(
-                              onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const EditStallScreen())),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('Edit stall')),
-                        ]))),
-          ]),
+    return StreamBuilder<List<DemoOrder>>(
+      stream: _bookings,
+      builder: (context, snapshot) => VendorDashboardView(
+        vendor: _vendor,
+        bookings: snapshot.data ?? const [],
+        bookingsLoading: !snapshot.hasData && !snapshot.hasError,
+        bookingsError: snapshot.hasError,
+        saving: _saving,
+        locationSharing: _location.isSharing,
+        locationError: _location.error,
+        busyBookings: _busyBookings,
+        onRefresh: _refresh,
+        onToggleOpen: _toggle,
+        onToggleSelfCollect: _toggleDemoSelfCollect,
+        onResumeLocation: _resume,
+        onPreview: () {
+          if (_vendor != null) {
+            _push(VendorDetailsScreen(vendor: _vendor!, previewOnly: true));
+          }
+        },
+        onEditStall: () => _push(const EditStallScreen()),
+        onMenu: () => _push(const VendorMenuScreen()),
+        onStock: () => _push(const VendorMenuScreen(stockOnly: true)),
+        onBookings: () => _push(const DemoOrdersScreen(isVendor: true)),
+        onPaymentHistory: () => _push(const VendorPaymentHistoryScreen()),
+        onOpenBooking: (booking) =>
+            _push(BookingDetailScreen(bookingId: booking.id, isVendor: true)),
+        onAdvanceBooking: _advanceBooking,
+      ),
     );
   }
 }

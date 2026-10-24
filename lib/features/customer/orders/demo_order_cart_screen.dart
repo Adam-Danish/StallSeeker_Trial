@@ -200,7 +200,7 @@ class BookingCartView extends StatelessWidget {
                     const SizedBox(height: 10),
                     const Padding(
                       padding: EdgeInsets.only(left: 2),
-                      child: Text('Stripe test payment · No real charge',
+                      child: Text('Secure payment with Stripe',
                           style: TextStyle(
                               fontSize: 12, color: AppColors.textMuted)),
                     ),

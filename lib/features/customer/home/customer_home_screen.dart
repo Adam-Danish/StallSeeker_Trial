@@ -18,6 +18,7 @@ import 'open_at_picker.dart';
 import 'discovery_search_filters.dart';
 import 'price_range_picker.dart';
 import 'map_marker_focus.dart';
+import 'map_marker_guide.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/dish_search_service.dart';
@@ -1125,9 +1126,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           final navClearance = MediaQuery.paddingOf(context).bottom + 12;
 
           const headerHeight = 52.0;
+          final useSidePanel =
+              constraints.maxWidth >= 900 && constraints.maxHeight >= 600;
+          final sidePanelWidth = math.min(420.0, constraints.maxWidth * .38);
+          final guideHeight = shortViewport
+              ? 0.0
+              : MapMarkerGuide.heightFor(context,
+                  useSidePanel ? sidePanelWidth : constraints.maxWidth);
           final cardAreaHeight =
               shortViewport ? 0.0 : (showingDishResults ? 144.0 : 112.0);
-          final panelHeight = headerHeight + cardAreaHeight + navClearance;
+          final panelHeight =
+              headerHeight + guideHeight + cardAreaHeight + navClearance;
 
           final resultCount =
               showingDishResults ? dishResults.length : onScreenVendors.length;
@@ -1140,10 +1149,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   : (resultCount == 1
                       ? 'matching stall in this area'
                       : 'matching stalls in this area');
-
-          final useSidePanel =
-              constraints.maxWidth >= 900 && constraints.maxHeight >= 600;
-          final sidePanelWidth = math.min(420.0, constraints.maxWidth * .38);
 
           final cardWidth = constraints.maxWidth >= 600
               ? (!showingDishResults && onScreenVendors.length == 1
@@ -1161,6 +1166,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               constraints.maxHeight - 12 - navClearance - 80,
             ),
             74.0 +
+                guideHeight +
                 math.max(1, resultCount) * (showingDishResults ? 144.0 : 112.0),
           );
 
@@ -1601,6 +1607,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                       ),
                     ),
+                    if (!shortViewport) const MapMarkerGuide(),
                     if (!shortViewport)
                       Expanded(
                           child: snapshot.connectionState ==

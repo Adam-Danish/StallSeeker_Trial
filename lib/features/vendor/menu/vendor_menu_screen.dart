@@ -8,7 +8,8 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/widgets/app_dropdown.dart';
 
 class VendorMenuScreen extends StatefulWidget {
-  const VendorMenuScreen({super.key});
+  const VendorMenuScreen({super.key, this.stockOnly = false});
+  final bool stockOnly;
   @override
   State<VendorMenuScreen> createState() => _VendorMenuScreenState();
 }
@@ -117,8 +118,9 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Menu & stock')),
-        floatingActionButton: _uid == null
+        appBar: AppBar(
+            title: Text(widget.stockOnly ? 'Update stock' : 'Menu & stock')),
+        floatingActionButton: _uid == null || widget.stockOnly
             ? null
             : FloatingActionButton.extended(
                 onPressed: _edit,
@@ -141,9 +143,11 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
               }
               final items = snapshot.data ?? [];
               if (items.isEmpty) {
-                return const Center(
+                return Center(
                     child: Text(
-                        'Your menu is empty.\nTap Add dish to get started.',
+                        widget.stockOnly
+                            ? 'No dishes to update.\nAdd dishes from Menu first.'
+                            : 'Your menu is empty.\nTap Add dish to get started.',
                         textAlign: TextAlign.center));
               }
               return ListView.builder(
@@ -191,24 +195,25 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                                                 .textTheme
                                                 .bodySmall),
                                       ])),
-                                  AppDropdown<String>(
-                                    iconOnly: true,
-                                    icon: Icons.more_vert,
-                                    hint: 'Dish options',
-                                    options: const {
-                                      'edit': 'Edit dish',
-                                      'delete': 'Delete dish',
-                                    },
-                                    onChanged: busy
-                                        ? null
-                                        : (value) {
-                                            if (value == 'edit') {
-                                              _edit(item);
-                                            } else {
-                                              _delete(item);
-                                            }
-                                          },
-                                  ),
+                                  if (!widget.stockOnly)
+                                    AppDropdown<String>(
+                                      iconOnly: true,
+                                      icon: Icons.more_vert,
+                                      hint: 'Dish options',
+                                      options: const {
+                                        'edit': 'Edit dish',
+                                        'delete': 'Delete dish',
+                                      },
+                                      onChanged: busy
+                                          ? null
+                                          : (value) {
+                                              if (value == 'edit') {
+                                                _edit(item);
+                                              } else {
+                                                _delete(item);
+                                              }
+                                            },
+                                    ),
                                 ]),
                                 const SizedBox(height: 12),
                                 Wrap(

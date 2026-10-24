@@ -19,7 +19,7 @@ function assertPayable(booking, uid, now) {
     throw new Error('This booking is not awaiting payment.');
   }
   if (!Number.isSafeInteger(booking.totalCents) || booking.totalCents < 200) {
-    throw new Error('Test card payments require a booking of at least RM2.00.');
+    throw new Error('Card payments require a booking of at least RM2.00.');
   }
   if (!booking.paymentExpiresAt || booking.paymentExpiresAt.toMillis() <= now) {
     throw new Error('The payment window has ended. Please make a new booking.');
@@ -36,7 +36,7 @@ function assertSession(bookingId, booking, payment, session) {
       session.metadata?.vendorId !== booking.vendorId ||
       session.metadata?.attemptId !== payment.attemptId ||
       (payment.sessionId && payment.sessionId !== session.id)) {
-    throw new Error('Payment does not match this test booking.');
+    throw new Error('Payment does not match this booking.');
   }
 }
 

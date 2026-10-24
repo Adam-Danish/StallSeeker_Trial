@@ -99,7 +99,7 @@ exports.createBooking = onCall(async (request) => {
       throw new HttpsError('failed-precondition', error.message);
     }
     if (priced.totalCents < 200) {
-      throw new HttpsError('failed-precondition', 'Choose at least RM2.00 of dishes for test checkout.');
+      throw new HttpsError('failed-precondition', 'Choose at least RM2.00 of dishes for checkout.');
     }
     const stallName = String(stall.stallName || 'Stall').slice(0, 120);
     const name = String(customer.data()?.fullName || 'Customer').trim().slice(0, 80);

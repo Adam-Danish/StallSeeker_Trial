@@ -137,7 +137,7 @@ void main() {
   });
 
   testWidgets(
-      'customer can pay only eligible bookings and sees test disclosure',
+      'customer can pay only eligible bookings and sees payment information',
       (tester) async {
     tester.view.resetPhysicalSize();
     tester.view.physicalSize = const Size(390, 844);
@@ -152,7 +152,9 @@ void main() {
         onRefresh: () {})));
     await tester.pumpAndSettle();
     expect(find.text('Pay RM 12.50'), findsOneWidget);
-    expect(find.textContaining('No real money'), findsOneWidget);
+    expect(find.text('Complete your payment securely with Stripe.'),
+        findsOneWidget);
+    expect(find.textContaining('TEST MODE'), findsNothing);
     await tester.tap(find.text('Pay RM 12.50'));
     expect(tapped, 1);
     await tester.pumpAndSettle();
@@ -164,7 +166,7 @@ void main() {
         isVendor: false,
         onPay: () => tapped++)));
     expect(find.text('Pay RM 12.50'), findsNothing);
-    expect(find.text('Paid · Test'), findsOneWidget);
+    expect(find.text('Paid'), findsOneWidget);
   });
 
   testWidgets('vendor and busy payment cards cannot launch checkout',
@@ -182,7 +184,7 @@ void main() {
         isNull);
   });
 
-  testWidgets('sales card is labelled as a simulation and fits narrow screens',
+  testWidgets('sales card uses release wording and fits narrow screens',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -194,7 +196,8 @@ void main() {
         onHistory: () {})));
     await tester.pumpAndSettle();
     expect(find.text('RM 85.00'), findsOneWidget);
-    expect(find.textContaining('no bank deposits'), findsOneWidget);
+    expect(find.text('Sales'), findsOneWidget);
+    expect(find.textContaining('TEST MODE'), findsNothing);
     expect(tester.takeException(), isNull);
     await preview(tester, 'vendor-sales');
   });

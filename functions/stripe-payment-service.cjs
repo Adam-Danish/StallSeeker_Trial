@@ -187,7 +187,7 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
         line_items: [{quantity: 1, price_data: {currency: 'myr',
           unit_amount: booking.totalCents,
           product_data: {name: `${booking.stallName} - self-collect booking`,
-            description: 'StallSeeker prototype. Test payment only.'}}}],
+            description: 'Self-collect booking through StallSeeker.'}}}],
         success_url: `${returnUrl}?result=success`,
         cancel_url: `${returnUrl}?result=cancelled`,
       }};

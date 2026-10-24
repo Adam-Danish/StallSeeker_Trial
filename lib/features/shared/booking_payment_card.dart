@@ -4,20 +4,20 @@ import '../../core/models/demo_order.dart';
 
 String bookingPaymentLabel(DemoOrder booking) {
   if (booking.paymentStatus == 'paid' && booking.paymentRefundedCents > 0) {
-    return 'Partially refunded · Test';
+    return 'Partially refunded';
   }
   return switch (booking.paymentStatus) {
-    'paid' => 'Paid · Test',
-    'refund_pending' => 'Test refund pending',
-    'refund_failed' => 'Test refund needs attention',
-    'refunded' => 'Refunded · Test',
-    'failed' => 'Payment failed · Test',
+    'paid' => 'Paid',
+    'refund_pending' => 'Refund pending',
+    'refund_failed' => 'Refund needs attention',
+    'refunded' => 'Refunded',
+    'failed' => 'Payment failed',
     'expired' => 'Payment window ended',
     'cancelled' => 'Payment cancelled',
     'unpaid' => booking.status == 'requested'
         ? 'Available after acceptance'
         : 'Awaiting payment',
-    _ => 'Awaiting payment · Test',
+    _ => 'Awaiting payment',
   };
 }
 
@@ -60,9 +60,6 @@ class BookingPaymentCard extends StatelessWidget {
                 Expanded(
                     child: Text('Payment',
                         style: Theme.of(context).textTheme.titleMedium)),
-                const Chip(
-                    label: Text('TEST MODE'),
-                    visualDensity: VisualDensity.compact),
               ]),
               const SizedBox(height: 8),
               Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}',
@@ -97,10 +94,10 @@ class BookingPaymentCard extends StatelessWidget {
                     : 'The payment window has ended. Check payment to confirm the final status.'),
               if (booking.paymentStatus == 'refund_pending')
                 const Text(
-                    'This booking was cancelled. The full test refund to the original payment method is pending.')
+                    'This booking was cancelled. The full refund to the original payment method is pending.')
               else if (booking.paymentStatus == 'refund_failed')
                 const Text(
-                    'The simulated refund did not complete. Contact the prototype administrator.'),
+                    'The refund did not complete. Contact support for help.'),
               if (booking.paymentReference != null) ...[
                 const SizedBox(height: 10),
                 Text('Payment reference',
@@ -122,8 +119,7 @@ class BookingPaymentCard extends StatelessWidget {
                             ? busyLabel
                             : 'Pay RM ${(booking.totalCents / 100).toStringAsFixed(2)}'))),
                 const SizedBox(height: 8),
-                const Text(
-                    'Use test card 4242 4242 4242 4242, any future expiry and any 3-digit CVC.',
+                const Text('Complete your payment securely with Stripe.',
                     style: TextStyle(fontSize: 12)),
               ],
               if (booking.paymentStatus != 'unpaid' &&
@@ -132,10 +128,6 @@ class BookingPaymentCard extends StatelessWidget {
                     onPressed: busy ? null : onRefresh,
                     icon: const Icon(Icons.refresh, size: 18),
                     label: Text(busy ? 'Checking…' : 'Check payment')),
-              const Divider(height: 24),
-              const Text(
-                  'Simulated payment only. No real money is charged or paid to the stall.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF666666))),
             ])));
   }
 }

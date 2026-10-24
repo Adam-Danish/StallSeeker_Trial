@@ -58,7 +58,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Version 1.0.3 · Prototype',
+                'Version 1.0.3',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -112,8 +112,7 @@ class AboutScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         const Text(
-          'StallSeeker is a Final Year Project prototype. Its features '
-          'and listings are being tested and may change during development.',
+          'Find your next favourite stall with StallSeeker.',
           style: TextStyle(
             fontSize: 13,
             height: 1.5,
