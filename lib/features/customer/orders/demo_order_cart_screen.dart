@@ -20,6 +20,7 @@ class DemoOrderCartScreen extends StatefulWidget {
 
 class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
   final _quantities = <String, int>{};
+  final _specialInstructions = TextEditingController();
   final _service = DemoOrderService();
   final _menuService = MenuService();
   late final Stream<List<MenuItemModel>> _menu;
@@ -29,6 +30,12 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
   void initState() {
     super.initState();
     _menu = _menuService.getMenuItems(widget.vendor.vendorId);
+  }
+
+  @override
+  void dispose() {
+    _specialInstructions.dispose();
+    super.dispose();
   }
 
   Future<void> _submit(List<MenuItemModel> items) async {
@@ -52,7 +59,8 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
     if (selected.isEmpty) return;
     setState(() => _sending = true);
     try {
-      final bookingId = await _service.requestOrder(widget.vendor, selected);
+      final bookingId = await _service.requestOrder(widget.vendor, selected,
+          specialInstructions: _specialInstructions.text);
       if (!mounted) return;
       Navigator.pushReplacement(
           context,
@@ -91,6 +99,7 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
               items: snapshot.data!,
               quantities: _quantities,
               sending: _sending,
+              specialInstructionsController: _specialInstructions,
               onQuantityChanged: (item, quantity) => setState(() {
                 _quantities[item.itemId] = quantity;
               }),
@@ -110,6 +119,7 @@ class BookingCartView extends StatelessWidget {
     required this.sending,
     required this.onQuantityChanged,
     required this.onSubmit,
+    this.specialInstructionsController,
   });
 
   final String stallName;
@@ -118,6 +128,7 @@ class BookingCartView extends StatelessWidget {
   final bool sending;
   final void Function(MenuItemModel, int) onQuantityChanged;
   final VoidCallback onSubmit;
+  final TextEditingController? specialInstructionsController;
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +260,25 @@ class BookingCartView extends StatelessWidget {
                           ],
                         ),
                       ),
+                    if (items.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: specialInstructionsController,
+                        enabled: !sending,
+                        minLines: 2,
+                        maxLines: 4,
+                        maxLength: 500,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Special instructions (optional)',
+                          hintText: 'E.g. Less spicy, please',
+                          helperText:
+                              'Requests are subject to vendor acceptance.',
+                          helperMaxLines: 2,
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

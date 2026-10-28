@@ -49,6 +49,20 @@ function bookingItems(requested, menu) {
   return {items, totalCents};
 }
 
+function specialInstructions(value) {
+  if (value == null) return '';
+  if (typeof value !== 'string') {
+    throw new Error('Special instructions must be text.');
+  }
+  const text = value.trim();
+  // Match Flutter's user-perceived character limit, including emoji.
+  const characters = new Intl.Segmenter('en', {granularity: 'grapheme'}).segment(text);
+  if (Array.from(characters).length > 500) {
+    throw new Error('Special instructions must be 500 characters or fewer.');
+  }
+  return text;
+}
+
 function nextStatus(booking, action, uid, now) {
   const {status, customerId, vendorId} = booking;
   const expires = booking.expiresAt?.toMillis?.();
@@ -84,5 +98,5 @@ function paidCheckoutBecameVisible(before, after) {
     after.paymentStatus === 'paid' && after.status === 'confirmed';
 }
 
-module.exports = {ACTIVE, TERMINAL, vendorAvailable, bookingItems, nextStatus,
+module.exports = {ACTIVE, TERMINAL, vendorAvailable, bookingItems, specialInstructions, nextStatus,
   paidCheckoutBecameVisible};

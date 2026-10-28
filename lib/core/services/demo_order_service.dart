@@ -47,8 +47,8 @@ class DemoOrderService {
                   : booking.customerUnseenReady)
               .length);
 
-  Future<String> requestOrder(
-      VendorModel vendor, List<DemoOrderItem> items) async {
+  Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
+      {String specialInstructions = ''}) async {
     final random = Random.secure();
     final key = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
         '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}'
@@ -56,6 +56,7 @@ class DemoOrderService {
     final result = await _functions.httpsCallable('createBooking').call({
       'vendorId': vendor.vendorId,
       'requestKey': key,
+      'specialInstructions': specialInstructions.trim(),
       'items': [
         for (final item in items)
           {'itemId': item.itemId, 'quantity': item.quantity}

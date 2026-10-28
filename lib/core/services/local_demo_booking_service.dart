@@ -54,7 +54,7 @@ class LocalDemoBookingService {
   }
 
   Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
-      {String? customerName}) async {
+      {String? customerName, String specialInstructions = ''}) async {
     final customerId = _actorId;
     if (customerId == null || customerId == vendor.vendorId) {
       throw StateError('Customer account required.');
@@ -83,6 +83,7 @@ class LocalDemoBookingService {
       items: items,
       totalCents: items.fold(0, (sum, item) => sum + item.subtotalCents),
       createdAt: now,
+      specialInstructions: specialInstructions.trim(),
       pickupLatitude: vendor.hasValidLocation ? vendor.latitude : null,
       pickupLongitude: vendor.hasValidLocation ? vendor.longitude : null,
     );

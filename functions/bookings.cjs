@@ -7,7 +7,7 @@ const {createHash} = require('node:crypto');
 const {getApps, initializeApp} = require('firebase-admin/app');
 const {getFirestore, Timestamp, FieldValue} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
-const {vendorAvailable, bookingItems, nextStatus,
+const {vendorAvailable, bookingItems, specialInstructions, nextStatus,
   paidCheckoutBecameVisible} = require('./booking-core.cjs');
 const {PAYMENT_WINDOW_MS} = require('./stripe-payment-core.cjs');
 
@@ -58,6 +58,12 @@ exports.createBooking = onCall(async (request) => {
   const vendorId = request.data?.vendorId;
   const requestKey = request.data?.requestKey;
   const selected = request.data?.items;
+  let instructions;
+  try {
+    instructions = specialInstructions(request.data?.specialInstructions);
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message);
+  }
   if (typeof vendorId !== 'string' || !/^[^/]{1,128}$/.test(vendorId) ||
       vendorId === uid || typeof requestKey !== 'string' ||
       !/^[A-Za-z0-9_-]{12,80}$/.test(requestKey) ||
@@ -106,6 +112,7 @@ exports.createBooking = onCall(async (request) => {
     tx.create(bookingRef, {
       customerId: uid, vendorId, customerName: name || 'Customer', stallName,
       status: 'confirmed', items: priced.items, totalCents: priced.totalCents,
+      specialInstructions: instructions,
       paymentMode: 'test', paymentProvider: 'stripe', paymentStatus: 'awaiting_payment',
       checkoutFirst: true,
       paymentExpiresAt: Timestamp.fromMillis(now + PAYMENT_WINDOW_MS),

@@ -82,6 +82,11 @@ class BookingSummaryCard extends StatelessWidget {
               Text(_dateTime(booking.createdAt!),
                   style: Theme.of(context).textTheme.bodySmall),
             ],
+            if (booking.specialInstructions.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Special instructions: ${booking.specialInstructions}',
+                  maxLines: compact ? 1 : 2, overflow: TextOverflow.ellipsis),
+            ],
           ]),
         ),
       ),
@@ -532,6 +537,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                                       'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
                                 ]),
                               ]))),
+                  if (booking.specialInstructions.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    BookingSpecialInstructionsCard(
+                        instructions: booking.specialInstructions),
+                  ],
                   if (booking.hasTestPayment) ...[
                     const SizedBox(height: 12),
                     BookingPaymentCard(
@@ -577,5 +587,30 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
               ),
             ),
         ],
+      );
+}
+
+class BookingSpecialInstructionsCard extends StatelessWidget {
+  const BookingSpecialInstructionsCard({super.key, required this.instructions});
+
+  final String instructions;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Special instructions',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(instructions),
+              const SizedBox(height: 8),
+              Text('Requests are subject to vendor acceptance.',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
       );
 }

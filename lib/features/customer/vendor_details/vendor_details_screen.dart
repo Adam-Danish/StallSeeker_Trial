@@ -777,6 +777,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         ),
       const SizedBox(height: 14),
       TextField(
+        key: const ValueKey('stall-menu-search'),
         controller: _dishSearch,
         onChanged: (value) => setState(() {
           _focusedDishId = null;
@@ -800,6 +801,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
       ),
       const SizedBox(height: 14),
       StreamBuilder<List<MenuItemModel>>(
+        // Preserve the live snapshot when selected-dish or error rows change.
+        key: const ValueKey('stall-menu-stream'),
         stream: _menuStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -888,6 +891,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
       ),
       const SizedBox(height: 24),
       StreamBuilder<List<StallReview>>(
+        key: const ValueKey('stall-reviews-stream'),
         stream: _reviewStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {

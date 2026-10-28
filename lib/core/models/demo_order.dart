@@ -40,6 +40,7 @@ class DemoOrder {
       required this.items,
       required this.totalCents,
       required this.createdAt,
+      this.specialInstructions = '',
       this.expiresAt,
       this.pickupLatitude,
       this.pickupLongitude,
@@ -62,6 +63,7 @@ class DemoOrder {
   final List<DemoOrderItem> items;
   final int totalCents;
   final DateTime? createdAt;
+  final String specialInstructions;
   final DateTime? expiresAt;
   final double? pickupLatitude;
   final double? pickupLongitude;
@@ -120,6 +122,7 @@ class DemoOrder {
         'items': items.map((item) => item.toMap()).toList(),
         'totalCents': totalCents,
         'createdAt': createdAt?.toIso8601String(),
+        'specialInstructions': specialInstructions,
         'expiresAt': expiresAt?.toIso8601String(),
         'pickupLatitude': pickupLatitude,
         'pickupLongitude': pickupLongitude,
@@ -144,6 +147,7 @@ class DemoOrder {
         items: items,
         totalCents: totalCents,
         createdAt: createdAt,
+        specialInstructions: specialInstructions,
         expiresAt: nextStatus == 'requested' ? expiresAt : null,
         pickupLatitude: pickupLatitude,
         pickupLongitude: pickupLongitude,
@@ -174,6 +178,7 @@ class DemoOrder {
           .toList(),
       totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      specialInstructions: data['specialInstructions'] as String? ?? '',
       expiresAt: (data['expiresAt'] as Timestamp?)?.toDate(),
       pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
       pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
@@ -205,6 +210,7 @@ class DemoOrder {
           .toList(),
       totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse(data['createdAt'] as String? ?? ''),
+      specialInstructions: data['specialInstructions'] as String? ?? '',
       expiresAt: DateTime.tryParse(data['expiresAt'] as String? ?? ''),
       pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
       pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),

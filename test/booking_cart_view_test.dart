@@ -15,6 +15,8 @@ void main() {
 
       final item = MenuItemModel(itemId: 'tea', name: 'Air teh', price: 2);
       final quantities = <String, int>{};
+      final instructions = TextEditingController();
+      addTearDown(instructions.dispose);
       var submitted = false;
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.lightTheme,
@@ -26,6 +28,7 @@ void main() {
                     items: [item],
                     quantities: quantities,
                     sending: false,
+                    specialInstructionsController: instructions,
                     onQuantityChanged: (item, quantity) =>
                         setState(() => quantities[item.itemId] = quantity),
                     onSubmit: () => submitted = true,
@@ -37,14 +40,26 @@ void main() {
       expect(find.text('Choose an item'), findsOneWidget);
       expect(find.text('RM 0.00'), findsOneWidget);
 
+      final field = find.byType(TextField);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, 'Less spicy, please');
+      expect(find.text('Requests are subject to vendor acceptance.'),
+          findsOneWidget);
+      expect(tester.widget<TextField>(field).maxLength, 500);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+
+      await tester.ensureVisible(find.byTooltip('Add Air teh'));
       await tester.tap(find.byTooltip('Add Air teh'));
       await tester.pump();
       expect(find.text('RM 2.00'), findsNWidgets(2));
       expect(find.text('Continue to payment'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      expect(instructions.text, 'Less spicy, please');
 
       await tester.tap(find.text('Continue to payment'));
       expect(submitted, isTrue);
+      expect(instructions.text, 'Less spicy, please');
     });
   }
 
@@ -69,5 +84,22 @@ void main() {
     expect(find.text('Out of stock'), findsOneWidget);
     expect(tester.widget<IconButton>(find.byType(IconButton).last).onPressed,
         isNull);
+  });
+
+  testWidgets('special instructions are disabled while submitting',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BookingCartView(
+          stallName: 'Stall',
+          items: [MenuItemModel(itemId: 'tea', name: 'Tea', price: 2)],
+          quantities: const {'tea': 1},
+          sending: true,
+          onQuantityChanged: (_, __) {},
+          onSubmit: () {},
+        ),
+      ),
+    ));
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
   });
 }

@@ -35,6 +35,7 @@ void main() {
             quantity: 2),
       ],
       customerName: 'Aina',
+      specialInstructions: '  Less spicy, please  ',
     );
 
     var vendorBookings =
@@ -42,6 +43,7 @@ void main() {
     expect(vendorBookings.single.id, id);
     expect(vendorBookings.single.totalCents, 1300);
     expect(vendorBookings.single.status, 'requested');
+    expect(vendorBookings.single.specialInstructions, 'Less spicy, please');
 
     await vendorService.respond(id, accept: true);
     expect(
@@ -59,8 +61,15 @@ void main() {
     await vendorService.advance(id);
     vendorBookings = await vendorService.watchVendorOrders('vendor-1').first;
     expect(vendorBookings.single.status, 'collected');
+    expect(vendorBookings.single.specialInstructions, 'Less spicy, please');
 
     await customerService.removeAccountData('customer-1');
     expect(await vendorService.watchVendorOrders('vendor-1').first, isEmpty);
+  });
+
+  test('older bookings without special instructions remain readable', () {
+    final booking = DemoOrder.fromMap(const {'id': 'old-booking'});
+    expect(booking.specialInstructions, isEmpty);
+    expect(DemoOrder.fromMap(booking.toMap()).specialInstructions, isEmpty);
   });
 }

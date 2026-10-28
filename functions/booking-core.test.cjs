@@ -2,13 +2,28 @@
 
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {vendorAvailable, bookingItems, nextStatus,
+const {vendorAvailable, bookingItems, specialInstructions, nextStatus,
   paidCheckoutBecameVisible} = require('./booking-core.cjs');
 
 const now = Date.parse('2026-10-08T12:00:00Z');
 const vendor = {selfCollectEnabled: true, isOpen: true,
   latitude: 3.1, longitude: 101.7};
 const stamp = (value) => ({toMillis: () => value});
+
+test('special instructions are optional, trimmed, and limited to 500 characters', () => {
+  assert.equal(specialInstructions(undefined), '');
+  assert.equal(specialInstructions(null), '');
+  assert.equal(specialInstructions('   \n '), '');
+  assert.equal(specialInstructions('  Less spicy, please\nNo onions.  '),
+    'Less spicy, please\nNo onions.');
+  for (const invalid of [42, true, {}, [], 'a'.repeat(501)]) {
+    assert.throws(() => specialInstructions(invalid));
+  }
+  assert.equal(specialInstructions('a'.repeat(500)).length, 500);
+  const emoji = '👩🏽‍🍳';
+  assert.equal(specialInstructions(emoji.repeat(500)), emoji.repeat(500));
+  assert.throws(() => specialInstructions(emoji.repeat(501)));
+});
 
 test('self-collect can be cancelled by either party before collection and preparation requires payment', () => {
   const booking = {customerId: 'customer', vendorId: 'vendor', status: 'confirmed',

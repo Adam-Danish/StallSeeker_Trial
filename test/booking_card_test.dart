@@ -4,6 +4,33 @@ import 'package:stallseeker/core/models/demo_order.dart';
 import 'package:stallseeker/features/shared/booking_detail_screen.dart';
 
 void main() {
+  for (final isVendor in [false, true]) {
+    testWidgets('special instructions appear for vendor=$isVendor',
+        (tester) async {
+      final booking = DemoOrder.fromMap(const {
+        'id': 'with-instructions',
+        'customerName': 'Aina',
+        'stallName': 'Nasi Stall',
+        'specialInstructions': 'Less spicy, please\nNo onions.',
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Column(children: [
+            BookingSummaryCard(
+                booking: booking, isVendor: isVendor, onTap: () {}),
+            BookingSpecialInstructionsCard(
+                instructions: booking.specialInstructions),
+          ]),
+        ),
+      ));
+      expect(find.text('Special instructions: Less spicy, please\nNo onions.'),
+          findsOneWidget);
+      expect(find.text('Less spicy, please\nNo onions.'), findsOneWidget);
+      expect(find.text('Requests are subject to vendor acceptance.'),
+          findsOneWidget);
+    });
+  }
+
   testWidgets(
       'simultaneous bookings show separate progress and open separately',
       (tester) async {
