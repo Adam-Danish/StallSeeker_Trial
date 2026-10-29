@@ -36,7 +36,7 @@ Compared the pasted backlog with the 24 October inventory, commits since `2721f1
   - Radius filtering exists, but viewport bounds still narrow stall cards without equally narrowing dish cards.
   - Evidence: [customer_home_screen.dart](<C:/Others/SE/Flutter Projects/StallSeeker_Trial/lib/features/customer/home/customer_home_screen.dart>).
 - [ ] **01-05 · Empty results** — Partial. provide working actions to expand the radius, clear filters, or search another area.
-  - Empty-result guidance exists. A dedicated Expand area action and a complete clear-filters recovery flow are still missing.
+  - Updated 29 October 2026: Clear filters resets search, category, price, opening time/status, and availability options together in map and list views. Location, distance, sorting, and view are preserved. A dedicated Expand area action remains outstanding.
   - Evidence: [customer_home_screen.dart](<C:/Others/SE/Flutter Projects/StallSeeker_Trial/lib/features/customer/home/customer_home_screen.dart>).
 - [x] **01-06 · List-only discovery** — Implemented. let customers browse without interacting with the map.
   - Map/List view toggle and list-only results are connected to the same discovery controls.

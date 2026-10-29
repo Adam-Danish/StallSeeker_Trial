@@ -11,7 +11,7 @@ def driver():
     options = UiAutomator2Options()
     options.platform_name = "Android"
     options.automation_name = "UiAutomator2"
-    options.udid = "ae251480"
+    options.udid = "adb-ae251480-IbuwiW._adb-tls-connect._tcp"
     options.no_reset = True
     options.set_capability("appium:autoLaunch", False)
 

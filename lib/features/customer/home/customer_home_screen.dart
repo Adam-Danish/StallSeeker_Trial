@@ -731,6 +731,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
   }
 
+  void _clearDiscoveryFilters() {
+    _searchFocus.unfocus();
+    setState(() {
+      _searchController.clear();
+      _searchQuery = '';
+      _category = null;
+      _priceRange = null;
+      _openingTime = null;
+      _statusFilter = 'All';
+      _availableOnly = false;
+      _selfCollectOnly = false;
+      _recentOnly = false;
+      _selectedVendorId = null;
+    });
+    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
+  }
+
   bool _matchesOpening(VendorModel vendor) {
     final filter = _openingTime;
     if (filter != null) {
@@ -1777,9 +1794,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(fontSize: 12))),
-                              TextButton(
-                                  onPressed: _enterCustomerLocationManually,
-                                  child: const Text('Enter manually')),
+                              Flexible(
+                                  child: TextButton(
+                                      onPressed: _enterCustomerLocationManually,
+                                      child: const Text('Enter manually'))),
                             ]),
                           ),
                         ))
@@ -1809,10 +1827,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 ),
                               ),
                               SizedBox(width: 8),
-                              Text(
+                              Flexible(
+                                  child: Text(
                                 'Finding your location…',
                                 style: TextStyle(fontSize: 12),
-                              ),
+                              )),
                             ],
                           ),
                         ),
@@ -2088,90 +2107,100 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _standardDiscoveryFilters() => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          ..._extraDiscoveryControls(),
-          ActionChip(
-              avatar: const Icon(Icons.edit_location_alt_outlined, size: 18),
-              label: const Text('Set location'),
-              onPressed: _chooseLocationSource),
-          const SizedBox(width: 8),
-          AppDropdown<String>(
-            value: _statusFilter,
-            displayText: _openingTime != null ? 'Scheduled' : null,
-            width: 155,
-            compact: true,
-            hint: 'Choose stall status',
-            icon: Icons.storefront_outlined,
-            options: const {
-              'Open': 'Open now',
-              'Closed': 'Closed',
-              'All': 'All stalls',
-            },
-            onChanged: (status) => setState(() {
-              _statusFilter = status;
-              _openingTime = null;
-            }),
-          ),
-          const SizedBox(width: 8),
-          AppDropdown<String>(
-            value: _category ?? 'All',
-            displayText: _category ?? 'All categories',
-            width: 190,
-            compact: true,
-            hint: 'Choose category',
-            icon: Icons.category_outlined,
-            options: {
-              'All': 'All',
-              for (final category in stallCategories) category: category,
-            },
-            onChanged: (value) => setState(() {
-              _category = value == 'All' ? null : value;
-              _selectedVendorId = null;
-            }),
-          ),
-          const SizedBox(width: 8),
-          InputChip(
-            avatar: const Icon(Icons.payments_outlined, size: 18),
-            label: Text(_priceRange?.label ?? 'Any price'),
-            onPressed: _choosePriceRange,
-            onDeleted: _priceRange == null
-                ? null
-                : () => setState(() {
-                      _priceRange = null;
-                      _selectedVendorId = null;
-                    }),
-          ),
-          const SizedBox(width: 8),
-          InputChip(
-            avatar: const Icon(Icons.schedule, size: 18),
-            label: Text(_openingTime?.label ?? 'Open at…'),
-            onPressed: _chooseOpeningTime,
-            onDeleted: _openingTime == null
-                ? null
-                : () => setState(() {
-                      _openingTime = null;
-                      _statusFilter = 'Open';
-                    }),
-          ),
-          if (_searchCenter != null || _customerPosition != null) ...[
+  Widget _standardDiscoveryFilters() => Row(children: [
+        TextButton.icon(
+          onPressed: _clearDiscoveryFilters,
+          icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+          label: const Text('Clear filters'),
+          style: TextButton.styleFrom(backgroundColor: AppColors.cardColor),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+            child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            ..._extraDiscoveryControls(),
+            ActionChip(
+                avatar: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                label: const Text('Set location'),
+                onPressed: _chooseLocationSource),
             const SizedBox(width: 8),
-            AppDropdown<double>(
-              value: _searchRadiusKm,
-              width: 165,
+            AppDropdown<String>(
+              value: _statusFilter,
+              displayText: _openingTime != null ? 'Scheduled' : null,
+              width: 155,
               compact: true,
-              hint: 'Choose distance',
-              icon: Icons.radar,
-              options: {
-                for (final radius in [5.0, 10.0, 25.0, 50.0])
-                  radius: 'Within ${radius.toStringAsFixed(0)} km',
+              hint: 'Choose stall status',
+              icon: Icons.storefront_outlined,
+              options: const {
+                'Open': 'Open now',
+                'Closed': 'Closed',
+                'All': 'All stalls',
               },
-              onChanged: _setSearchRadius,
+              onChanged: (status) => setState(() {
+                _statusFilter = status;
+                _openingTime = null;
+              }),
             ),
-          ],
-        ]),
-      );
+            const SizedBox(width: 8),
+            AppDropdown<String>(
+              value: _category ?? 'All',
+              displayText: _category ?? 'All categories',
+              width: 190,
+              compact: true,
+              hint: 'Choose category',
+              icon: Icons.category_outlined,
+              options: {
+                'All': 'All',
+                for (final category in stallCategories) category: category,
+              },
+              onChanged: (value) => setState(() {
+                _category = value == 'All' ? null : value;
+                _selectedVendorId = null;
+              }),
+            ),
+            const SizedBox(width: 8),
+            InputChip(
+              avatar: const Icon(Icons.payments_outlined, size: 18),
+              label: Text(_priceRange?.label ?? 'Any price'),
+              onPressed: _choosePriceRange,
+              onDeleted: _priceRange == null
+                  ? null
+                  : () => setState(() {
+                        _priceRange = null;
+                        _selectedVendorId = null;
+                      }),
+            ),
+            const SizedBox(width: 8),
+            InputChip(
+              avatar: const Icon(Icons.schedule, size: 18),
+              label: Text(_openingTime?.label ?? 'Open at…'),
+              onPressed: _chooseOpeningTime,
+              onDeleted: _openingTime == null
+                  ? null
+                  : () => setState(() {
+                        _openingTime = null;
+                        _statusFilter = 'Open';
+                      }),
+            ),
+            if (_searchCenter != null || _customerPosition != null) ...[
+              const SizedBox(width: 8),
+              AppDropdown<double>(
+                value: _searchRadiusKm,
+                width: 165,
+                compact: true,
+                hint: 'Choose distance',
+                icon: Icons.radar,
+                options: {
+                  for (final radius in [5.0, 10.0, 25.0, 50.0])
+                    radius: 'Within ${radius.toStringAsFixed(0)} km',
+                },
+                onChanged: _setSearchRadius,
+              ),
+            ],
+          ]),
+        )),
+      ]);
 
   String? _distanceTo(VendorModel vendor) {
     final position = _searchCenter ?? _customerPosition;

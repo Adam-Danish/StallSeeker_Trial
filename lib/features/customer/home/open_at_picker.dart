@@ -21,7 +21,8 @@ Future<OpeningTimeFilter?> showOpeningTimePicker(BuildContext context) async {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
+              child: SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(
                   width: 36,
                   height: 5,
@@ -65,7 +66,7 @@ Future<OpeningTimeFilter?> showOpeningTimePicker(BuildContext context) async {
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => Navigator.pop(context, 'custom')),
                 ]),
-              ]),
+              ])),
             ),
           ));
   if (choice == null || !context.mounted) return null;

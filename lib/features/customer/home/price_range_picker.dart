@@ -146,14 +146,15 @@ class _PriceRangePickerState extends State<_PriceRangePicker> {
                       child: const Text('Reset'),
                     ),
                     const Spacer(),
-                    FilledButton(
+                    Flexible(
+                        child: FilledButton(
                       onPressed: _apply,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                       ),
                       child: const Text('Apply price range'),
-                    ),
+                    )),
                   ]),
                 ],
               ),

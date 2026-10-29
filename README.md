@@ -7,6 +7,7 @@ StallSeeker is a Flutter app that helps customers find nearby food stalls and se
 ### Customers
 
 - Discover stalls on a map and filter by location, category, distance, price, and opening status.
+- Clear search, category, price, opening-time, and availability filters together in map or list view.
 - Browse menus, reviews, and directions.
 - Follow stalls and dishes for updates.
 - Request and track self-collect bookings.
