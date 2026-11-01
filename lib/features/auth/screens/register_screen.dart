@@ -32,7 +32,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: _password.text,
         fullName: _name.text.trim(),
         role: _role,
-        vendorPhone: _role == 'vendor' ? _phone.text : null);
+        vendorPhone: _role == 'vendor' ? _phone.text : null,
+        customerPhone: _role == 'customer' ? _phone.text : null);
     if (!mounted) return;
     setState(() => _busy = false);
     if (error == null) {
@@ -203,22 +204,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     RoundedRectangleBorder(
                                         borderRadius:
                                             BorderRadius.circular(16))))),
-                        if (_role == 'vendor') ...[
+                        ...[
                           const SizedBox(height: 12),
                           TextFormField(
                               controller: _phone,
                               keyboardType: TextInputType.phone,
                               textInputAction: TextInputAction.done,
-                              decoration: _field('Business phone number'),
-                              validator: (value) =>
-                                  normalizeVendorPhone(value ?? '') == null
-                                      ? 'Enter a valid Malaysian phone number.'
-                                      : null),
-                          const Padding(
-                              padding: EdgeInsets.only(top: 6),
+                              autofillHints: const [AutofillHints.telephoneNumber],
+                              decoration: _field(_role == 'vendor'
+                                  ? 'Business phone number'
+                                  : 'Phone number (optional)'),
+                              validator: (value) {
+                                final input = (value ?? '').trim();
+                                if (_role == 'customer' && input.isEmpty) {
+                                  return null;
+                                }
+                                return normalizeVendorPhone(input) == null
+                                    ? 'Enter a valid Malaysian phone number.'
+                                    : null;
+                              }),
+                          Padding(
+                              padding: const EdgeInsets.only(top: 6),
                               child: Text(
-                                  'Customers can see and call this number from your stall listing.',
-                                  style: TextStyle(
+                                  _role == 'vendor'
+                                      ? 'Customers can see and call this number from your stall listing.'
+                                      : 'You can leave this blank and add it later in your profile.',
+                                  style: const TextStyle(
                                       fontSize: 12, color: Color(0xFF707078)))),
                         ],
                         const SizedBox(height: 24),

@@ -221,7 +221,9 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         MaterialPageRoute(
             builder: (_) => EditProfileScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
-                email: _userModel?.email ?? user?.email ?? '')));
+                email: _userModel?.email ?? user?.email ?? '',
+                phoneNumber: _userModel?.phoneNumber,
+                editPhone: true)));
     if (saved == true && mounted) {
       await _loadUserData();
       if (mounted) {
@@ -239,6 +241,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             builder: (_) => PersonalInformationScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '',
+                phoneNumber: _userModel?.phoneNumber,
                 isVendor: false)));
     if (mounted) {
       await _loadUserData();

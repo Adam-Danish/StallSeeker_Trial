@@ -3,14 +3,23 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/utils/vendor_phone.dart';
 import 'account_ui.dart';
 import 'profile_header.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key, required this.name, required this.email});
+  const EditProfileScreen({
+    super.key,
+    required this.name,
+    required this.email,
+    this.phoneNumber,
+    this.editPhone = false,
+  });
 
   final String name;
   final String email;
+  final String? phoneNumber;
+  final bool editPhone;
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -21,12 +30,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _auth = AuthService();
   late final TextEditingController _name =
       TextEditingController(text: widget.name);
+  late final TextEditingController _phone =
+      TextEditingController(text: widget.phoneNumber ?? '');
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _name.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -42,7 +54,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _busy = true;
       _error = null;
     });
-    final error = await _auth.updateFullName(user.uid, _name.text.trim());
+    final error = await _auth.updateFullName(
+      user.uid,
+      _name.text.trim(),
+      customerPhone: widget.editPhone ? _phone.text : null,
+    );
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -160,6 +176,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  if (widget.editPhone) ...[
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextFormField(
+                          controller: _phone,
+                          enabled: !_busy,
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [AutofillHints.telephoneNumber],
+                          decoration: const InputDecoration(
+                            labelText: 'Phone number (optional)',
+                            hintText: 'Example: 0123456789',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(vertical: 19),
+                          ),
+                          validator: (value) {
+                            final input = (value ?? '').trim();
+                            if (input.isEmpty) return null;
+                            return normalizeVendorPhone(input) == null
+                                ? 'Enter a valid Malaysian phone number.'
+                                : null;
+                          },
+                          onFieldSubmitted: (_) => _save(),
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Text(
+                        'Leave this blank to remove your phone number.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                   AccountError(_error),
                 ],
               ),

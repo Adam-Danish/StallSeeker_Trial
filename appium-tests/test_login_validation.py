@@ -84,3 +84,4 @@ def test_empty_login_validation(driver):
         "Login form is no longer visible"
 
     print("TC003 PASSED: Empty login validation works")
+    

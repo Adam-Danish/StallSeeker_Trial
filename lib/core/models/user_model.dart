@@ -2,6 +2,7 @@ class UserModel { // represent 1 registered user
   final String uid;
   final String email;
   final String fullName;
+  final String? phoneNumber;
   final String role; // 'customer' or 'vendor'
   final DateTime createdAt;
   final double? customerLatitude; // ni yang save custtomer location
@@ -13,6 +14,7 @@ class UserModel { // represent 1 registered user
     required this.uid,
     required this.email,
     required this.fullName,
+    this.phoneNumber,
     required this.role,
     required this.createdAt,
     this.customerLatitude,
@@ -38,6 +40,7 @@ class UserModel { // represent 1 registered user
       uid: docId,
       email: map['email'] ?? '',
       fullName: map['fullName'] ?? '',
+      phoneNumber: map['phoneNumber'] as String?,
       role: map['role'] ?? 'customer',
       createdAt: map['createdAt'] != null
           ? (map['createdAt'] as dynamic).toDate()
@@ -62,6 +65,8 @@ class UserModel { // represent 1 registered user
       'uid': uid,
       'email': email,
       'fullName': fullName,
+      if (phoneNumber != null && phoneNumber!.isNotEmpty)
+        'phoneNumber': phoneNumber,
       'role': role,
       'createdAt': createdAt,
       if (hasCustomerLocation)

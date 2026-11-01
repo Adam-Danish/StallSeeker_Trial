@@ -12,11 +12,13 @@ class PersonalInformationScreen extends StatefulWidget {
     required this.name,
     required this.email,
     required this.isVendor,
+    this.phoneNumber,
   });
 
   final String name;
   final String email;
   final bool isVendor;
+  final String? phoneNumber;
 
   @override
   State<PersonalInformationScreen> createState() =>
@@ -25,12 +27,18 @@ class PersonalInformationScreen extends StatefulWidget {
 
 class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
   late String _name = widget.name;
+  late String? _phoneNumber = widget.phoneNumber;
 
   Future<void> _edit() async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => EditProfileScreen(name: _name, email: widget.email),
+        builder: (_) => EditProfileScreen(
+          name: _name,
+          email: widget.email,
+          phoneNumber: _phoneNumber,
+          editPhone: !widget.isVendor,
+        ),
       ),
     );
     if (changed != true || !mounted) return;
@@ -38,9 +46,14 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
     if (uid == null) return;
     final data = await AuthService().getUserData(uid);
     if (mounted) {
-      setState(() => _name = data?.fullName ??
-          FirebaseAuth.instance.currentUser?.displayName ??
-          _name);
+      setState(() {
+        _name = data?.fullName ??
+            FirebaseAuth.instance.currentUser?.displayName ??
+            _name;
+        if (data != null) {
+          _phoneNumber = data.phoneNumber;
+        }
+      });
     }
   }
 
@@ -139,6 +152,15 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
                   _detail('name', _name),
                   const Divider(indent: 16, endIndent: 16, height: .5),
                   _detail('email', widget.email, accent: true),
+                  if (!widget.isVendor) ...[
+                    const Divider(indent: 16, endIndent: 16, height: .5),
+                    _detail(
+                      'phone number',
+                      _phoneNumber?.trim().isNotEmpty == true
+                          ? _phoneNumber!
+                          : 'Not added',
+                    ),
+                  ],
                   const Divider(indent: 16, endIndent: 16, height: .5),
                   _detail(
                       'account type', widget.isVendor ? 'Vendor' : 'Customer'),

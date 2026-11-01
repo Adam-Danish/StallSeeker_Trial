@@ -80,12 +80,23 @@ class AuthService {
     required String fullName,
     required String role,
     String? vendorPhone,
+    String? customerPhone,
   }) async {
     try {
       final normalizedPhone =
           role == 'vendor' ? normalizeVendorPhone(vendorPhone ?? '') : null;
       if (role == 'vendor' && normalizedPhone == null) {
         return 'Enter a valid Malaysian business phone number.';
+      }
+      final customerPhoneInput = (customerPhone ?? '').trim();
+      final normalizedCustomerPhone =
+          role == 'customer' && customerPhoneInput.isNotEmpty
+              ? normalizeVendorPhone(customerPhoneInput)
+              : null;
+      if (role == 'customer' &&
+          customerPhoneInput.isNotEmpty &&
+          normalizedCustomerPhone == null) {
+        return 'Enter a valid Malaysian phone number.';
       }
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -97,6 +108,7 @@ class AuthService {
           uid: credential.user!.uid,
           email: email.trim(),
           fullName: fullName.trim(),
+          phoneNumber: normalizedCustomerPhone,
           role: role,
           createdAt: DateTime.now(),
         );
@@ -444,7 +456,11 @@ class AuthService {
   }
 
 // update name
-  Future<String?> updateFullName(String uid, String newName) async {
+  Future<String?> updateFullName(
+    String uid,
+    String newName, {
+    String? customerPhone,
+  }) async {
     try {
       final user = _auth.currentUser;
       if (user == null || user.isAnonymous || user.uid != uid) {
@@ -454,10 +470,20 @@ class AuthService {
       if (name.isEmpty || name.length > 80) {
         return 'Enter a name between 1 and 80 characters.';
       }
+      final updates = <String, dynamic>{'fullName': name};
+      if (customerPhone != null) {
+        final input = customerPhone.trim();
+        final normalized =
+            input.isEmpty ? null : normalizeVendorPhone(input);
+        if (input.isNotEmpty && normalized == null) {
+          return 'Enter a valid Malaysian phone number.';
+        }
+        updates['phoneNumber'] = normalized ?? FieldValue.delete();
+      }
       await _firestore
           .collection(FirestoreCollections.users)
           .doc(uid)
-          .update({'fullName': name});
+          .update(updates);
       // Firestore is the app's profile source. Sync Auth's display name as well.
       try {
         await user.updateDisplayName(name);
