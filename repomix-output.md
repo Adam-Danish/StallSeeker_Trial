@@ -64,6 +64,7 @@ lib/
       notification_service.dart
       place_search_service.dart
       saved_location_service.dart
+      saved_search_service.dart
       search_history_service.dart
       stall_review_service.dart
       storage_service.dart
@@ -74,8 +75,12 @@ lib/
     utils/
       vendor_phone.dart
     widgets/
+      app_back_button.dart
       app_dropdown.dart
+      app_page_app_bar.dart
       app_pill_navigation.dart
+      app_sheet_header.dart
+      app_top_action.dart
       ios_grouped.dart
   features/
     auth/
@@ -93,10 +98,15 @@ lib/
         followed_dishes_list.dart
       home/
         customer_home_screen.dart
+        discovery_map_widgets.dart
+        discovery_options.dart
         discovery_search_filters.dart
         map_marker_focus.dart
+        map_marker_guide.dart
         open_at_picker.dart
         price_range_picker.dart
+        stall_map_marker.dart
+        stall_preview_sheet.dart
       notifications/
         customer_notifications_screen.dart
       orders/
@@ -126,37 +136,1357 @@ lib/
       profile_header.dart
       profile_page.dart
       saved_locations_sheet.dart
+      stall_review_card.dart
     splash/
       splash_screen.dart
     vendor/
       dashboard/
         vendor_dashboard_screen.dart
+        vendor_dashboard_view.dart
         vendor_demo_sales.dart
       menu/
         vendor_menu_screen.dart
       profile/
         edit_stall_screen.dart
+        edit_stall_view.dart
+        stall_profile_draft.dart
         stall_schedule_editor.dart
+        unsaved_stall_changes_guard.dart
         vendor_profile_screen.dart
+      reviews/
+        vendor_reply_editor.dart
+        vendor_review_filters.dart
+        vendor_reviews_dashboard_card.dart
+        vendor_reviews_screen.dart
       vendor_main_screen.dart
   firebase_options.dart
   main.dart
 test/
+  app_back_button_test.dart
   app_pill_navigation_test.dart
   booking_card_test.dart
   booking_cart_view_test.dart
+  clear_discovery_filters_test.dart
   customer_discovery_search_test.dart
   demo_booking_service_test.dart
   demo_orders_screen_test.dart
   discovery_filters_test.dart
+  discovery_map_widgets_test.dart
+  discovery_options_test.dart
+  edit_stall_view_test.dart
   map_marker_focus_test.dart
+  map_marker_guide_test.dart
   payment_ui_test.dart
   profile_page_test.dart
   recent_changes_test.dart
   saved_location_test.dart
+  saved_search_access_test.dart
+  show_all_dishes_regression_test.dart
+  unsaved_stall_changes_guard_test.dart
+  vendor_dashboard_view_test.dart
+  vendor_reviews_test.dart
 ````
 
 # Files
+
+## File: lib/features/customer/home/discovery_map_widgets.dart
+````dart
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/stall_categories.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/models/stall_schedule.dart';
+import 'discovery_options.dart';
+
+/// One menu style, inherited by category, filters, more options and submenus.
+const discoveryMenuStyle = MenuStyle(
+  backgroundColor: WidgetStatePropertyAll(Colors.white),
+  surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+  shadowColor: WidgetStatePropertyAll(Color(0x26000000)),
+  elevation: WidgetStatePropertyAll(8),
+  padding: WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 6)),
+  shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(20)))),
+);
+
+class DiscoveryMenuChoice extends StatelessWidget {
+  const DiscoveryMenuChoice(
+      {super.key,
+      required this.label,
+      required this.selected,
+      required this.onPressed,
+      this.keepOpen = false});
+  final String label;
+  final bool selected, keepOpen;
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) => Semantics(
+        checked: selected,
+        child: MenuItemButton(
+          leadingIcon: SizedBox(
+              width: 20,
+              child: selected
+                  ? const Icon(Icons.check_rounded,
+                      size: 20, color: AppColors.primary)
+                  : null),
+          closeOnActivate: !keepOpen,
+          onPressed: onPressed,
+          child: Text(label),
+        ),
+      );
+}
+
+class DiscoveryMapFilters extends StatelessWidget {
+  const DiscoveryMapFilters(
+      {super.key,
+      required this.category,
+      required this.openNow,
+      required this.sort,
+      required this.availableOnly,
+      required this.selfCollectOnly,
+      required this.recentOnly,
+      required this.onCategory,
+      required this.onOpenNow,
+      required this.onSort,
+      required this.onAvailable,
+      required this.onSelfCollect,
+      required this.onRecent,
+      required this.onReset,
+      required this.moreItems,
+      this.hasExtraFilters = false});
+  final String? category;
+  final bool openNow,
+      availableOnly,
+      selfCollectOnly,
+      recentOnly,
+      hasExtraFilters;
+  final DiscoverySort sort;
+  final ValueChanged<String?> onCategory;
+  final ValueChanged<bool> onOpenNow, onAvailable, onSelfCollect, onRecent;
+  final ValueChanged<DiscoverySort> onSort;
+  final VoidCallback onReset;
+  final List<Widget> moreItems;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = hasExtraFilters ||
+        openNow ||
+        sort != DiscoverySort.distance ||
+        availableOnly ||
+        selfCollectOnly ||
+        recentOnly;
+    final rowStyle = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(220, 48)),
+      padding:
+          const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
+      textStyle: WidgetStatePropertyAll(Theme.of(context)
+          .textTheme
+          .bodyMedium
+          ?.copyWith(fontSize: 14, height: 1.3)),
+      foregroundColor: const WidgetStatePropertyAll(AppColors.textDark),
+      backgroundColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.hovered) ||
+                  states.contains(WidgetState.focused)
+              ? AppColors.mint
+              : Colors.white),
+      shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+    );
+    return MenuTheme(
+      data: const MenuThemeData(style: discoveryMenuStyle),
+      child: MenuButtonTheme(
+        data: MenuButtonThemeData(style: rowStyle),
+        child: Row(children: [
+          Flexible(
+            fit: FlexFit.loose,
+            child: Material(
+              color: AppColors.cardColor,
+              borderRadius: BorderRadius.circular(28),
+              elevation: 2,
+              child: MenuAnchor(
+                style: discoveryMenuStyle,
+                menuChildren: [
+                  for (final value in ['All stalls', ...stallCategories])
+                    DiscoveryMenuChoice(
+                        label: value,
+                        selected: value == (category ?? 'All stalls'),
+                        onPressed: () =>
+                            onCategory(value == 'All stalls' ? null : value)),
+                ],
+                builder: (_, controller, __) => Tooltip(
+                  message: 'Choose stall category',
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                        foregroundColor: AppColors.textDark,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(horizontal: 18)),
+                    onPressed: () => controller.isOpen
+                        ? controller.close()
+                        : controller.open(),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(
+                          child: Text(category ?? 'All stalls',
+                              maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.expand_more_rounded, size: 20),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: AppColors.cardColor,
+            borderRadius: BorderRadius.circular(28),
+            elevation: 2,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              MenuAnchor(
+                  style: discoveryMenuStyle,
+                  menuChildren: moreItems,
+                  builder: (_, controller, __) => IconButton(
+                      tooltip: 'More map options',
+                      icon: const Icon(Icons.more_horiz),
+                      onPressed: () => controller.isOpen
+                          ? controller.close()
+                          : controller.open())),
+              MenuAnchor(
+                  style: discoveryMenuStyle,
+                  menuChildren: [
+                    DiscoveryMenuChoice(
+                        label: 'Open now',
+                        selected: openNow,
+                        keepOpen: true,
+                        onPressed: () => onOpenNow(!openNow)),
+                    const Divider(height: 1),
+                    DiscoveryMenuChoice(
+                        label: 'Top rated',
+                        selected: sort == DiscoverySort.rating,
+                        keepOpen: true,
+                        onPressed: () => onSort(sort == DiscoverySort.rating
+                            ? DiscoverySort.distance
+                            : DiscoverySort.rating)),
+                    const Divider(height: 1),
+                    DiscoveryMenuChoice(
+                        label: 'Available dishes',
+                        selected: availableOnly,
+                        keepOpen: true,
+                        onPressed: () => onAvailable(!availableOnly)),
+                    DiscoveryMenuChoice(
+                        label: 'Self-collect',
+                        selected: selfCollectOnly,
+                        keepOpen: true,
+                        onPressed: () => onSelfCollect(!selfCollectOnly)),
+                    DiscoveryMenuChoice(
+                        label: 'Updated in 24h',
+                        selected: recentOnly,
+                        keepOpen: true,
+                        onPressed: () => onRecent(!recentOnly)),
+                    SubmenuButton(
+                        menuStyle: discoveryMenuStyle,
+                        menuChildren: [
+                          for (final value in DiscoverySort.values)
+                            DiscoveryMenuChoice(
+                                label: value.label,
+                                selected: sort == value,
+                                onPressed: () => onSort(value)),
+                        ],
+                        child: const Text('Sort results')),
+                    MenuItemButton(
+                        onPressed: onReset, child: const Text('Reset filters')),
+                  ],
+                  builder: (_, controller, __) => IconButton.filledTonal(
+                      tooltip: 'Filter stalls',
+                      icon: const Icon(Icons.filter_list_rounded),
+                      style: IconButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          backgroundColor:
+                              active ? AppColors.primary : AppColors.mint,
+                          foregroundColor:
+                              active ? Colors.white : AppColors.primary),
+                      onPressed: () => controller.isOpen
+                          ? controller.close()
+                          : controller.open())),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Shared geometry: tablets keep the same full-width header and centered cards.
+class DiscoveryMapGeometry {
+  DiscoveryMapGeometry(Size size)
+      : overlayWidth = math.max(0.0, size.width - 24),
+        panelWidth = size.width,
+        panelLeft = 0;
+  final double overlayWidth, panelWidth, panelLeft;
+  bool get multipleCards => panelWidth >= 600;
+  int get cardsPerPage =>
+      multipleCards ? (panelWidth / 360).floor().clamp(2, 4) : 1;
+  double get viewportFraction => .94;
+  double get cardWidth => cardsPerPage == 1
+      ? panelWidth * viewportFraction - 10
+      : (panelWidth * viewportFraction - 10) / cardsPerPage - 10;
+  double get previewInset => math.max(0.0, (panelWidth - 520) / 2);
+}
+
+/// Use actual hours when available; never invent an opening time.
+String stallCardOpeningText(VendorModel vendor, {DateTime? now}) {
+  final instant = (now ?? DateTime.now()).toUtc();
+  final local = malaysiaTime(instant);
+  final today = DateTime.utc(local.year, local.month, local.day);
+  final closedBySchedule =
+      vendor.temporaryClosures.any((c) => c.contains(instant));
+  final open = vendor.isOpen && !closedBySchedule;
+  DateTime? next;
+  for (var offset = -1; offset <= 7; offset++) {
+    final day = today.add(Duration(days: offset));
+    for (final interval
+        in vendor.weeklyHours[day.weekday] ?? <StallHoursInterval>[]) {
+      final midnight = malaysiaInstant(day.year, day.month, day.day, 0, 0);
+      var start = midnight.add(Duration(minutes: interval.openMinute));
+      var end = midnight.add(Duration(
+          minutes: interval.closeMinute +
+              (interval.closeMinute < interval.openMinute ? 1440 : 0)));
+      if (open && !instant.isBefore(start) && instant.isBefore(end)) {
+        for (final closure in vendor.temporaryClosures) {
+          if (closure.start.isAfter(instant) && closure.start.isBefore(end)) {
+            end = closure.start;
+          }
+        }
+        final close = malaysiaTime(end);
+        return 'Closes ${formatStallTime(close.hour * 60 + close.minute).replaceFirst(':00', '')}';
+      }
+      if (!open) {
+        if (closedBySchedule &&
+            start.isBefore(instant) &&
+            end.isAfter(instant)) {
+          start = instant;
+        }
+        final closures = [...vendor.temporaryClosures]
+          ..sort((a, b) => a.start.compareTo(b.start));
+        for (final closure in closures) {
+          if (closure.contains(start)) start = closure.end;
+        }
+        if (start.isAfter(instant) &&
+            start.isBefore(end) &&
+            (next == null || start.isBefore(next))) {
+          next = start;
+        }
+      }
+    }
+  }
+  if (!open && next != null) {
+    final opening = malaysiaTime(next);
+    final days = DateTime.utc(opening.year, opening.month, opening.day)
+        .difference(today)
+        .inDays;
+    if (days == 0) {
+      return 'Opens ${formatStallTime(opening.hour * 60 + opening.minute).replaceFirst(':00', '')}';
+    }
+    if (days == 1) return 'Opens tomorrow';
+    const weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+    return 'Opens ${weekdays[opening.weekday - 1]}';
+  }
+  return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
+}
+
+/// The controller lives with the carousel so sheet/map rebuilds retain its page.
+class StallCardCarousel extends StatefulWidget {
+  const StallCardCarousel({
+    super.key,
+    required this.ids,
+    required this.selectedId,
+    required this.onSelected,
+    required this.itemBuilder,
+    this.viewportFraction = .94,
+    this.padEnds = true,
+    this.cardsPerPage = 1,
+  });
+
+  final List<String> ids;
+  final String? selectedId;
+  final ValueChanged<int> onSelected;
+  final IndexedWidgetBuilder itemBuilder;
+  final double viewportFraction;
+  final bool padEnds;
+  final int cardsPerPage;
+
+  @override
+  State<StallCardCarousel> createState() => _StallCardCarouselState();
+}
+
+class _StallCardCarouselState extends State<StallCardCarousel> {
+  late PageController _controller;
+  String? _programmaticId;
+
+  @override
+  void initState() {
+    super.initState();
+    final index = widget.ids.indexOf(widget.selectedId ?? '');
+    _controller = PageController(
+        viewportFraction: widget.viewportFraction,
+        initialPage: index < 0 ? 0 : index ~/ widget.cardsPerPage);
+  }
+
+  @override
+  void didUpdateWidget(covariant StallCardCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selectedIndex = widget.ids.indexOf(widget.selectedId ?? '');
+    final target =
+        selectedIndex < 0 ? -1 : selectedIndex ~/ widget.cardsPerPage;
+    if (oldWidget.viewportFraction != widget.viewportFraction ||
+        oldWidget.cardsPerPage != widget.cardsPerPage) {
+      final previous = _controller;
+      _programmaticId = widget.selectedId;
+      _controller = PageController(
+          viewportFraction: widget.viewportFraction,
+          initialPage: target < 0 ? 0 : target);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        previous.dispose();
+        if (!mounted) return;
+        if (_controller.hasClients && widget.ids.isNotEmpty) {
+          final currentIndex = widget.ids.indexOf(widget.selectedId ?? '');
+          _controller.jumpToPage(
+              currentIndex < 0 ? 0 : currentIndex ~/ widget.cardsPerPage);
+        }
+        _programmaticId = null;
+      });
+      return;
+    }
+    final reordered = oldWidget.ids.join('\u0000') != widget.ids.join('\u0000');
+    if (target >= 0 &&
+        (oldWidget.selectedId != widget.selectedId || reordered)) {
+      _programmaticId = widget.selectedId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_controller.hasClients) return;
+        final currentIndex = widget.ids.indexOf(widget.selectedId ?? '');
+        if (currentIndex < 0) return;
+        final currentTarget = currentIndex ~/ widget.cardsPerPage;
+        // Jump on external selection: intermediate pages must not move the map.
+        _controller.jumpToPage(currentTarget);
+        _programmaticId = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PageView.builder(
+        key: const ValueKey('stall-card-carousel'),
+        controller: _controller,
+        padEnds: widget.padEnds,
+        itemCount: (widget.ids.length / widget.cardsPerPage).ceil(),
+        onPageChanged: (page) {
+          final index = page * widget.cardsPerPage;
+          final selectedIndex = widget.ids.indexOf(widget.selectedId ?? '');
+          if (index < widget.ids.length &&
+              _programmaticId == null &&
+              (selectedIndex < 0 ||
+                  selectedIndex ~/ widget.cardsPerPage != page)) {
+            widget.onSelected(index);
+          }
+        },
+        itemBuilder: (context, page) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+          child: widget.cardsPerPage == 1
+              ? _card(context, page)
+              : Row(children: [
+                  for (var column = 0; column < widget.cardsPerPage; column++)
+                    Expanded(
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            child: page * widget.cardsPerPage + column <
+                                    widget.ids.length
+                                ? _card(context,
+                                    page * widget.cardsPerPage + column)
+                                : const SizedBox.shrink()))
+                ]),
+        ),
+      );
+
+  Widget _card(BuildContext context, int index) => KeyedSubtree(
+      key: ValueKey(widget.ids[index]),
+      child: Semantics(
+          selected: widget.ids[index] == widget.selectedId,
+          child: Align(
+              alignment: Alignment.bottomCenter,
+              child: widget.itemBuilder(context, index))));
+}
+
+class StallMapCard extends StatelessWidget {
+  const StallMapCard({super.key, required this.vendor, required this.onTap});
+  final VendorModel vendor;
+  final VoidCallback onTap;
+
+  // Flutter uses logical pixels. Keep the reference layout compact instead of
+  // enlarging screenshot pixels again on a tablet's wider viewport.
+  static const _photoSize = 64.0;
+  static const _titleStyle = TextStyle(
+      fontSize: 16,
+      height: 1.25,
+      fontWeight: FontWeight.w600,
+      color: Color(0xFF222222));
+  static const _metaStyle =
+      TextStyle(fontSize: 14, height: 1.3, color: Color(0xFF222222));
+  static const _bodyStyle =
+      TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF696969));
+
+  static double preferredHeight(
+      BuildContext context, double carouselWidth, Iterable<VendorModel> vendors,
+      {double viewportFraction = .94, int cardsPerPage = 1}) {
+    final width = cardsPerPage == 1
+        ? carouselWidth * viewportFraction - 10
+        : (carouselWidth * viewportFraction - 10) / cardsPerPage - 10;
+    const padding = 14.0;
+    final inherited = DefaultTextStyle.of(context).style;
+    final painter = TextPainter(
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 3,
+        ellipsis: '…');
+    double measure(String text, TextStyle style) {
+      painter.text = TextSpan(text: text, style: inherited.merge(style));
+      painter.layout(maxWidth: math.max(1, width - 2 * padding));
+      return painter.height;
+    }
+
+    final header = math.max(_photoSize,
+        measure('Ag', _titleStyle) + measure('Ag', _metaStyle) * 2 + 4);
+    var body = 0.0;
+    for (final vendor in vendors) {
+      if (vendor.description.trim().isEmpty) continue;
+      body = math.max(body, measure(vendor.description.trim(), _bodyStyle));
+    }
+    painter.dispose();
+    return (padding * 2 + 2 + header + (body > 0 ? 12 + body : 0) + 10)
+        .ceilToDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final hours = stallCardOpeningText(vendor);
+        Widget placeholder() => const ColoredBox(
+            color: AppColors.mint,
+            child: Center(
+                child:
+                    Icon(Icons.storefront_rounded, color: AppColors.primary)));
+        return Material(
+          key: const ValueKey('stall-map-card-surface'),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(23),
+          elevation: 2,
+          shadowColor: const Color(0x14000000),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+              child: SingleChildScrollView(
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: SizedBox(
+                                key: const ValueKey('stall-card-thumbnail'),
+                                width: _photoSize,
+                                height: _photoSize,
+                                child: vendor.imageUrl.isEmpty
+                                    ? placeholder()
+                                    : Image.network(vendor.imageUrl,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (_, child, progress) =>
+                                            progress == null
+                                                ? child
+                                                : placeholder(),
+                                        errorBuilder: (_, __, ___) =>
+                                            placeholder()),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  Text(vendor.stallName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _titleStyle),
+                                  const SizedBox(height: 2),
+                                  Text(vendor.categoryLabel,
+                                      key:
+                                          const ValueKey('stall-card-category'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _metaStyle),
+                                  const SizedBox(height: 2),
+                                  Text.rich(
+                                      TextSpan(children: [
+                                        TextSpan(
+                                            text: vendor.isOpenNow
+                                                ? 'Open'
+                                                : 'Closed',
+                                            style: TextStyle(
+                                                color: vendor.isOpenNow
+                                                    ? const Color(0xFF4A984D)
+                                                    : const Color(0xFFD56C66))),
+                                        if (hours.isNotEmpty)
+                                          TextSpan(text: ' · $hours'),
+                                      ]),
+                                      key: const ValueKey('stall-card-status'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _metaStyle),
+                                ])),
+                          ]),
+                      if (vendor.description.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(vendor.description.trim(),
+                            key: const ValueKey('stall-card-description'),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: _bodyStyle),
+                      ],
+                    ]),
+              ),
+            ),
+          ),
+        );
+      });
+}
+````
+
+## File: lib/features/customer/home/stall_map_marker.dart
+````dart
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import '../../../core/constants/app_colors.dart';
+
+IconData stallCategoryIcon(String category) => switch (category) {
+      'Beverages' => Icons.local_drink_rounded,
+      'Burger' => Icons.lunch_dining_rounded,
+      'Snacks & Desserts' => Icons.icecream_rounded,
+      'Noodles' => Icons.ramen_dining_rounded,
+      'Goreng Pisang' => Icons.bakery_dining_rounded,
+      _ => Icons.restaurant_rounded,
+    };
+
+/// Bounded cache: two marker states per category, rather than one per stall.
+class StallMapMarkerCache {
+  final _icons = <(String, bool), Future<BitmapDescriptor>>{};
+
+  Future<BitmapDescriptor> icon(String category, {required bool selected}) =>
+      _icons.putIfAbsent((category, selected), () => _draw(category, selected));
+
+  Future<BitmapDescriptor> _draw(String category, bool selected) async {
+    const scale = 3.0;
+    const size = 56.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..scale(scale);
+    const center = Offset(size / 2, size / 2);
+    canvas.drawCircle(center, 26, Paint()..color = const Color(0x22000000));
+    canvas.drawCircle(center, 24, Paint()..color = AppColors.cardColor);
+    if (selected) {
+      canvas.drawCircle(
+          center,
+          24,
+          Paint()
+            ..color = AppColors.primary
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
+    }
+    canvas.drawCircle(center, 20,
+        Paint()..color = selected ? AppColors.primary : AppColors.cardColor);
+    final glyph = stallCategoryIcon(category);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(glyph.codePoint),
+        style: TextStyle(
+          fontSize: 24,
+          fontFamily: glyph.fontFamily,
+          package: glyph.fontPackage,
+          color: selected ? AppColors.cardColor : AppColors.primary,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+        canvas, center - Offset(painter.width / 2, painter.height / 2));
+    painter.dispose();
+    final picture = recorder.endRecording();
+    final image =
+        await picture.toImage((size * scale).round(), (size * scale).round());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(),
+        imagePixelRatio: scale);
+  }
+}
+````
+
+## File: lib/features/customer/home/stall_preview_sheet.dart
+````dart
+import 'package:flutter/material.dart';
+
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/vendor_model.dart';
+
+class StallPreviewSheet extends StatefulWidget {
+  const StallPreviewSheet({
+    super.key,
+    required this.vendor,
+    required this.rating,
+    required this.distance,
+    required this.photos,
+    required this.following,
+    required this.onFollow,
+    required this.onDirections,
+    required this.onViewMenu,
+    required this.onSelfCollect,
+    required this.onDetails,
+    required this.onClose,
+    required this.onExtentChanged,
+  });
+
+  final VendorModel vendor;
+  final Widget rating;
+  final String? distance;
+  final List<String> photos;
+  final bool following;
+  final VoidCallback? onFollow, onSelfCollect;
+  final VoidCallback onDirections, onViewMenu, onDetails, onClose;
+  final ValueChanged<double> onExtentChanged;
+
+  @override
+  State<StallPreviewSheet> createState() => _StallPreviewSheetState();
+}
+
+class _StallPreviewSheetState extends State<StallPreviewSheet> {
+  final _controller = DraggableScrollableController();
+  int _photo = 0;
+
+  void _resize(double size) {
+    if (!_controller.isAttached) return;
+    _controller.animateTo(size,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      NotificationListener<DraggableScrollableNotification>(
+        onNotification: (notification) {
+          widget.onExtentChanged(notification.extent);
+          return false;
+        },
+        child: DraggableScrollableSheet(
+          controller: _controller,
+          initialChildSize: .55,
+          minChildSize: .28,
+          maxChildSize: .94,
+          snap: true,
+          snapSizes: const [.28, .55, .94],
+          shouldCloseOnMinExtent: false,
+          builder: (context, scrollController) => Material(
+            color: AppColors.cardColor,
+            elevation: 12,
+            shadowColor: const Color(0x33000000),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            clipBehavior: Clip.antiAlias,
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              children: [
+                Center(
+                    child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: AppColors.border,
+                            borderRadius: BorderRadius.circular(4)))),
+                Row(children: [
+                  Expanded(
+                      child: Text('Stall preview',
+                          style: const TextStyle(
+                              color: AppColors.textMuted, fontSize: 12))),
+                  IconButton(
+                      tooltip: 'Collapse preview',
+                      onPressed: () => _resize(.28),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded)),
+                  IconButton(
+                      tooltip: 'Expand preview',
+                      onPressed: () => _resize(.94),
+                      icon: const Icon(Icons.open_in_full_rounded, size: 19)),
+                  IconButton(
+                      tooltip: 'Close preview',
+                      onPressed: widget.onClose,
+                      icon: const Icon(Icons.close_rounded)),
+                ]),
+                Text(widget.vendor.stallName,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Flexible(child: widget.rating),
+                  const SizedBox(width: 8),
+                  Flexible(
+                      child: Text(widget.vendor.categoryLabel,
+                          style: const TextStyle(fontSize: 12)))
+                ]),
+                const SizedBox(height: 8),
+                Text.rich(TextSpan(children: [
+                  TextSpan(
+                      text: widget.vendor.isOpenNow ? 'Open now' : 'Closed',
+                      style: TextStyle(
+                          color: widget.vendor.isOpenNow
+                              ? AppColors.openGreen
+                              : AppColors.closedRed)),
+                  if (widget.distance != null)
+                    TextSpan(text: ' · ${widget.distance}'),
+                ])),
+                const SizedBox(height: 16),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  FilledButton.icon(
+                      onPressed: widget.onDirections,
+                      icon: const Icon(Icons.directions_outlined, size: 18),
+                      label: const Text('Directions')),
+                  OutlinedButton.icon(
+                      onPressed: widget.onFollow,
+                      icon: Icon(
+                          widget.following
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          size: 18),
+                      label: Text(widget.following ? 'Following' : 'Follow')),
+                  OutlinedButton.icon(
+                      onPressed: widget.onViewMenu,
+                      icon: const Icon(Icons.restaurant_menu, size: 18),
+                      label: const Text('View menu')),
+                  if (widget.vendor.selfCollectEnabled)
+                    OutlinedButton.icon(
+                        onPressed: widget.onSelfCollect,
+                        icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                        label: const Text('Self-collect')),
+                ]),
+                const SizedBox(height: 18),
+                if (widget.photos.isNotEmpty) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: SizedBox(
+                        height: 190,
+                        child: Stack(children: [
+                          PageView.builder(
+                            key: ValueKey(widget.vendor.vendorId),
+                            itemCount: widget.photos.length,
+                            onPageChanged: (value) =>
+                                setState(() => _photo = value),
+                            itemBuilder: (_, index) => Image.network(
+                                widget.photos[index],
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                errorBuilder: (_, __, ___) => const ColoredBox(
+                                    color: AppColors.mint,
+                                    child: Center(
+                                        child: Icon(Icons.storefront_rounded,
+                                            color: AppColors.primary,
+                                            size: 48)))),
+                          ),
+                          if (widget.photos.length > 1)
+                            Positioned(
+                                right: 12,
+                                bottom: 12,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                      color: AppColors.cardColor,
+                                      borderRadius: BorderRadius.circular(20)),
+                                  child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 5),
+                                      child: Text(
+                                          '${_photo + 1} / ${widget.photos.length}')),
+                                )),
+                        ])),
+                  ),
+                  if (widget.photos.length > 1)
+                    const Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: Text('Stall & menu photos',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.textMuted))),
+                  const SizedBox(height: 16),
+                ],
+                if (widget.vendor.description.trim().isNotEmpty) ...[
+                  Text(widget.vendor.description,
+                      style: const TextStyle(height: 1.5)),
+                  const SizedBox(height: 16),
+                ],
+                ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule_outlined),
+                    title: const Text('Opening hours today'),
+                    subtitle: Text(widget.vendor.hoursToday.isEmpty
+                        ? 'Hours not provided'
+                        : widget.vendor.hoursToday)),
+                ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.location_on_outlined),
+                    title: Text(widget.vendor.hasFreshLocation
+                        ? 'Location updated recently'
+                        : 'Last known location'),
+                    subtitle: Text(widget.vendor.hasFreshLocation
+                        ? 'The vendor is sharing their location.'
+                        : 'This location may be outdated. Check before travelling.')),
+                if (widget.vendor.selfCollectEnabled &&
+                    !widget.vendor.isOpenNow)
+                  const Text(
+                      'Self-collect is available when this stall is open.',
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                const SizedBox(height: 12),
+                TextButton(
+                    onPressed: widget.onDetails,
+                    child: const Text('Full stall details & reviews')),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+````
+
+## File: test/discovery_map_widgets_test.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/features/customer/home/discovery_map_widgets.dart';
+import 'package:stallseeker/features/customer/home/discovery_options.dart';
+import 'package:stallseeker/features/customer/home/stall_preview_sheet.dart';
+import 'package:stallseeker/features/customer/home/stall_map_marker.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:stallseeker/core/models/stall_schedule.dart';
+
+void main() {
+  testWidgets(
+      'tablet shows multiple compact cards and retains selection on rotation',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    final moves = <int>[];
+    var selected = 'a';
+    var columns = 3;
+    late StateSetter update;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: StatefulBuilder(
+      builder: (_, setState) {
+        update = setState;
+        return SizedBox(
+            height: 200,
+            child: StallCardCarousel(
+              ids: ids,
+              selectedId: selected,
+              cardsPerPage: columns,
+              onSelected: (index) {
+                moves.add(index);
+                setState(() => selected = ids[index]);
+              },
+              itemBuilder: (_, index) =>
+                  Center(child: Text('Card ${ids[index]}')),
+            ));
+      },
+    ))));
+    for (final id in ['a', 'b', 'c']) {
+      final center = tester.getCenter(find.text('Card $id'));
+      expect(center.dx, inInclusiveRange(0, 1280));
+    }
+    await tester.drag(find.byType(PageView), const Offset(-1100, 0));
+    await tester.pumpAndSettle();
+    expect(moves, [3]);
+    expect(selected, 'd');
+    update(() => selected = 'c');
+    await tester.pumpAndSettle();
+    tester.view.physicalSize = const Size(834, 1194);
+    update(() => columns = 2);
+    await tester.pumpAndSettle();
+    expect(moves, [3]);
+    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('landscape tablets retain a full header and centered carousel', () {
+    for (final size in [
+      const Size(1194, 834),
+      const Size(1280, 600),
+      const Size(834, 1194)
+    ]) {
+      final geometry = DiscoveryMapGeometry(size);
+      expect(geometry.overlayWidth, size.width - 24);
+      expect(geometry.cardWidth, lessThanOrEqualTo(420));
+      expect(geometry.multipleCards, isTrue);
+      expect(geometry.panelLeft + geometry.panelWidth / 2,
+          closeTo(size.width / 2, .01));
+    }
+  });
+
+  test('card closing time supports an overnight schedule', () {
+    final vendor = _vendor().copyWith(weeklyHours: {
+      1: [const StallHoursInterval(22 * 60, 2 * 60)]
+    });
+    expect(
+        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 3, 1, 0)),
+        'Closes 2 AM');
+  });
+
+  test('closed card shows the next scheduled opening day', () {
+    final vendor = _vendor().copyWith(isOpen: false, weeklyHours: {
+      6: [const StallHoursInterval(10 * 60, 18 * 60)]
+    });
+    expect(
+        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 2, 11, 0)),
+        'Opens Saturday');
+  });
+
+  test('temporary closure is included when finding the next opening', () {
+    final vendor = _vendor().copyWith(
+      weeklyHours: {
+        1: [const StallHoursInterval(10 * 60, 18 * 60)]
+      },
+      temporaryClosures: [
+        TemporaryClosure(malaysiaInstant(2026, 11, 2, 11, 0),
+            malaysiaInstant(2026, 11, 2, 12, 0))
+      ],
+    );
+    expect(
+        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 2, 11, 30)),
+        'Opens 12 PM');
+  });
+
+  testWidgets(
+      'category, filter and nested sort use identical dropdown surfaces',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: DiscoveryMapFilters(
+      category: null,
+      openNow: true,
+      sort: DiscoverySort.distance,
+      availableOnly: false,
+      selfCollectOnly: false,
+      recentOnly: false,
+      onCategory: (_) {},
+      onOpenNow: (_) {},
+      onSort: (_) {},
+      onAvailable: (_) {},
+      onSelfCollect: (_) {},
+      onRecent: (_) {},
+      onReset: () {},
+      moreItems: const [],
+    ))));
+    Material surfaceFor(String text) => tester.widget<Material>(find
+        .ancestor(
+            of: find.text(text),
+            matching: find
+                .byWidgetPredicate((w) => w is Material && w.elevation == 8))
+        .first);
+    void checkSurface(Material surface) {
+      expect(surface.color, Colors.white);
+      expect(surface.surfaceTintColor, Colors.transparent);
+      expect((surface.shape as RoundedRectangleBorder).borderRadius,
+          BorderRadius.circular(20));
+    }
+
+    await tester.tap(find.byTooltip('Filter stalls'));
+    await tester.pumpAndSettle();
+    checkSurface(surfaceFor('Open now'));
+    await tester.tap(find.text('Sort results'));
+    await tester.pumpAndSettle();
+    checkSurface(surfaceFor(DiscoverySort.distance.label));
+    expect(find.byType(Checkbox), findsNothing);
+    await tester.tapAt(const Offset(700, 550));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Choose stall category'));
+    await tester.pumpAndSettle();
+    checkSurface(surfaceFor('Beverages'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tablet card matches the reference hierarchy and content height',
+      (tester) async {
+    tester.view.physicalSize = const Size(834, 1194);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final geometry = DiscoveryMapGeometry(const Size(834, 1194));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Builder(
+      builder: (context) => SizedBox(
+        width: geometry.cardWidth,
+        height: StallMapCard.preferredHeight(
+                context, geometry.panelWidth, [_vendor()],
+                viewportFraction: geometry.viewportFraction,
+                cardsPerPage: geometry.cardsPerPage) -
+            10,
+        child: StallMapCard(vendor: _vendor(), onTap: () {}),
+      ),
+    ))));
+    await tester.pumpAndSettle();
+    final surface =
+        tester.getRect(find.byKey(const ValueKey('stall-map-card-surface')));
+    final description =
+        tester.getRect(find.byKey(const ValueKey('stall-card-description')));
+    final photo =
+        tester.getRect(find.byKey(const ValueKey('stall-card-thumbnail')));
+    final title = tester.getRect(find.text('Adam stalls'));
+    final category =
+        tester.getRect(find.byKey(const ValueKey('stall-card-category')));
+    final status =
+        tester.getRect(find.byKey(const ValueKey('stall-card-status')));
+    expect(surface.width, lessThan(500));
+    expect(photo.size, const Size(64, 64));
+    expect(tester.widget<Text>(find.text('Adam stalls')).style!.fontSize, 16);
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('stall-card-description')))
+            .style!
+            .fontSize,
+        14);
+    expect(surface.bottom - description.bottom, inInclusiveRange(13, 15));
+    expect(title.top, closeTo(photo.top, 1));
+    expect(category.top, greaterThan(title.bottom));
+    expect(status.top, greaterThan(category.bottom));
+    expect(description.left, closeTo(photo.left, 1));
+    expect(description.top, greaterThan(photo.bottom));
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('stall-card-description')))
+            .maxLines,
+        3);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('category remains a compact pill on a tablet', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: DiscoveryMapFilters(
+      category: null,
+      openNow: false,
+      sort: DiscoverySort.distance,
+      availableOnly: false,
+      selfCollectOnly: false,
+      recentOnly: false,
+      onCategory: (_) {},
+      onOpenNow: (_) {},
+      onSort: (_) {},
+      onAvailable: (_) {},
+      onSelfCollect: (_) {},
+      onRecent: (_) {},
+      onReset: () {},
+      moreItems: const [],
+    ))));
+    expect(tester.getSize(find.byTooltip('Choose stall category')).width,
+        lessThan(250));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'circular markers render distinct selected and normal PNGs and reuse the cache',
+      (tester) async {
+    final cache = StallMapMarkerCache();
+    final normal = cache.icon('Beverages', selected: false);
+    expect(identical(normal, cache.icon('Beverages', selected: false)), isTrue);
+    final icons = await tester.runAsync(() => Future.wait([
+          normal,
+          cache.icon('Beverages', selected: true),
+        ]));
+    final light = icons![0] as BytesMapBitmap;
+    final selected = icons[1] as BytesMapBitmap;
+    expect(light.byteData.take(4), [137, 80, 78, 71]);
+    expect(light.byteData, isNot(equals(selected.byteData)));
+    expect(light.imagePixelRatio, 3);
+  });
+  testWidgets(
+      'swipe selects the next card; marker selection does not emit intermediate pages',
+      (tester) async {
+    final moves = <int>[];
+    var selected = 'a';
+    var ids = ['a', 'b', 'c'];
+    late StateSetter update;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: StatefulBuilder(
+      builder: (context, setState) {
+        update = setState;
+        return SizedBox(
+            height: 200,
+            child: StallCardCarousel(
+              ids: ids,
+              selectedId: selected,
+              onSelected: (index) {
+                moves.add(index);
+                setState(() => selected = ids[index]);
+              },
+              itemBuilder: (_, index) => Center(child: Text(ids[index])),
+            ));
+      },
+    ))));
+    await tester.drag(find.byType(PageView), const Offset(-750, 0));
+    await tester.pumpAndSettle();
+    expect(moves, [1]);
+    expect(selected, 'b');
+    update(() => selected = 'c');
+    await tester.pumpAndSettle();
+    expect(moves, [1]);
+    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 2);
+    update(() {
+      ids = ['c'];
+    });
+    await tester.pumpAndSettle();
+    expect(moves, [1]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('filter menu keeps multiple checked options active',
+      (tester) async {
+    var open = false;
+    var sort = DiscoverySort.distance;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: StatefulBuilder(
+      builder: (_, setState) => DiscoveryMapFilters(
+        category: null,
+        openNow: open,
+        sort: sort,
+        availableOnly: false,
+        selfCollectOnly: false,
+        recentOnly: false,
+        onCategory: (_) {},
+        onOpenNow: (value) => setState(() => open = value),
+        onSort: (value) => setState(() => sort = value),
+        onAvailable: (_) {},
+        onSelfCollect: (_) {},
+        onRecent: (_) {},
+        onReset: () {},
+        moreItems: const [],
+      ),
+    ))));
+    await tester.tap(find.byTooltip('Filter stalls'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open now'));
+    await tester.pumpAndSettle();
+    expect(open, isTrue);
+    await tester.tap(find.text('Top rated'));
+    await tester.pumpAndSettle();
+    expect(sort, DiscoverySort.rating);
+    expect(find.text('Open now'), findsOneWidget);
+    expect(find.text('Top rated'), findsOneWidget);
+  });
+
+  testWidgets('reference card fits a small phone with enlarged text',
+      (tester) async {
+    tester.view.reset();
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+        home: MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+      child: Scaffold(
+          body: SizedBox(
+              height: 220,
+              child: StallMapCard(
+                vendor: _vendor(),
+                onTap: () {},
+              ))),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Adam stalls'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('preview collapses, expands and closes above navigation',
+      (tester) async {
+    final extents = <double>[];
+    var closed = false;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+      height: 700,
+      child: StallPreviewSheet(
+        vendor: _vendor(),
+        rating: const Text('★ 4.8'),
+        distance: '229 m away',
+        photos: const [],
+        following: false,
+        onFollow: () {},
+        onDirections: () {},
+        onViewMenu: () {},
+        onSelfCollect: () {},
+        onDetails: () {},
+        onClose: () => closed = true,
+        onExtentChanged: extents.add,
+      ),
+    ))));
+    await tester.tap(find.byTooltip('Collapse preview'));
+    await tester.pumpAndSettle();
+    expect(extents.last, closeTo(.28, .005));
+    await tester.tap(find.byTooltip('Expand preview'));
+    await tester.pumpAndSettle();
+    expect(extents.last, closeTo(.94, .005));
+    await tester.tap(find.byTooltip('Close preview'));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+VendorModel _vendor() => VendorModel(
+      vendorId: 'adam',
+      stallName: 'Adam stalls',
+      category: 'Beverages',
+      description:
+          'Fresh drinks and refreshments near German-Malaysian Institute.',
+      openingHours: '10 AM – 8 PM',
+      isOpen: true,
+      selfCollectEnabled: true,
+    );
+````
 
 ## File: lib/core/constants/stall_categories.dart
 ````dart
@@ -268,34 +1598,6 @@ class SavedLocation {
         coordinates: LatLng(latitude.toDouble(), longitude.toDouble()),
         isHome: map['isHome'] as bool);
   }
-}
-````
-
-## File: lib/core/models/stall_review.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-class StallReview {
-  const StallReview({required this.customerId, required this.customerName,
-    required this.rating, required this.text, required this.photoUrls,
-    this.updatedAt});
-
-  final String customerId;
-  final String customerName;
-  final int rating;
-  final String text;
-  final List<String> photoUrls;
-  final DateTime? updatedAt;
-
-  factory StallReview.fromMap(Map<String, dynamic> map, String id) => StallReview(
-    customerId: id,
-    customerName: map['customerName'] is String ? map['customerName'] as String : 'Customer',
-    rating: map['rating'] is int ? (map['rating'] as int).clamp(1, 5) : 1,
-    text: map['text'] is String ? map['text'] as String : '',
-    photoUrls: map['photoUrls'] is List
-        ? (map['photoUrls'] as List).whereType<String>().take(5).toList() : const [],
-    updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
-  );
 }
 ````
 
@@ -447,178 +1749,6 @@ class FollowService {
 }
 ````
 
-## File: lib/core/services/local_demo_booking_service.dart
-````dart
-import 'dart:async';
-import 'dart:convert';
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-import '../models/demo_order.dart';
-import '../models/vendor_model.dart';
-
-/// Device-only self-collect bookings for the prototype APK.
-/// Nothing here sends a booking to another phone or charges a customer.
-class LocalDemoBookingService {
-  LocalDemoBookingService({String? actorId}) : _testActorId = actorId;
-
-  static const _bookingsKey = 'self_collect_bookings_v1';
-  static const _enabledPrefix = 'self_collect_enabled_v1_';
-  static final _changed = StreamController<void>.broadcast();
-
-  final String? _testActorId;
-
-  String? get _actorId =>
-      _testActorId ?? FirebaseAuth.instance.currentUser?.uid;
-
-  Future<bool> isSelfCollectEnabled(String vendorId) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('$_enabledPrefix$vendorId') ?? false;
-  }
-
-  Future<void> setSelfCollectEnabled(String vendorId, bool enabled) async {
-    if (_actorId != vendorId) throw StateError('Vendor account required.');
-    final prefs = await SharedPreferences.getInstance();
-    if (!await prefs.setBool('$_enabledPrefix$vendorId', enabled)) {
-      throw StateError('Could not save booking preference.');
-    }
-    _changed.add(null);
-  }
-
-  Stream<List<DemoOrder>> watchCustomerOrders(String customerId) =>
-      _watch((booking) => booking.customerId == customerId);
-
-  Stream<List<DemoOrder>> watchVendorOrders(String vendorId) =>
-      _watch((booking) => booking.vendorId == vendorId);
-
-  Stream<List<DemoOrder>> _watch(bool Function(DemoOrder) include) async* {
-    Future<List<DemoOrder>> current() async {
-      final bookings = (await _load()).where(include).toList();
-      bookings.sort((a, b) => (b.createdAt ?? DateTime(1970))
-          .compareTo(a.createdAt ?? DateTime(1970)));
-      return bookings;
-    }
-
-    yield await current();
-    yield* _changed.stream.asyncMap((_) => current());
-  }
-
-  Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
-      {String? customerName}) async {
-    final customerId = _actorId;
-    if (customerId == null || customerId == vendor.vendorId) {
-      throw StateError('Customer account required.');
-    }
-    if (!await isSelfCollectEnabled(vendor.vendorId)) {
-      throw StateError('Self-collect booking is unavailable.');
-    }
-    if (items.isEmpty || items.any((item) => item.quantity < 1)) {
-      throw ArgumentError('Choose at least one dish.');
-    }
-    final user =
-        _testActorId == null ? FirebaseAuth.instance.currentUser : null;
-    final name = customerName?.trim().isNotEmpty == true
-        ? customerName!.trim()
-        : (user?.displayName?.trim().isNotEmpty == true
-            ? user!.displayName!.trim()
-            : user?.email?.split('@').first ?? 'Customer');
-    final now = DateTime.now();
-    final booking = DemoOrder(
-      id: '${now.microsecondsSinceEpoch}_$customerId',
-      customerId: customerId,
-      vendorId: vendor.vendorId,
-      customerName: name,
-      stallName: vendor.stallName,
-      status: 'requested',
-      items: items,
-      totalCents: items.fold(0, (sum, item) => sum + item.subtotalCents),
-      createdAt: now,
-      pickupLatitude: vendor.hasValidLocation ? vendor.latitude : null,
-      pickupLongitude: vendor.hasValidLocation ? vendor.longitude : null,
-    );
-    final bookings = await _load();
-    bookings.insert(0, booking);
-    await _save(bookings);
-    return booking.id;
-  }
-
-  Future<void> removeAccountData(String accountId) async {
-    final bookings = await _load();
-    await _save(bookings
-        .where((booking) =>
-            booking.customerId != accountId && booking.vendorId != accountId)
-        .toList());
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_enabledPrefix$accountId');
-  }
-
-  Future<void> respond(String bookingId, {required bool accept}) =>
-      _update(bookingId, (booking) {
-        if (_actorId != booking.vendorId ||
-            booking.effectiveStatus != 'requested') {
-          throw StateError('This booking can no longer be answered.');
-        }
-        return booking.withStatus(accept ? 'confirmed' : 'rejected');
-      });
-
-  Future<void> advance(String bookingId) => _update(bookingId, (booking) {
-        if (_actorId != booking.vendorId) {
-          throw StateError('Vendor account required.');
-        }
-        final next = switch (booking.effectiveStatus) {
-          'confirmed' => 'preparing',
-          'preparing' => 'ready',
-          'ready' => 'collected',
-          _ => null,
-        };
-        if (next == null) throw StateError('This booking cannot advance.');
-        return booking.withStatus(next);
-      });
-
-  Future<void> cancel(String bookingId) => _update(bookingId, (booking) {
-        final status = booking.effectiveStatus;
-        final customerCanCancel =
-            _actorId == booking.customerId && status == 'requested';
-        final vendorCanCancel = _actorId == booking.vendorId &&
-            {'requested', 'confirmed', 'preparing', 'ready'}.contains(status);
-        if (!customerCanCancel && !vendorCanCancel) {
-          throw StateError('This booking cannot be cancelled.');
-        }
-        return booking.withStatus('cancelled');
-      });
-
-  Future<void> _update(
-      String bookingId, DemoOrder Function(DemoOrder) change) async {
-    final bookings = await _load();
-    final index = bookings.indexWhere((booking) => booking.id == bookingId);
-    if (index < 0) throw StateError('Booking not found on this device.');
-    bookings[index] = change(bookings[index]);
-    await _save(bookings);
-  }
-
-  Future<List<DemoOrder>> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_bookingsKey);
-    if (raw == null) return [];
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .whereType<Map>()
-        .map((item) => DemoOrder.fromMap(Map<String, dynamic>.from(item)))
-        .toList();
-  }
-
-  Future<void> _save(List<DemoOrder> bookings) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!await prefs.setString(_bookingsKey,
-        jsonEncode(bookings.map((booking) => booking.toMap()).toList()))) {
-      throw StateError('Could not save booking on this device.');
-    }
-    _changed.add(null);
-  }
-}
-````
-
 ## File: lib/core/services/saved_location_service.dart
 ````dart
 import 'dart:convert';
@@ -726,39 +1856,72 @@ class SavedLocationService {
 }
 ````
 
-## File: lib/core/services/stall_review_service.dart
+## File: lib/core/services/saved_search_service.dart
 ````dart
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/stall_review.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class StallReviewService {
-  final _db = FirebaseFirestore.instance;
+class SavedDiscoverySearch {
+  const SavedDiscoverySearch(
+      {required this.id, required this.name, required this.filters});
+  final String id;
+  final String name;
+  final Map<String, dynamic> filters;
+}
 
-  Stream<List<StallReview>> watchReviews(String vendorId) => _db
-      .collection('stallReviews').doc(vendorId).collection('entries')
-      .snapshots().map((snapshot) {
-        final reviews = snapshot.docs
-            .map((doc) => StallReview.fromMap(doc.data(), doc.id)).toList();
-        reviews.sort((a, b) => (b.updatedAt ?? DateTime(0))
-            .compareTo(a.updatedAt ?? DateTime(0)));
-        return reviews;
-      });
+/// Saved combinations belong to a signed-in customer; guests have no local fallback.
+class SavedSearchService {
+  SavedSearchService({FirebaseAuth? auth, FirebaseFirestore? firestore})
+      : _auth = auth ?? FirebaseAuth.instance,
+        _db = firestore ?? FirebaseFirestore.instance;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _db;
 
-  Future<void> saveReview(String vendorId, String customerId,
-      String customerName, int rating, String text, List<String> photoUrls) async {
-    if (rating < 1 || rating > 5 || photoUrls.length > 5 || text.length > 1000) {
-      throw ArgumentError('Invalid review');
+  String _customerId() {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous || !user.emailVerified) {
+      throw StateError(
+          'Sign in with a verified customer account to save searches.');
     }
-    await _db.collection('stallReviews').doc(vendorId).collection('entries')
-        .doc(customerId).set({
-      'customerId': customerId,
-      'customerName': customerName.trim().isEmpty ? 'Customer' : customerName.trim(),
-      'rating': rating,
-      'text': text.trim(),
-      'photoUrls': photoUrls,
-      'updatedAt': FieldValue.serverTimestamp(),
+    return user.uid;
+  }
+
+  CollectionReference<Map<String, dynamic>> _collection(String uid) =>
+      _db.collection('users').doc(uid).collection('savedSearches');
+
+  Future<List<SavedDiscoverySearch>> load() async {
+    final uid = _customerId();
+    final snapshot =
+        await _collection(uid).orderBy('savedAt', descending: true).get();
+    if (_auth.currentUser?.uid != uid) throw StateError('Account changed.');
+    return snapshot.docs
+        .map((doc) => SavedDiscoverySearch(
+            id: doc.id,
+            name: doc.data()['name'] as String,
+            filters: Map<String, dynamic>.from(doc.data()['filters'] as Map)))
+        .toList();
+  }
+
+  Future<void> save(String name, Map<String, dynamic> filters) async {
+    final uid = _customerId();
+    final cleaned = name.trim();
+    if (cleaned.isEmpty || cleaned.length > 80) {
+      throw ArgumentError('Invalid search name.');
+    }
+    // Same combination updates its existing record rather than creating duplicates.
+    final encoded =
+        base64Url.encode(utf8.encode(jsonEncode(filters))).replaceAll('=', '');
+    if (encoded.length > 1400) throw ArgumentError('Saved search is too long.');
+    await _collection(uid).doc(encoded).set({
+      'name': cleaned,
+      'filters': filters,
+      'savedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  Future<void> remove(String id) => _collection(_customerId()).doc(id).delete();
 }
 ````
 
@@ -782,6 +1945,222 @@ String? normalizeVendorPhone(String input) {
   return mobile.hasMatch(value) || landline.hasMatch(value)
       ? '+60$value'
       : null;
+}
+````
+
+## File: lib/core/widgets/app_back_button.dart
+````dart
+import 'package:flutter/material.dart';
+
+import 'app_top_action.dart';
+
+class AppBackButton extends StatelessWidget {
+  const AppBackButton(
+      {super.key, this.label = 'Back', this.onPressed, this.enabled = true});
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool enabled;
+
+  static double leadingWidth(BuildContext context, String label) {
+    final painter = TextPainter(
+      text: TextSpan(
+          text: label,
+          style:
+              DefaultTextStyle.of(context).style.merge(AppTopAction.textStyle)),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final width = painter.width + 56; // Pill padding and toolbar insets.
+    painter.dispose();
+    return width < 96 ? 96 : width;
+  }
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        widthFactor: 1,
+        heightFactor: 1,
+        child: AppTopAction(
+          label: label,
+          onTap:
+              !enabled ? null : onPressed ?? () => Navigator.maybePop(context),
+        ),
+      );
+}
+````
+
+## File: lib/core/widgets/app_page_app_bar.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'app_back_button.dart';
+
+/// Route-aware page headers consistently use the Edit Profile pill style.
+class AppPageAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const AppPageAppBar(
+      {super.key,
+      this.title,
+      this.actions,
+      this.bottom,
+      this.centerTitle,
+      this.backgroundColor,
+      this.foregroundColor,
+      this.surfaceTintColor,
+      this.elevation,
+      this.scrolledUnderElevation,
+      this.systemOverlayStyle,
+      this.titleTextStyle,
+      this.onBack,
+      this.backEnabled = true,
+      this.backLabel = 'Back',
+      this.showBackButton,
+      this.toolbarHeight = 64});
+
+  final Widget? title;
+  final List<Widget>? actions;
+  final PreferredSizeWidget? bottom;
+  final bool? centerTitle;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  final Color? surfaceTintColor;
+  final double? elevation;
+  final double? scrolledUnderElevation;
+  final SystemUiOverlayStyle? systemOverlayStyle;
+  final TextStyle? titleTextStyle;
+  final VoidCallback? onBack;
+  final bool backEnabled;
+  final String backLabel;
+  final bool? showBackButton;
+  final double toolbarHeight;
+
+  @override
+  Size get preferredSize =>
+      Size.fromHeight(toolbarHeight + (bottom?.preferredSize.height ?? 0));
+
+  @override
+  Widget build(BuildContext context) {
+    final showBack = showBackButton ??
+        (onBack != null ||
+            (ModalRoute.of(context)?.impliesAppBarDismissal ?? false));
+    return AppBar(
+      automaticallyImplyLeading: false,
+      leadingWidth:
+          showBack ? AppBackButton.leadingWidth(context, backLabel) : null,
+      leading: showBack
+          ? Padding(
+              padding: const EdgeInsetsDirectional.only(start: 16, end: 8),
+              child: AppBackButton(
+                  label: backLabel, onPressed: onBack, enabled: backEnabled),
+            )
+          : null,
+      title: title,
+      actions: actions,
+      bottom: bottom,
+      centerTitle: centerTitle,
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
+      surfaceTintColor: surfaceTintColor,
+      elevation: elevation,
+      scrolledUnderElevation: scrolledUnderElevation,
+      systemOverlayStyle: systemOverlayStyle,
+      titleTextStyle: titleTextStyle,
+      toolbarHeight: toolbarHeight,
+    );
+  }
+}
+````
+
+## File: lib/core/widgets/app_sheet_header.dart
+````dart
+import 'package:flutter/material.dart';
+
+import 'app_back_button.dart';
+
+/// Sheet dismissal stays at the top left, above the sheet's content.
+class AppSheetHeader extends StatelessWidget {
+  const AppSheetHeader(
+      {super.key,
+      required this.title,
+      this.subtitle,
+      this.onBack,
+      this.backLabel = 'Close',
+      this.padding = const EdgeInsets.fromLTRB(16, 12, 16, 12)});
+
+  final Widget title;
+  final Widget? subtitle;
+  final VoidCallback? onBack;
+  final String backLabel;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: padding,
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          AppBackButton(label: backLabel, onPressed: onBack),
+          const SizedBox(height: 12),
+          DefaultTextStyle.merge(
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
+            child: title,
+          ),
+          if (subtitle != null) ...[const SizedBox(height: 4), subtitle!],
+        ]),
+      );
+}
+````
+
+## File: lib/core/widgets/app_top_action.dart
+````dart
+import 'package:flutter/material.dart';
+
+/// The white pill action used by Edit Profile and page navigation.
+class AppTopAction extends StatelessWidget {
+  const AppTopAction(
+      {super.key, required this.label, required this.onTap, this.icon});
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+
+  static const textStyle = TextStyle(fontSize: 17, color: Colors.black);
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        enabled: onTap != null,
+        label: icon == null ? null : label,
+        child: Material(
+          color: Colors.white,
+          elevation: 4,
+          shadowColor: const Color(0x14000000),
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 44),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: icon == null
+                    ? Text(label,
+                        textAlign: TextAlign.center,
+                        style: textStyle.copyWith(
+                            color:
+                                onTap == null ? Colors.black38 : Colors.black))
+                    : Icon(icon,
+                        size: 22,
+                        color: onTap == null ? Colors.black38 : Colors.black),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 ````
 
@@ -863,263 +2242,228 @@ class AppGroupedCard extends StatelessWidget {
 }
 ````
 
-## File: lib/features/auth/screens/forgot_password_screen.dart
+## File: lib/features/customer/home/discovery_options.dart
 ````dart
-import 'dart:async';
-import 'package:flutter/material.dart';
-import '../../../core/services/auth_service.dart';
-import '../../shared/account_ui.dart';
+import 'dart:math' as math;
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
-  final String initialEmail;
-  @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
-}
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _form = GlobalKey<FormState>();
-  late final _email = TextEditingController(text: widget.initialEmail);
-  Timer? _timer;
-  int _seconds = 0;
-  bool _busy = false;
-  bool _sent = false;
-  String? _error;
-  String _sentTo = '';
-  @override
-  void dispose() { _timer?.cancel(); _email.dispose(); super.dispose(); }
-
-  Future<void> _send() async {
-    if (_busy || _seconds > 0) { return; }
-    if (!_sent && !_form.currentState!.validate()) { return; }
-    FocusScope.of(context).unfocus();
-    final address = _email.text.trim();
-    setState(() { _busy = true; _error = null; });
-    final error = await AuthService().resetPassword(email: address);
-    if (!mounted) { return; }
-    setState(() {
-      _busy = false; _error = error;
-      if (error == null) { _sent = true; _sentTo = address; _seconds = 60; }
-    });
-    if (error == null) {
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!mounted) { timer.cancel(); return; }
-        setState(() { if (_seconds > 0) { _seconds--; } });
-        if (_seconds == 0) { timer.cancel(); }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => AccountLayout(title: 'Forgot password', busy: _busy,
-    children: [
-      const SizedBox(height: 24),
-      AccountIntro(icon: _sent ? Icons.mark_email_read_outlined : Icons.lock_reset_rounded,
-        title: _sent ? 'Check your email' : 'Reset your password',
-        body: _sent
-          ? 'If an account uses $_sentTo, you will receive a link to reset its password.'
-          : 'Enter the email address linked to your account. We will send you a reset link.'),
-      if (!_sent) ...[
-        Form(key: _form, child: TextFormField(controller: _email, enabled: !_busy,
-          keyboardType: TextInputType.emailAddress, textInputAction: TextInputAction.done,
-          autofillHints: const [AutofillHints.email], autocorrect: false,
-          decoration: accountField('Email address'),
-          validator: (v) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch((v ?? '').trim())
-            ? null : 'Enter a valid email address.',
-          onFieldSubmitted: (_) => _send())),
-        const SizedBox(height: 24), AccountError(_error),
-        AccountButton(label: _seconds > 0 ? 'Send again in ${_seconds}s' : 'Send reset link',
-          busy: _busy, onPressed: _seconds > 0 ? null : _send),
-        const SizedBox(height: 20),
-        const Text('Signed up with Google? Use Continue with Google to sign in.',
-          textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Color(0xFF707078), height: 1.5)),
-      ] else ...[
-        const Text('Open the email and follow the link to choose a new password. Check Spam or Junk if it is missing.',
-          textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF707078), height: 1.5)),
-        const SizedBox(height: 28), AccountError(_error),
-        AccountButton(label: 'Done', onPressed: _busy ? null : () => Navigator.pop(context)),
-        const SizedBox(height: 12),
-        TextButton(onPressed: _busy || _seconds > 0 ? null : _send,
-          child: Text(_busy ? 'Sending…' : _seconds > 0 ? 'Resend in ${_seconds}s' : 'Resend email')),
-        TextButton(onPressed: _busy ? null : () => setState(() { _sent = false; _error = null; }),
-          child: const Text('Use another email')),
-      ],
-    ]);
-}
-````
-
-## File: lib/features/customer/home/discovery_search_filters.dart
-````dart
 import '../../../core/models/dish_search_entry.dart';
 import '../../../core/models/vendor_model.dart';
 
-String normalizeDiscoveryQuery(String value) =>
-    value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+enum DiscoverySort {
+  distance('Distance: nearest first'),
+  price('Price: low to high'),
+  rating('Rating: highest first'),
+  newest('Newest first'),
+  updated('Recently updated');
 
-class MenuPriceRange {
-  const MenuPriceRange({this.minimum, this.maximum});
-
-  final double? minimum;
-  final double? maximum;
-
-  bool get isActive => minimum != null || maximum != null;
-
-  bool contains(DishSearchEntry dish) =>
-      dish.priceIsKnown &&
-      dish.item.price.isFinite &&
-      dish.item.price >= 0 &&
-      (minimum == null || dish.item.price >= minimum!) &&
-      (maximum == null || dish.item.price <= maximum!);
-
-  String get label {
-    String amount(double value) => value == value.roundToDouble()
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(2);
-    if (minimum != null && maximum != null) {
-      return 'RM ${amount(minimum!)}–${amount(maximum!)}';
-    }
-    if (minimum != null) return 'RM ${amount(minimum!)}+';
-    if (maximum != null) return 'Up to RM ${amount(maximum!)}';
-    return 'Any price';
-  }
-}
-
-/// For a dish query, the matching dish itself must meet the price range.
-/// Stall/category queries can match any genuinely priced dish on that menu.
-bool vendorMatchesQueryAndPrice({
-  required VendorModel vendor,
-  required Iterable<DishSearchEntry> dishes,
-  required String query,
-  MenuPriceRange? priceRange,
-}) {
-  final normalized = normalizeDiscoveryQuery(query);
-  final vendorMatches =
-      normalizeDiscoveryQuery(vendor.stallName).contains(normalized) ||
-          normalizeDiscoveryQuery(vendor.category).contains(normalized);
-  final matchingDishes = normalized.isEmpty
-      ? dishes
-      : dishes.where((dish) =>
-          normalizeDiscoveryQuery(dish.item.name).contains(normalized));
-  if (priceRange == null || !priceRange.isActive) {
-    return normalized.isEmpty || vendorMatches || matchingDishes.isNotEmpty;
-  }
-  // Do not let a cheap unrelated menu item make an expensive dish match.
-  if (matchingDishes.isNotEmpty) {
-    return matchingDishes.any(priceRange.contains);
-  }
-  return vendorMatches && dishes.any(priceRange.contains);
-}
-
-enum DiscoverySuggestionKind { dish, stall, category, recent }
-
-class DiscoverySuggestion {
-  const DiscoverySuggestion({
-    required this.label,
-    required this.kind,
-    this.isRecent = false,
-  });
-
+  const DiscoverySort(this.label);
   final String label;
-  final DiscoverySuggestionKind kind;
-  final bool isRecent;
-
-  String get detail => switch (kind) {
-        DiscoverySuggestionKind.dish => 'Dish',
-        DiscoverySuggestionKind.stall => 'Stall',
-        DiscoverySuggestionKind.category => 'Category',
-        DiscoverySuggestionKind.recent => 'Recent search',
-      };
 }
 
-List<DiscoverySuggestion> buildDiscoverySuggestions({
-  required String query,
-  required Iterable<VendorModel> vendors,
-  required Iterable<DishSearchEntry> dishes,
-  required Iterable<String> categories,
-  required List<String> recentSearches,
-  MenuPriceRange? priceRange,
-  int limit = 8,
-}) {
-  final typed = normalizeDiscoveryQuery(query);
-  final recentKeys = recentSearches.map(normalizeDiscoveryQuery).toSet();
-  final suggestions = <String, DiscoverySuggestion>{};
+class StallRatingSummary {
+  const StallRatingSummary(this.average, this.count);
+  final double average;
+  final int count;
+}
 
-  void add(String rawLabel, DiscoverySuggestionKind kind) {
-    final label = rawLabel.trim().replaceAll(RegExp(r'\s+'), ' ');
-    final key = normalizeDiscoveryQuery(label);
-    if (key.isEmpty || (typed.isNotEmpty && !key.contains(typed))) return;
-    final current = suggestions[key];
-    if (current == null || kind.index < current.kind.index) {
-      suggestions[key] = DiscoverySuggestion(
-        label: label,
-        kind: kind,
-        isRecent: recentKeys.contains(key),
-      );
-    }
-  }
-
-  for (final recent in recentSearches) {
-    add(recent, DiscoverySuggestionKind.recent);
-  }
-  if (typed.isEmpty) return suggestions.values.take(limit).toList();
-
-  final vendorById = {
-    for (final vendor in vendors) vendor.vendorId: vendor,
+/// Canonical phrases cover common Malaysian names and abbreviations.
+String normalizeDishSearch(String value) {
+  var text = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+  text = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  const phrases = {
+    'banana fritters': 'pisang goreng',
+    'goreng pisang': 'pisang goreng',
+    'coconut rice': 'nasi lemak',
+    'nasi lmk': 'nasi lemak',
+    'pulled tea': 'teh tarik',
+    'roti prata': 'roti canai',
+    'char kway teow': 'char kuey teow',
+    'char koay teow': 'char kuey teow',
+    'kueh teow': 'kuey teow',
   };
-  final eligibleDishes = dishes.where((dish) =>
-      vendorById.containsKey(dish.vendorId) &&
-      (priceRange == null ||
-          !priceRange.isActive ||
-          priceRange.contains(dish)));
-  final pricedVendorIds = eligibleDishes.map((dish) => dish.vendorId).toSet();
-  final eligibleVendors = vendorById.values.where((vendor) =>
-      priceRange == null ||
-      !priceRange.isActive ||
-      pricedVendorIds.contains(vendor.vendorId));
+  for (final entry in phrases.entries) {
+    text = text.replaceAll(RegExp('\\b${entry.key}\\b'), entry.value);
+  }
+  const words = {
+    'mi': 'mee',
+    'noodle': 'mee',
+    'noodles': 'mee',
+    'grg': 'goreng',
+    'burgers': 'burger',
+    'hamburger': 'burger',
+    'chkn': 'ayam',
+    'chicken': 'ayam',
+  };
+  return text.split(' ').map((word) => words[word] ?? word).join(' ');
+}
 
-  for (final dish in eligibleDishes) {
-    add(dish.item.name, DiscoverySuggestionKind.dish);
-  }
-  for (final vendor in eligibleVendors) {
-    add(vendor.stallName, DiscoverySuggestionKind.stall);
-  }
-  final offeredCategories = eligibleVendors
-      .map((vendor) => normalizeDiscoveryQuery(vendor.category))
-      .toSet();
-  for (final category in categories) {
-    if (offeredCategories.contains(normalizeDiscoveryQuery(category))) {
-      add(category, DiscoverySuggestionKind.category);
+int _editDistance(String a, String b) {
+  if (a.length == b.length) {
+    final differences = <int>[];
+    for (var index = 0; index < a.length; index++) {
+      if (a[index] != b[index]) differences.add(index);
+    }
+    if (differences.length == 2 &&
+        differences.last == differences.first + 1 &&
+        a[differences.first] == b[differences.last] &&
+        a[differences.last] == b[differences.first]) {
+      return 1;
     }
   }
+  var previous = List.generate(b.length + 1, (index) => index);
+  for (var row = 1; row <= a.length; row++) {
+    final current = <int>[row];
+    for (var column = 1; column <= b.length; column++) {
+      current.add(math.min(math.min(current.last + 1, previous[column] + 1),
+          previous[column - 1] + (a[row - 1] == b[column - 1] ? 0 : 1)));
+    }
+    previous = current;
+  }
+  return previous.last;
+}
 
-  int matchRank(String label) {
-    final normalized = normalizeDiscoveryQuery(label);
-    if (normalized == typed) return 0;
-    if (normalized.startsWith(typed)) return 1;
-    if (normalized.split(' ').any((word) => word.startsWith(typed))) return 2;
-    return 3;
+/// Null means no match. Smaller scores represent closer matches.
+int? discoverySearchScore(String query, String value) {
+  final needle = normalizeDishSearch(query);
+  final text = normalizeDishSearch(value);
+  if (needle.isEmpty || text.contains(needle)) return 0;
+  final words = text.split(' ');
+  var score = 0;
+  for (final token in needle.split(' ')) {
+    if (words.any((word) => word.startsWith(token))) continue;
+    final tolerance = token.length >= 7
+        ? 2
+        : token.length >= 4
+            ? 1
+            : 0;
+    if (tolerance == 0) return null;
+    final matches = words.where((word) =>
+        (word.length - token.length).abs() <= tolerance &&
+        _editDistance(token, word) <= tolerance);
+    if (matches.isEmpty) return null;
+    score++;
+  }
+  return score;
+}
+
+bool discoveryMatches(String query, String value) =>
+    discoverySearchScore(query, value) != null;
+
+bool dishIsAvailable(DishSearchEntry dish) =>
+    {'available', 'low_stock'}.contains(dish.item.status);
+
+DateTime? latestStallUpdate(
+    VendorModel vendor, Iterable<DishSearchEntry> dishes) {
+  DateTime? latest = vendor.updatedAt;
+  for (final dish in dishes) {
+    for (final date in [dish.item.updatedAt, dish.item.statusUpdatedAt]) {
+      if (date != null && (latest == null || date.isAfter(latest))) {
+        latest = date;
+      }
+    }
+  }
+  // GPS refreshes do not count as menu/profile updates.
+  return latest;
+}
+
+bool stallUpdatedRecently(VendorModel vendor, Iterable<DishSearchEntry> dishes,
+    {DateTime? now}) {
+  final updated = latestStallUpdate(vendor, dishes);
+  if (updated == null) return false;
+  final age = (now ?? DateTime.now()).difference(updated);
+  return !age.isNegative && age <= const Duration(hours: 24);
+}
+
+int _ascending(num? a, num? b) {
+  if (a == null) return b == null ? 0 : 1;
+  if (b == null) return -1;
+  return a.compareTo(b);
+}
+
+int _newest(DateTime? a, DateTime? b) => _ascending(
+    a == null ? null : -a.millisecondsSinceEpoch,
+    b == null ? null : -b.millisecondsSinceEpoch);
+
+double? lowestDishPrice(Iterable<DishSearchEntry> dishes, String query) {
+  final all = dishes.toList();
+  final matches = query.trim().isEmpty
+      ? all
+      : all.where((dish) => discoveryMatches(query, dish.item.name)).toList();
+  final priced = (matches.isEmpty ? all : matches).where((dish) =>
+      dish.priceIsKnown && dish.item.price.isFinite && dish.item.price >= 0);
+  if (priced.isEmpty) return null;
+  return priced.map((dish) => dish.item.price).reduce(math.min);
+}
+
+int compareDiscoveryVendors(
+  VendorModel a,
+  VendorModel b, {
+  required DiscoverySort sort,
+  required LatLng? center,
+  required Map<String, StallRatingSummary> ratings,
+  required Map<String, List<DishSearchEntry>> dishes,
+  String query = '',
+}) {
+  double? distance(VendorModel vendor) => center == null
+      ? null
+      : Geolocator.distanceBetween(
+          center.latitude, center.longitude, vendor.latitude, vendor.longitude);
+  double? rating(VendorModel vendor) {
+    final summary = ratings[vendor.vendorId];
+    return summary == null || summary.count == 0 ? null : -summary.average;
   }
 
-  final ranked = suggestions.values.toList()
-    ..sort((a, b) {
-      final matchOrder = matchRank(a.label).compareTo(matchRank(b.label));
-      if (matchOrder != 0) return matchOrder;
-      final sourceOrder = a.kind.index.compareTo(b.kind.index);
-      if (sourceOrder != 0) return sourceOrder;
-      if (a.kind == DiscoverySuggestionKind.recent) {
-        return recentSearches
-            .indexWhere((value) =>
-                normalizeDiscoveryQuery(value) ==
-                normalizeDiscoveryQuery(a.label))
-            .compareTo(recentSearches.indexWhere((value) =>
-                normalizeDiscoveryQuery(value) ==
-                normalizeDiscoveryQuery(b.label)));
-      }
-      return normalizeDiscoveryQuery(a.label)
-          .compareTo(normalizeDiscoveryQuery(b.label));
-    });
-  return ranked.take(limit).toList();
+  final left = dishes[a.vendorId] ?? const <DishSearchEntry>[];
+  final right = dishes[b.vendorId] ?? const <DishSearchEntry>[];
+  final order = switch (sort) {
+    DiscoverySort.distance => _ascending(distance(a), distance(b)),
+    DiscoverySort.price =>
+      _ascending(lowestDishPrice(left, query), lowestDishPrice(right, query)),
+    DiscoverySort.rating => _ascending(rating(a), rating(b)),
+    DiscoverySort.newest => _newest(a.createdAt, b.createdAt),
+    DiscoverySort.updated =>
+      _newest(latestStallUpdate(a, left), latestStallUpdate(b, right)),
+  };
+  if (order != 0) return order;
+  final name = a.stallName.toLowerCase().compareTo(b.stallName.toLowerCase());
+  return name != 0 ? name : a.vendorId.compareTo(b.vendorId);
+}
+
+int compareDiscoveryDishes(
+  DishSearchEntry a,
+  DishSearchEntry b, {
+  required DiscoverySort sort,
+  required Map<String, VendorModel> vendors,
+  required LatLng? center,
+  required Map<String, StallRatingSummary> ratings,
+  required Map<String, List<DishSearchEntry>> dishes,
+  String query = '',
+}) {
+  final order = switch (sort) {
+    DiscoverySort.price => _ascending(a.priceIsKnown ? a.item.price : null,
+        b.priceIsKnown ? b.item.price : null),
+    DiscoverySort.newest => _newest(a.item.createdAt, b.item.createdAt),
+    DiscoverySort.updated => _newest(a.item.updatedAt ?? a.item.statusUpdatedAt,
+        b.item.updatedAt ?? b.item.statusUpdatedAt),
+    _ => compareDiscoveryVendors(vendors[a.vendorId]!, vendors[b.vendorId]!,
+        sort: sort,
+        center: center,
+        ratings: ratings,
+        dishes: dishes,
+        query: query),
+  };
+  if (order != 0) return order;
+  final relevance = (discoverySearchScore(query, a.item.name) ?? 999)
+      .compareTo(discoverySearchScore(query, b.item.name) ?? 999);
+  if (relevance != 0) return relevance;
+  final name = a.item.name.toLowerCase().compareTo(b.item.name.toLowerCase());
+  return name != 0
+      ? name
+      : '${a.vendorId}/${a.item.itemId}'
+          .compareTo('${b.vendorId}/${b.item.itemId}');
 }
 ````
 
@@ -1162,172 +2506,1225 @@ VendorModel? stallNearMapCenter({
 }
 ````
 
-## File: lib/features/shared/change_password_screen.dart
+## File: lib/features/customer/home/map_marker_guide.dart
 ````dart
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import '../../core/services/auth_service.dart';
-import '../auth/screens/forgot_password_screen.dart';
-import 'account_ui.dart';
 
-class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key, required this.email});
-  final String email;
-  @override
-  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
-}
+import '../../../core/constants/app_colors.dart';
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  final _form = GlobalKey<FormState>();
-  final _current = TextEditingController();
-  final _next = TextEditingController();
-  final _confirm = TextEditingController();
-  final _hidden = [true, true, true];
-  bool _busy = false;
-  bool _saved = false;
-  String? _error;
-  @override
-  void dispose() { _current.dispose(); _next.dispose(); _confirm.dispose(); super.dispose(); }
+/// Matches the search pin and selected/unselected stall pins on the home map.
+class MapMarkerGuide extends StatelessWidget {
+  const MapMarkerGuide({super.key});
 
-  Future<void> _save() async {
-    if (_busy || !_form.currentState!.validate()) { return; }
-    FocusScope.of(context).unfocus();
-    setState(() { _busy = true; _error = null; });
-    // Do not trim passwords: spaces may be intentional.
-    final error = await AuthService().changePassword(_next.text, currentPassword: _current.text);
-    if (!mounted) { return; }
-    setState(() { _busy = false; _error = error; _saved = error == null; });
-    if (_saved) { _current.clear(); _next.clear(); _confirm.clear(); }
+  static const _entries = [
+    ('Search location', Color(0xFF0080FF)),
+    ('Other stalls', Color(0xFFFF0000)),
+    ('Selected stall', Color(0xFFFF8000)),
+  ];
+  static const _style = TextStyle(fontSize: 11, color: AppColors.textMuted);
+
+  // The map results panel reserves its own height. Measure the same labels so
+  // the guide can wrap without taking space away from the stall cards.
+  static double heightFor(BuildContext context, double panelWidth) {
+    final available = math.max(1.0, panelWidth - 32);
+    var runWidth = 0.0;
+    var runs = 1;
+    var lineHeight = 18.0;
+    for (final entry in _entries) {
+      final painter = TextPainter(
+          text: TextSpan(
+              text: entry.$1,
+              style: DefaultTextStyle.of(context).style.merge(_style)),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context))
+        ..layout(maxWidth: math.max(1.0, available - 24));
+      final itemWidth = painter.width + 22;
+      lineHeight = math.max(lineHeight, painter.height);
+      if (runWidth > 0 && runWidth + 12 + itemWidth > available) {
+        runs++;
+        runWidth = itemWidth;
+      } else {
+        runWidth += (runWidth == 0 ? 0 : 12) + itemWidth;
+      }
+      painter.dispose();
+    }
+    return (lineHeight * runs + (runs - 1) * 6 + 16).ceilToDouble();
   }
 
-  Widget _field(String label, TextEditingController controller, int index,
-      String? Function(String?) validator) => Padding(padding: const EdgeInsets.only(bottom: 18),
-    child: TextFormField(controller: controller, enabled: !_busy, obscureText: _hidden[index],
-      enableSuggestions: false, autocorrect: false,
-      autofillHints: [index == 0 ? AutofillHints.password : AutofillHints.newPassword],
-      textInputAction: index == 2 ? TextInputAction.done : TextInputAction.next,
-      onFieldSubmitted: index == 2 ? (_) => _save() : null,
-      validator: validator, decoration: accountField(label,
-        suffix: IconButton(tooltip: _hidden[index] ? 'Show password' : 'Hide password',
-          onPressed: () => setState(() => _hidden[index] = !_hidden[index]),
-          icon: Icon(_hidden[index] ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-            size: 21, color: const Color(0xFF707078))))));
-
   @override
-  Widget build(BuildContext context) => AccountLayout(title: 'Change password', busy: _busy,
-    children: _saved ? [
-      const SizedBox(height: 40),
-      const AccountIntro(icon: Icons.check_rounded, title: 'Password changed',
-        body: 'Your new password is ready. Use it the next time you sign in.'),
-      AccountButton(label: 'Back to profile', onPressed: () => Navigator.pop(context)),
-    ] : [
-      const AccountIntro(icon: Icons.lock_outline_rounded, title: 'Choose a new password',
-        body: 'Confirm your current password, then enter a new one.'),
-      Form(key: _form, child: AutofillGroup(child: Column(children: [
-        _field('Current password', _current, 0,
-          (v) => (v ?? '').isEmpty ? 'Enter your current password.' : null),
-        _field('New password', _next, 1, (v) {
-          if ((v ?? '').length < 6) { return 'Use at least 6 characters.'; }
-          if (v == _current.text) { return 'Choose a different password.'; }
-          return null;
-        }),
-        _field('Confirm new password', _confirm, 2,
-          (v) => v != _next.text ? 'Your passwords do not match.' : null),
-      ]))),
-      const Padding(padding: EdgeInsets.only(bottom: 20), child: Text(
-        'Use a long, unique password. Your account may require extra characters.',
-        style: TextStyle(fontSize: 13, color: Color(0xFF707078), height: 1.4))),
-      AccountError(_error),
-      AccountButton(label: 'Update password', busy: _busy, onPressed: _save),
-      const SizedBox(height: 12),
-      TextButton(onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(
-        builder: (_) => ForgotPasswordScreen(initialEmail: widget.email))),
-        child: const Text('Forgot your current password?')),
-    ]);
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                for (final entry in _entries)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.location_on, size: 18, color: entry.$2),
+                      const SizedBox(width: 4),
+                      Flexible(child: Text(entry.$1, style: _style)),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 ````
 
-## File: lib/features/shared/info_page.dart
+## File: lib/features/shared/stall_review_card.dart
 ````dart
 import 'package:flutter/material.dart';
-
 import '../../core/constants/app_colors.dart';
+import '../../core/models/stall_review.dart';
+import '../../core/widgets/app_page_app_bar.dart';
 
-class InfoPage extends StatelessWidget {
-  const InfoPage({
+String reviewDate(DateTime? value) {
+  if (value == null) return 'Date unavailable';
+  final date = value.toUtc().add(const Duration(hours: 8));
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+class StallReviewCard extends StatelessWidget {
+  const StallReviewCard({
     super.key,
-    required this.title,
-    required this.children,
+    required this.review,
+    required this.stallName,
+    this.onReply,
+    this.onDeleteReply,
+    this.onEditReview,
+    this.onDeleteReview,
   });
-
-  final String title;
-  final List<Widget> children;
+  final StallReview review;
+  final String stallName;
+  final VoidCallback? onReply;
+  final VoidCallback? onDeleteReply;
+  final VoidCallback? onEditReview;
+  final VoidCallback? onDeleteReview;
 
   @override
   Widget build(BuildContext context) {
-    final tablet = MediaQuery.sizeOf(context).width >= 700;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(tablet ? 24 : 8),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 720,
-                maxHeight: 900,
-              ),
-              child: SizedBox.expand(
-                child: Material(
-                  color: Colors.white,
-                  elevation: tablet ? 4 : 0,
-                  shadowColor: const Color(0x18000000),
-                  borderRadius: BorderRadius.circular(28),
-                  clipBehavior: Clip.antiAlias,
+    final initial = review.customerName.trim().isEmpty
+        ? '?'
+        : review.customerName.trim().characters.first.toUpperCase();
+    final fallback = Center(
+      child: Text(
+        initial,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primary,
+        ),
+      ),
+    );
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipOval(
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    color: AppColors.mint,
+                    child: review.customerAvatarUrl.isEmpty
+                        ? fallback
+                        : Image.network(
+                            review.customerAvatarUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => fallback,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            tooltip: 'Back',
-                            onPressed: () => Navigator.maybePop(context),
-                            icon: const Icon(Icons.arrow_back_rounded),
+                      Text(
+                        review.customerName,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${reviewDate(review.postedAt)}${review.edited ? ' · Edited' : ''}',
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Semantics(
+              label: '${review.rating} out of 5 stars',
+              child: ExcludeSemantics(
+                child: Row(
+                  children: [
+                    for (var star = 1; star <= 5; star++)
+                      Icon(
+                        star <= review.rating
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
+                        size: 22,
+                        color: AppColors.primary,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            if (review.text.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(review.text, style: const TextStyle(height: 1.5)),
+            ],
+            if (review.photoUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 90,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: review.photoUrls.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) => Semantics(
+                    button: true,
+                    label: 'View review photo ${index + 1}',
+                    child: InkWell(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ReviewPhotoViewer(
+                            urls: review.photoUrls,
+                            initialIndex: index,
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: DefaultTextStyle.merge(
-                          style: const TextStyle(
-                            fontSize: 15,
-                            height: 1.6,
-                            color: AppColors.textDark,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          review.photoUrls[index],
+                          width: 90,
+                          height: 90,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox(
+                            width: 90,
+                            child: Icon(Icons.broken_image_outlined),
                           ),
-                          child: ListView(
-                            padding: EdgeInsets.fromLTRB(
-                              tablet ? 32 : 20,
-                              12,
-                              tablet ? 32 : 20,
-                              28,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (review.updatedAfterReply) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.mint,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Review updated after the owner’s reply',
+                  style: TextStyle(color: AppColors.primary, fontSize: 13),
+                ),
+              ),
+            ],
+            if (review.hasReply) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Reply from $stallName',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.mint,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Stall owner',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            children: [
-                              Text(
-                                title,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.2,
-                                  letterSpacing: -.3,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              ...children,
-                            ],
                           ),
+                        ),
+                        Text(
+                          '${reviewDate(review.vendorReply!.createdAt)}${review.vendorReply!.edited ? ' · Edited' : ''}',
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      review.vendorReply!.text,
+                      style: const TextStyle(height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (onReply != null ||
+                onDeleteReply != null ||
+                onEditReview != null ||
+                onDeleteReview != null) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  if (onReply != null)
+                    TextButton.icon(
+                      onPressed: onReply,
+                      icon: const Icon(Icons.reply_rounded, size: 19),
+                      label: Text(review.hasReply ? 'Edit reply' : 'Reply'),
+                    ),
+                  if (review.hasReply && onDeleteReply != null)
+                    TextButton(
+                      onPressed: onDeleteReply,
+                      child: const Text('Delete reply'),
+                    ),
+                  if (onEditReview != null)
+                    TextButton(
+                      onPressed: onEditReview,
+                      child: const Text('Edit your review'),
+                    ),
+                  if (onDeleteReview != null)
+                    TextButton(
+                      onPressed: onDeleteReview,
+                      child: const Text('Delete your review'),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ReviewPhotoViewer extends StatefulWidget {
+  const ReviewPhotoViewer({
+    super.key,
+    required this.urls,
+    this.initialIndex = 0,
+  });
+  final List<String> urls;
+  final int initialIndex;
+  @override
+  State<ReviewPhotoViewer> createState() => _ReviewPhotoViewerState();
+}
+
+class _ReviewPhotoViewerState extends State<ReviewPhotoViewer> {
+  late final PageController _controller;
+  late int _index;
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _controller = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    appBar: AppPageAppBar(
+      showBackButton: true,
+      title: Text('Photo ${_index + 1} of ${widget.urls.length}'),
+      backgroundColor: Colors.black,
+      foregroundColor: Colors.white,
+    ),
+    body: PageView.builder(
+      controller: _controller,
+      itemCount: widget.urls.length,
+      onPageChanged: (index) => setState(() => _index = index),
+      itemBuilder: (context, index) => InteractiveViewer(
+        minScale: 1,
+        maxScale: 5,
+        child: Center(
+          child: Image.network(
+            widget.urls[index],
+            fit: BoxFit.contain,
+            loadingBuilder: (_, child, progress) =>
+                progress == null ? child : const CircularProgressIndicator(),
+            errorBuilder: (_, __, ___) => const Text(
+              'Could not load photo.',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+````
+
+## File: lib/features/vendor/profile/edit_stall_view.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/stall_schedule.dart';
+import '../../../core/utils/vendor_phone.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import '../../../core/widgets/app_sheet_header.dart';
+import 'stall_schedule_editor.dart';
+
+class EditStallView extends StatefulWidget {
+  const EditStallView(
+      {super.key,
+      required this.formKey,
+      required this.nameController,
+      required this.descriptionController,
+      required this.phoneController,
+      required this.image,
+      required this.categoryOptions,
+      required this.selectedCategories,
+      required this.hours,
+      required this.closures,
+      required this.onCategoryChanged,
+      required this.onScheduleChanged,
+      required this.onFormChanged,
+      required this.onCancel,
+      required this.onSave,
+      required this.onPreview,
+      this.legacyHours = '',
+      this.loading = false,
+      this.saving = false,
+      this.pickingImage = false,
+      this.newPhoto = false,
+      this.error,
+      this.onRetry});
+  final GlobalKey<FormState> formKey;
+  final TextEditingController nameController;
+  final TextEditingController descriptionController;
+  final TextEditingController phoneController;
+  final Widget image;
+  final List<String> categoryOptions;
+  final Set<String> selectedCategories;
+  final Map<int, List<StallHoursInterval>> hours;
+  final List<TemporaryClosure> closures;
+  final void Function(String, bool) onCategoryChanged;
+  final void Function(
+          Map<int, List<StallHoursInterval>>, List<TemporaryClosure>)
+      onScheduleChanged;
+  final VoidCallback onFormChanged;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+  final VoidCallback onPreview;
+  final String legacyHours;
+  final bool loading;
+  final bool saving;
+  final bool pickingImage;
+  final bool newPhoto;
+  final String? error;
+  final VoidCallback? onRetry;
+  @override
+  State<EditStallView> createState() => _EditStallViewState();
+}
+
+class _EditStallViewState extends State<EditStallView> {
+  bool _hoursExpanded = false;
+  bool _closuresExpanded = false;
+  bool get _busy =>
+      widget.loading ||
+      widget.saving ||
+      widget.pickingImage ||
+      widget.error != null;
+  static const _days = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
+
+  String _hoursForDay(int day) {
+    final intervals = widget.hours[day] ?? [];
+    return intervals.isEmpty
+        ? 'Closed'
+        : intervals
+            .map((interval) =>
+                '${formatStallTime(interval.openMinute)} – ${formatStallTime(interval.closeMinute)}${interval.closeMinute < interval.openMinute ? ' (next day)' : ''}')
+            .join('\n');
+  }
+
+  String get _hoursSummary => widget.hours.isEmpty
+      ? 'Set your weekly schedule'
+      : 'Today: ${_hoursForDay(malaysiaTime(DateTime.now()).weekday)}';
+  String get _closureSummary {
+    final active = widget.closures
+        .where((closure) => closure.end.isAfter(DateTime.now()))
+        .length;
+    if (active == 0) return 'No upcoming closures';
+    return '$active ${active == 1 ? 'closure' : 'closures'} scheduled';
+  }
+
+  TextStyle? _heading(BuildContext context) => Theme.of(context)
+      .textTheme
+      .titleLarge
+      ?.copyWith(fontWeight: FontWeight.w700);
+  Widget _card(Widget child, {Key? key}) => Container(
+      key: key,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.border.withValues(alpha: .65))),
+      child: child);
+  InputDecoration _field(String label, String hint) => InputDecoration(
+      labelText: label,
+      hintText: hint,
+      fillColor: AppColors.background.withValues(alpha: .65),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(color: AppColors.border)));
+
+  void _chooseCategories() {
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        constraints: const BoxConstraints(maxWidth: 680),
+        builder: (sheet) => StatefulBuilder(
+            builder: (context, refresh) => SizedBox(
+                height: MediaQuery.sizeOf(context).height * .65,
+                child: Column(children: [
+                  const AppSheetHeader(
+                      title: Text('Food categories'),
+                      subtitle: Text(
+                          'Choose one or more categories for your stall.')),
+                  Expanded(
+                      child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                          child: Align(
+                              alignment: Alignment.topLeft,
+                              child: Wrap(spacing: 8, runSpacing: 8, children: [
+                                for (final category in {
+                                  ...widget.categoryOptions,
+                                  ...widget.selectedCategories
+                                })
+                                  FilterChip(
+                                      label: Text(category),
+                                      selected: widget.selectedCategories
+                                          .contains(category),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 8),
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.padded,
+                                      onSelected: (selected) {
+                                        widget.onCategoryChanged(
+                                            category, selected);
+                                        refresh(() {});
+                                      }),
+                              ])))),
+                ]))));
+  }
+
+  Widget _details(BuildContext context) => _card(
+      key: const Key('edit-stall-details'),
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Stall details', style: _heading(context)),
+        const SizedBox(height: 16),
+        widget.image,
+        const SizedBox(height: 10),
+        Text(
+            widget.newPhoto
+                ? 'New photo selected. Save changes to publish it.'
+                : 'This photo appears on your public stall profile.',
+            style: TextStyle(
+                color:
+                    widget.newPhoto ? AppColors.primary : AppColors.textMuted,
+                fontSize: 13)),
+        const SizedBox(height: 20),
+        TextFormField(
+            controller: widget.nameController,
+            enabled: !_busy,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.next,
+            decoration: _field('Stall name', 'e.g. Uncle John Drink Stall'),
+            validator: (value) =>
+                (value ?? '').trim().isEmpty ? 'Enter your stall name.' : null),
+        const SizedBox(height: 20),
+        Text('Food categories', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (widget.selectedCategories.isNotEmpty)
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final category in widget.selectedCategories)
+              Chip(label: Text(category), backgroundColor: AppColors.mint)
+          ]),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+            onPressed: _busy ? null : _chooseCategories,
+            style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+            icon: const Icon(Icons.category_outlined, size: 20),
+            label: const Text('Choose categories')),
+        const SizedBox(height: 20),
+        TextFormField(
+            controller: widget.descriptionController,
+            enabled: !_busy,
+            minLines: 3,
+            maxLines: 6,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _field(
+                'Description', 'Tell customers about your food and drinks.'),
+            validator: (value) =>
+                (value ?? '').trim().isEmpty ? 'Enter a description.' : null),
+        const SizedBox(height: 20),
+        TextFormField(
+            controller: widget.phoneController,
+            enabled: !_busy,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.done,
+            decoration: _field('Business phone number', 'e.g. 012-345 6789'),
+            validator: (value) => normalizeVendorPhone(value ?? '') == null
+                ? 'Enter a valid Malaysian phone number.'
+                : null),
+      ]));
+
+  Widget _hoursEditor() => StallScheduleEditor(
+      hours: widget.hours,
+      closures: widget.closures,
+      onChanged: widget.onScheduleChanged,
+      showClosures: false,
+      showSectionTitles: false);
+  Widget _closuresEditor() => StallScheduleEditor(
+      hours: widget.hours,
+      closures: widget.closures,
+      onChanged: widget.onScheduleChanged,
+      showHours: false,
+      showSectionTitles: false);
+
+  void _editHours() {
+    showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        constraints: const BoxConstraints(maxWidth: 680),
+        builder: (sheet) => StatefulBuilder(
+            builder: (context, refresh) => SizedBox(
+                height: MediaQuery.sizeOf(context).height * .88,
+                child: Column(children: [
+                  const AppSheetHeader(
+                      title: Text('Weekly opening hours'),
+                      backLabel: 'Back',
+                      subtitle: Text(
+                          'Your hours are published when you save your stall.')),
+                  Expanded(
+                      child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                          child: StallScheduleEditor(
+                              hours: widget.hours,
+                              closures: widget.closures,
+                              showClosures: false,
+                              showSectionTitles: false,
+                              onChanged: (hours, closures) {
+                                widget.onScheduleChanged(hours, closures);
+                                refresh(() {});
+                              }))),
+                ]))));
+  }
+
+  Widget _hours(BuildContext context, bool wide) {
+    final legacy = widget.hours.isEmpty && widget.legacyHours.trim().isNotEmpty;
+    if (!wide) {
+      return _card(
+          key: const Key('edit-stall-hours'),
+          Padding(
+              padding: EdgeInsets.zero,
+              child: ExpansionTile(
+                  key: const PageStorageKey('edit-stall-hours-expansion'),
+                  initiallyExpanded: _hoursExpanded,
+                  maintainState: true,
+                  onExpansionChanged: (expanded) =>
+                      setState(() => _hoursExpanded = expanded),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 12),
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  leading: const Icon(Icons.schedule_outlined,
+                      color: AppColors.primary),
+                  title: const Text('Opening hours',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(_hoursSummary),
+                  children: [
+                    if (legacy)
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text('Previous hours: ${widget.legacyHours}')),
+                    _hoursEditor(),
+                  ])));
+    }
+    return _card(
+        key: const Key('edit-stall-hours'),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Opening hours', style: _heading(context)),
+          const SizedBox(height: 6),
+          const Text('Planned hours · Malaysia time',
+              style: TextStyle(color: AppColors.textMuted)),
+          const SizedBox(height: 12),
+          if (legacy) ...[
+            Text('Previous hours: ${widget.legacyHours}'),
+            const SizedBox(height: 8)
+          ],
+          if (widget.hours.isEmpty)
+            const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Set your weekly schedule.'))
+          else
+            for (var day = 1; day <= 7; day++)
+              Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 94, child: Text(_days[day - 1])),
+                        Expanded(
+                            child: Text(_hoursForDay(day),
+                                style: const TextStyle(
+                                    color: AppColors.textMuted)))
+                      ])),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+              onPressed: _busy ? null : _editHours,
+              style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+              icon: const Icon(Icons.edit_calendar_outlined, size: 20),
+              label: const Text('Edit weekly hours')),
+          const SizedBox(height: 14),
+          const Text(
+              'Manage your live Open / Closed status from the dashboard.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+        ]));
+  }
+
+  Widget _closures(BuildContext context, bool wide) {
+    if (!wide) {
+      return _card(
+          key: const Key('edit-stall-closures'),
+          ExpansionTile(
+              key: const PageStorageKey('edit-stall-closures-expansion'),
+              initiallyExpanded: _closuresExpanded,
+              maintainState: true,
+              onExpansionChanged: (expanded) =>
+                  setState(() => _closuresExpanded = expanded),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 12),
+              shape: const Border(),
+              collapsedShape: const Border(),
+              leading: const Icon(Icons.event_busy_outlined,
+                  color: AppColors.primary),
+              title: const Text('Temporary closures',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(_closureSummary),
+              children: [_closuresEditor()]));
+    }
+    return _card(
+        key: const Key('edit-stall-closures'),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Temporary closures', style: _heading(context)),
+          const SizedBox(height: 16),
+          _closuresEditor(),
+        ]));
+  }
+
+  Widget _saveFooter(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AppColors.border))),
+        child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Center(
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1280),
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      final button = FilledButton(
+                          key: const Key('edit-stall-save'),
+                          onPressed: _busy ? null : widget.onSave,
+                          style: FilledButton.styleFrom(
+                              minimumSize: const Size(48, 52),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 14)),
+                          child:
+                              Text(widget.saving ? 'Saving…' : 'Save changes'));
+                      if (constraints.maxWidth >= 700 &&
+                          MediaQuery.textScalerOf(context).scale(14) < 20) {
+                        return Row(children: [
+                          const Expanded(
+                              child: Text(
+                                  'Changes appear on your public stall profile.',
+                                  style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 13))),
+                          const SizedBox(width: 24),
+                          SizedBox(width: 240, child: button)
+                        ]);
+                      }
+                      return SizedBox(width: double.infinity, child: button);
+                    })))),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final compactHeader = MediaQuery.sizeOf(context).width < 380 ||
+        MediaQuery.textScalerOf(context).scale(14) > 19;
+    final preview = compactHeader
+        ? IconButton.outlined(
+            tooltip: 'Customer preview',
+            onPressed: _busy ? null : widget.onPreview,
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon:
+                const Icon(Icons.visibility_outlined, color: AppColors.primary))
+        : OutlinedButton.icon(
+            onPressed: _busy ? null : widget.onPreview,
+            style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+            icon: const Icon(Icons.visibility_outlined, size: 19),
+            label: const Text('Preview'));
+    return Scaffold(
+      appBar: AppPageAppBar(
+          showBackButton: true,
+          backLabel: 'Cancel',
+          onBack: widget.onCancel,
+          backEnabled: !widget.saving && !widget.pickingImage,
+          title: const Text('Edit stall'),
+          actions: [
+            Padding(padding: const EdgeInsets.only(right: 16), child: preview)
+          ]),
+      body: SafeArea(
+          top: false,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(
+              child: widget.loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : widget.error != null
+                      ? Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(widget.error!,
+                                        textAlign: TextAlign.center),
+                                    if (widget.onRetry != null)
+                                      TextButton(
+                                          onPressed: widget.onRetry,
+                                          child: const Text('Retry'))
+                                  ])))
+                      : Form(
+                          key: widget.formKey,
+                          onChanged: widget.onFormChanged,
+                          child: SingleChildScrollView(
+                              key: const PageStorageKey('edit-stall-scroll'),
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                              child: Center(
+                                  child: ConstrainedBox(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 1280),
+                                      child: LayoutBuilder(
+                                          builder: (context, constraints) {
+                                        final scale =
+                                            MediaQuery.textScalerOf(context)
+                                                    .scale(14) /
+                                                14;
+                                        final wide = constraints.maxWidth >=
+                                            860 + (scale - 1).clamp(0, 2) * 240;
+                                        final schedule = IgnorePointer(
+                                            ignoring: _busy,
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.stretch,
+                                                children: [
+                                                  _hours(context, wide),
+                                                  const SizedBox(height: 16),
+                                                  _closures(context, wide)
+                                                ]));
+                                        if (wide) {
+                                          return Row(
+                                              key: const Key(
+                                                  'edit-stall-two-columns'),
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Expanded(
+                                                    flex: 6,
+                                                    child: _details(context)),
+                                                const SizedBox(width: 20),
+                                                Expanded(
+                                                    flex: 4, child: schedule)
+                                              ]);
+                                        }
+                                        return Column(
+                                            key: const Key(
+                                                'edit-stall-single-column'),
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              _details(context),
+                                              const SizedBox(height: 16),
+                                              schedule
+                                            ]);
+                                      }))))),
+            ),
+            _saveFooter(context),
+          ])),
+    );
+  }
+}
+````
+
+## File: lib/features/vendor/profile/stall_profile_draft.dart
+````dart
+import '../../../core/models/vendor_model.dart';
+import '../../../core/models/stall_schedule.dart';
+import '../../../core/utils/vendor_phone.dart';
+
+/// A detached profile snapshot; operational state comes from the loaded stall.
+VendorModel buildStallProfileDraft({
+  required VendorModel original,
+  required String name,
+  required String description,
+  required String phone,
+  required String legacyHours,
+  required Iterable<String> categories,
+  required Map<int, List<StallHoursInterval>> hours,
+  required List<TemporaryClosure> closures,
+  String? imageUrl,
+}) {
+  final selected = categories.toList();
+  return original.copyWith(
+    stallName: name.trim(),
+    description: description.trim(),
+    phoneNumber: normalizeVendorPhone(phone) ?? phone.trim(),
+    category: selected.isEmpty ? '' : selected.first,
+    categories: selected,
+    openingHours: legacyHours.trim(),
+    imageUrl: imageUrl,
+    weeklyHours: {
+      for (final entry in hours.entries) entry.key: [...entry.value]
+    },
+    temporaryClosures: [...closures],
+  );
+}
+````
+
+## File: lib/features/vendor/profile/unsaved_stall_changes_guard.dart
+````dart
+import 'package:flutter/material.dart';
+
+class UnsavedStallChangesGuard extends StatefulWidget {
+  const UnsavedStallChangesGuard(
+      {super.key,
+      required this.hasChanges,
+      required this.saving,
+      required this.onSave,
+      required this.child});
+  final bool hasChanges;
+  final bool saving;
+  final Future<void> Function() onSave;
+  final Widget child;
+
+  @override
+  State<UnsavedStallChangesGuard> createState() =>
+      UnsavedStallChangesGuardState();
+}
+
+class UnsavedStallChangesGuardState extends State<UnsavedStallChangesGuard> {
+  bool _allowPop = false;
+  bool _dialogOpen = false;
+
+  void close() {
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    Navigator.pop(context);
+  }
+
+  Future<void> requestLeave() async {
+    if (widget.saving || _dialogOpen) return;
+    if (!widget.hasChanges) {
+      close();
+      return;
+    }
+    _dialogOpen = true;
+    final choice = await showDialog<String>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+                title: const Text('Save your changes?'),
+                content:
+                    const Text('Your stall changes have not been saved yet.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialog, 'keep'),
+                      child: const Text('Keep editing')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialog, 'discard'),
+                      child: const Text('Discard changes')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dialog, 'save'),
+                      child: const Text('Save changes')),
+                ]));
+    _dialogOpen = false;
+    if (!mounted) return;
+    if (choice == 'save') {
+      await widget.onSave();
+    } else if (choice == 'discard') {
+      close();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: _allowPop || (!widget.saving && !widget.hasChanges),
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && !widget.saving) requestLeave();
+        },
+        child: widget.child,
+      );
+}
+````
+
+## File: lib/features/vendor/reviews/vendor_reply_editor.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/models/stall_review.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import '../../shared/stall_review_card.dart';
+
+class VendorReplyEditor extends StatefulWidget {
+  const VendorReplyEditor({
+    super.key,
+    required this.review,
+    required this.stallName,
+    required this.onSave,
+  });
+  final StallReview review;
+  final String stallName;
+  final Future<void> Function(String text) onSave;
+  @override
+  State<VendorReplyEditor> createState() => _VendorReplyEditorState();
+}
+
+class _VendorReplyEditorState extends State<VendorReplyEditor> {
+  late final TextEditingController _text;
+  final _form = GlobalKey<FormState>();
+  bool _saving = false;
+  bool _allowPop = false;
+  String? _error;
+  String get _original => widget.review.vendorReply?.text ?? '';
+  @override
+  void initState() {
+    super.initState();
+    _text = TextEditingController(text: _original);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _leave() async {
+    if (_saving) return;
+    if (_text.text != _original) {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Discard this draft?'),
+          content: const Text('Your reply has not been saved.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep writing'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Discard'),
+            ),
+          ],
+        ),
+      );
+      if (discard != true || !mounted) return;
+    }
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context);
+    });
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_form.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(_text.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _allowPop = true;
+        _saving = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.pop(context, true);
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error =
+              'Could not save your reply. Your draft is still here. Please retry.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: _allowPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _leave();
+        },
+        child: Scaffold(
+          appBar: AppPageAppBar(
+            showBackButton: true,
+            backLabel: 'Cancel',
+            onBack: _leave,
+            backEnabled: !_saving,
+            title: Text(widget.review.hasReply ? 'Edit reply' : 'Reply'),
+          ),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Customer review',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      StallReviewCard(
+                        review: widget.review,
+                        stallName: widget.stallName,
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Your official reply',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Your reply will be visible to everyone under this review.',
+                      ),
+                      const SizedBox(height: 12),
+                      Form(
+                        key: _form,
+                        child: TextFormField(
+                          controller: _text,
+                          enabled: !_saving,
+                          minLines: 5,
+                          maxLines: 12,
+                          maxLength: 1000,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: const InputDecoration(
+                            labelText: 'Reply',
+                            alignLabelWithHint: true,
+                          ),
+                          validator: (value) => (value ?? '').trim().isEmpty
+                              ? 'Write a reply before posting.'
+                              : value!.trim().length > 1000
+                                  ? 'Use 1,000 characters or fewer.'
+                                  : null,
+                        ),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(
+                          _saving
+                              ? 'Saving…'
+                              : _error != null
+                                  ? 'Retry'
+                                  : widget.review.hasReply
+                                      ? 'Save changes'
+                                      : 'Post reply',
                         ),
                       ),
                     ],
@@ -1337,396 +3734,869 @@ class InfoPage extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      );
+}
+````
+
+## File: lib/features/vendor/reviews/vendor_review_filters.dart
+````dart
+import '../../../core/models/stall_review.dart';
+
+enum VendorReviewFilter { all, unanswered, replied, updated }
+
+enum VendorReviewSort { newest, lowest, highest }
+
+List<StallReview> filterVendorReviews(
+  List<StallReview> reviews, {
+  VendorReviewFilter filter = VendorReviewFilter.all,
+  VendorReviewSort sort = VendorReviewSort.newest,
+  int? stars,
+}) {
+  final result = reviews
+      .where(
+        (review) =>
+            (stars == null || review.rating == stars) &&
+            switch (filter) {
+              VendorReviewFilter.all => true,
+              VendorReviewFilter.unanswered => !review.hasReply,
+              VendorReviewFilter.replied => review.hasReply,
+              VendorReviewFilter.updated => review.updatedAfterReply,
+            },
+      )
+      .toList();
+  result.sort((a, b) {
+    final rating = switch (sort) {
+      VendorReviewSort.lowest => a.rating.compareTo(b.rating),
+      VendorReviewSort.highest => b.rating.compareTo(a.rating),
+      VendorReviewSort.newest => 0,
+    };
+    if (rating != 0) return rating;
+    final date = (b.postedAt ?? DateTime(0)).compareTo(
+      a.postedAt ?? DateTime(0),
+    );
+    return date != 0 ? date : a.customerId.compareTo(b.customerId);
+  });
+  return result;
+}
+````
+
+## File: lib/features/vendor/reviews/vendor_reviews_dashboard_card.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/stall_review.dart';
+import '../../../core/services/stall_review_service.dart';
+import 'vendor_reviews_screen.dart';
+
+class VendorReviewsDashboardCard extends StatefulWidget {
+  const VendorReviewsDashboardCard({
+    super.key,
+    required this.vendorId,
+    required this.stallName,
+  });
+  final String vendorId;
+  final String stallName;
+  @override
+  State<VendorReviewsDashboardCard> createState() =>
+      _VendorReviewsDashboardCardState();
+}
+
+class _VendorReviewsDashboardCardState
+    extends State<VendorReviewsDashboardCard> {
+  final _service = StallReviewService();
+  late Stream<List<StallReview>> _reviews;
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  void _listen() {
+    _reviews = _service.watchReviews(widget.vendorId);
+  }
+
+  @override
+  void didUpdateWidget(covariant VendorReviewsDashboardCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.vendorId != widget.vendorId) _listen();
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Reviews',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              StreamBuilder<List<StallReview>>(
+                stream: _reviews,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Could not load review summary.'),
+                        TextButton(
+                          onPressed: () => setState(_listen),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    );
+                  }
+                  if (!snapshot.hasData) return const LinearProgressIndicator();
+                  return VendorReviewSummaryContent(reviews: snapshot.data!);
+                },
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => VendorReviewsScreen(
+                      vendorId: widget.vendorId,
+                      stallName: widget.stallName,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.rate_review_outlined, size: 19),
+                label: const Text('View reviews'),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class VendorReviewSummaryContent extends StatelessWidget {
+  const VendorReviewSummaryContent({super.key, required this.reviews});
+  final List<StallReview> reviews;
+  @override
+  Widget build(BuildContext context) {
+    final summary = StallReviewSummary(reviews);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          summary.average == null
+              ? 'No ratings yet'
+              : '${summary.average!.toStringAsFixed(1)} ★',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'}',
+          style: const TextStyle(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${summary.unanswered} awaiting reply',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        if (summary.updated > 0) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${summary.updated} updated after your reply',
+            style: const TextStyle(color: AppColors.primary),
+          ),
+        ],
+      ],
     );
   }
 }
 ````
 
-## File: lib/features/shared/profile_header.dart
+## File: lib/features/vendor/reviews/vendor_reviews_screen.dart
 ````dart
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/stall_review.dart';
+import '../../../core/services/stall_review_service.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import '../../shared/stall_review_card.dart';
+import 'vendor_reply_editor.dart';
+import 'vendor_review_filters.dart';
 
-import '../../core/constants/app_colors.dart';
-
-class ProfileAvatar extends StatelessWidget {
-  const ProfileAvatar(
-      {super.key, required this.name, this.photoUrl, this.size = 100});
-
-  final String name;
-  final String? photoUrl;
-  final double size;
-
+class VendorReviewsScreen extends StatefulWidget {
+  const VendorReviewsScreen({
+    super.key,
+    required this.vendorId,
+    required this.stallName,
+  });
+  final String vendorId;
+  final String stallName;
   @override
-  Widget build(BuildContext context) => ClipOval(
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: photoUrl == null || photoUrl!.trim().isEmpty
-              ? const ColoredBox(
-                  color: AppColors.mint,
-                  child: Icon(CupertinoIcons.person_fill,
-                      size: 58, color: AppColors.primary),
-                )
-              : Image.network(
-                  photoUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const ColoredBox(
-                    color: AppColors.mint,
-                    child: Icon(CupertinoIcons.person_fill,
-                        size: 58, color: AppColors.primary),
-                  ),
-                ),
-        ),
-      );
+  State<VendorReviewsScreen> createState() => _VendorReviewsScreenState();
 }
 
-class ProfileTopAction extends StatelessWidget {
-  const ProfileTopAction({
-    super.key,
-    required this.label,
-    required this.onTap,
-    this.icon,
-  });
+class _VendorReviewsScreenState extends State<VendorReviewsScreen> {
+  final _service = StallReviewService();
+  late Stream<List<StallReview>> _reviews;
+  final _deleting = <String>{};
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
 
-  final String label;
-  final VoidCallback? onTap;
-  final IconData? icon;
+  void _listen() {
+    _reviews = _service.watchReviews(widget.vendorId);
+  }
+
+  void _reply(StallReview review) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VendorReplyEditor(
+            review: review,
+            stallName: widget.stallName,
+            onSave: (text) =>
+                _service.saveVendorReply(widget.vendorId, review, text),
+          ),
+        ),
+      );
+  Future<void> _deleteReply(StallReview review) async {
+    if (_deleting.contains(review.customerId)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your reply?'),
+        content: const Text('The customer’s review will remain visible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete reply'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting.add(review.customerId));
+    try {
+      await _service.deleteVendorReply(widget.vendorId, review.customerId);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Reply deleted.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete your reply. Please retry.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting.remove(review.customerId));
+    }
+  }
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.white,
-        elevation: 4,
-        shadowColor: const Color(0x14000000),
-        shape: const StadiumBorder(),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: icon == null
-                ? Text(label,
-                    style: const TextStyle(fontSize: 17, color: Colors.black))
-                : Icon(icon, size: 22, color: Colors.black),
+  Widget build(BuildContext context) => Scaffold(
+        appBar: const AppPageAppBar(
+          title: Text('Customer reviews'),
+          showBackButton: true,
+        ),
+        body: SafeArea(
+          child: StreamBuilder<List<StallReview>>(
+            stream: _reviews,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Could not load reviews.'),
+                      TextButton(
+                        onPressed: () => setState(_listen),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return VendorReviewsView(
+                reviews: snapshot.data!,
+                stallName: widget.stallName,
+                deleting: _deleting,
+                onReply: _reply,
+                onDeleteReply: _deleteReply,
+              );
+            },
           ),
         ),
       );
 }
-````
 
-## File: lib/features/vendor/dashboard/vendor_demo_sales.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-
-import '../../../core/models/demo_order.dart';
-import '../../../core/services/demo_order_service.dart';
-import '../../shared/booking_detail_screen.dart';
-import '../../shared/booking_payment_card.dart';
-
-class DemoSalesSummary {
-  const DemoSalesSummary(
-      {required this.todayCents,
-      required this.totalCents,
-      required this.paidOrders});
-  final int todayCents;
-  final int totalCents;
-  final int paidOrders;
-
-  factory DemoSalesSummary.fromOrders(List<DemoOrder> orders,
-      {required String vendorId, required DateTime now}) {
-    DateTime malaysia(DateTime value) =>
-        value.toUtc().add(const Duration(hours: 8));
-    final today = malaysia(now);
-    var daily = 0;
-    var total = 0;
-    var count = 0;
-    for (final order in orders) {
-      if (order.vendorId != vendorId ||
-          order.demoSalesCents <= 0 ||
-          order.paymentPaidAt == null) {
-        continue;
-      }
-      total += order.demoSalesCents;
-      count++;
-      final paid = malaysia(order.paymentPaidAt!);
-      if (paid.year == today.year &&
-          paid.month == today.month &&
-          paid.day == today.day) {
-        daily += order.demoSalesCents;
-      }
-    }
-    return DemoSalesSummary(
-        todayCents: daily, totalCents: total, paidOrders: count);
-  }
-}
-
-class VendorDemoSales extends StatefulWidget {
-  const VendorDemoSales({super.key});
+class VendorReviewsView extends StatefulWidget {
+  const VendorReviewsView({
+    super.key,
+    required this.reviews,
+    required this.stallName,
+    required this.onReply,
+    required this.onDeleteReply,
+    this.deleting = const {},
+  });
+  final List<StallReview> reviews;
+  final String stallName;
+  final ValueChanged<StallReview> onReply;
+  final ValueChanged<StallReview> onDeleteReply;
+  final Set<String> deleting;
   @override
-  State<VendorDemoSales> createState() => _VendorDemoSalesState();
+  State<VendorReviewsView> createState() => _VendorReviewsViewState();
 }
 
-class _VendorDemoSalesState extends State<VendorDemoSales> {
-  late final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-  late final _orders = DemoOrderService().watchVendorOrders(_uid);
-
+class _VendorReviewsViewState extends State<VendorReviewsView> {
+  VendorReviewFilter _filter = VendorReviewFilter.all;
+  VendorReviewSort _sort = VendorReviewSort.newest;
+  int? _stars;
   @override
   Widget build(BuildContext context) {
-    if (_uid.isEmpty) return const SizedBox.shrink();
-    return Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: StreamBuilder<List<DemoOrder>>(
-            stream: _orders,
-            builder: (context, snapshot) {
-              final summary = DemoSalesSummary.fromOrders(snapshot.data ?? [],
-                  vendorId: _uid, now: DateTime.now());
-              return DemoSalesCard(
-                  summary: summary,
-                  loading: !snapshot.hasData,
-                  hasError: snapshot.hasError,
-                  onHistory: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const VendorPaymentHistoryScreen())));
-            }));
+    final summary = StallReviewSummary(widget.reviews);
+    final reviews = filterVendorReviews(
+      widget.reviews,
+      filter: _filter,
+      sort: _sort,
+      stars: _stars,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.stallName,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  summary.average == null
+                      ? 'No ratings yet'
+                      : '${summary.average!.toStringAsFixed(1)} ★',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'} · ${summary.unanswered} awaiting reply',
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final entry in {
+                      VendorReviewFilter.all: 'All',
+                      VendorReviewFilter.unanswered: 'Unanswered',
+                      VendorReviewFilter.replied: 'Replied',
+                      VendorReviewFilter.updated: 'Updated after reply',
+                    }.entries)
+                      ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _filter == entry.key,
+                        onSelected: (_) => setState(() => _filter = entry.key),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth < 640
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 12) / 2;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: width,
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _stars ?? 0,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Star rating',
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 0,
+                                child: Text('All ratings'),
+                              ),
+                              for (var star = 5; star >= 1; star--)
+                                DropdownMenuItem(
+                                  value: star,
+                                  child: Text(
+                                    '$star ${star == 1 ? 'star' : 'stars'}',
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) => setState(
+                              () => _stars = value == 0 ? null : value,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: width,
+                          child: DropdownButtonFormField<VendorReviewSort>(
+                            initialValue: _sort,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Sort reviews',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: VendorReviewSort.newest,
+                                child: Text('Newest'),
+                              ),
+                              DropdownMenuItem(
+                                value: VendorReviewSort.lowest,
+                                child: Text('Lowest rating'),
+                              ),
+                              DropdownMenuItem(
+                                value: VendorReviewSort.highest,
+                                child: Text('Highest rating'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) setState(() => _sort = value);
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                if (reviews.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 36),
+                    child: Text(
+                      widget.reviews.isEmpty
+                          ? 'No reviews yet. Customer feedback will appear here.'
+                          : 'No reviews match these filters.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                  ),
+                for (final review in reviews)
+                  StallReviewCard(
+                    key: ValueKey(review.customerId),
+                    review: review,
+                    stallName: widget.stallName,
+                    onReply: widget.deleting.contains(review.customerId)
+                        ? null
+                        : () => widget.onReply(review),
+                    onDeleteReply: widget.deleting.contains(review.customerId)
+                        ? null
+                        : () => widget.onDeleteReply(review),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
-
-class DemoSalesCard extends StatelessWidget {
-  const DemoSalesCard(
-      {super.key,
-      required this.summary,
-      required this.onHistory,
-      this.loading = false,
-      this.hasError = false});
-  final DemoSalesSummary summary;
-  final VoidCallback onHistory;
-  final bool loading;
-  final bool hasError;
-
-  @override
-  Widget build(BuildContext context) => Card(
-      child: Padding(
-          padding: const EdgeInsets.all(18),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.payments_outlined),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: Text('Demo sales',
-                      style: Theme.of(context).textTheme.titleLarge)),
-              const Chip(
-                  label: Text('TEST MODE'),
-                  visualDensity: VisualDensity.compact),
-            ]),
-            const SizedBox(height: 12),
-            if (hasError)
-              const Text('Sales could not load. Check your connection.')
-            else if (loading)
-              const LinearProgressIndicator()
-            else ...[
-              const Text('Today · Malaysia time'),
-              const SizedBox(height: 4),
-              Text('RM ${(summary.todayCents / 100).toStringAsFixed(2)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineLarge
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text(
-                  '${summary.paidOrders} paid orders · RM ${(summary.totalCents / 100).toStringAsFixed(2)} total'),
-            ],
-            const SizedBox(height: 12),
-            const Text(
-                'Test payments enabled. Simulated sales only — no bank deposits or payouts.'),
-            const SizedBox(height: 8),
-            TextButton.icon(
-                onPressed: onHistory,
-                icon: const Icon(Icons.receipt_long_outlined),
-                label: const Text('View payment history')),
-          ])));
-}
-
-class VendorPaymentHistoryScreen extends StatefulWidget {
-  const VendorPaymentHistoryScreen({super.key});
-  @override
-  State<VendorPaymentHistoryScreen> createState() =>
-      _VendorPaymentHistoryScreenState();
-}
-
-class _VendorPaymentHistoryScreenState
-    extends State<VendorPaymentHistoryScreen> {
-  late final _orders = DemoOrderService()
-      .watchVendorOrders(FirebaseAuth.instance.currentUser?.uid ?? '');
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Demo payment history')),
-      body: StreamBuilder<List<DemoOrder>>(
-          stream: _orders,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return const Center(
-                  child: Text('Payments could not load. Please retry.'));
-            }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final orders = snapshot.data!
-                .where((order) =>
-                    order.hasTestPayment && order.paymentStatus != 'unpaid')
-                .toList();
-            return ListView(padding: const EdgeInsets.all(16), children: [
-              const Text(
-                  'Test transactions only. These amounts are not real earnings.'),
-              const SizedBox(height: 16),
-              if (orders.isEmpty)
-                const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                        'No test payments yet. Paid bookings will appear here.')),
-              for (final order in orders)
-                Card(
-                    child: ListTile(
-                        leading: const Icon(Icons.receipt_long_outlined),
-                        title: Text(order.customerName),
-                        subtitle: Text(bookingPaymentLabel(order)),
-                        trailing: Text(
-                            'RM ${(order.totalCents / 100).toStringAsFixed(2)}'),
-                        onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => BookingDetailScreen(
-                                    bookingId: order.id, isVendor: true))))),
-            ]);
-          }));
-}
 ````
 
-## File: test/booking_card_test.dart
+## File: test/app_back_button_test.dart
 ````dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:stallseeker/core/models/demo_order.dart';
-import 'package:stallseeker/features/shared/booking_detail_screen.dart';
-
-void main() {
-  testWidgets(
-      'simultaneous bookings show separate progress and open separately',
-      (tester) async {
-    final opened = <String>[];
-    DemoOrder booking(String id, String status, bool unseen) => DemoOrder(
-          id: id,
-          customerId: 'customer',
-          vendorId: 'vendor',
-          customerName: 'Customer',
-          stallName: 'Stall $id',
-          status: status,
-          items: const [],
-          totalCents: 1200,
-          createdAt: DateTime(2026, 10, 8),
-          customerUnseenReady: unseen,
-        );
-
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: Column(children: [
-      BookingSummaryCard(
-          booking: booking('first', 'preparing', false),
-          isVendor: false,
-          onTap: () => opened.add('first')),
-      BookingSummaryCard(
-          booking: booking('second', 'ready', true),
-          isVendor: false,
-          onTap: () => opened.add('second')),
-    ]))));
-
-    expect(find.text('Preparing'), findsOneWidget);
-    expect(find.text('Ready for collection'), findsOneWidget);
-    expect(find.byType(CircleAvatar), findsOneWidget);
-    await tester.tap(find.text('Stall second'));
-    expect(opened, ['second']);
-  });
-}
-````
-
-## File: test/booking_cart_view_test.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:stallseeker/core/models/menu_item_model.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
-import 'package:stallseeker/features/customer/orders/demo_order_cart_screen.dart';
+import 'package:stallseeker/core/widgets/app_back_button.dart';
+import 'package:stallseeker/core/widgets/app_page_app_bar.dart';
+import 'package:stallseeker/core/widgets/app_sheet_header.dart';
+import 'package:stallseeker/features/shared/info_page.dart';
+import 'package:stallseeker/features/vendor/profile/unsaved_stall_changes_guard.dart';
+
+Widget app(Widget Function(BuildContext) page, {double scale = 1}) =>
+    MaterialApp(
+      theme: AppTheme.lightTheme,
+      builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!),
+      home: Builder(
+          builder: (context) => Scaffold(
+              appBar: const AppPageAppBar(title: Text('Home')),
+              body: TextButton(
+                  onPressed: () =>
+                      Navigator.push(context, MaterialPageRoute(builder: page)),
+                  child: const Text('Open page')))),
+    );
 
 void main() {
   for (final width in [320.0, 390.0, 960.0]) {
-    testWidgets('booking cart fits ${width.toInt()}px and updates the total',
+    for (final scale in [1.0, 1.6, 2.0]) {
+      testWidgets('back navigation fits $width px with $scale text',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(app(
+            (_) => Scaffold(
+                appBar: AppPageAppBar(
+                    title: const Text('Stall details'),
+                    actions: [
+                      IconButton(
+                          onPressed: () {},
+                          icon: const Icon(Icons.favorite_outline))
+                    ]),
+                body: const Text('Page content')),
+            scale: scale));
+        expect(find.byType(AppBackButton), findsNothing);
+        await tester.tap(find.text('Open page'));
+        await tester.pumpAndSettle();
+        expect(find.text('Back'), findsOneWidget);
+        final back = tester.getRect(find.byType(AppBackButton));
+        expect(back.left, closeTo(16, 1));
+        expect(back.top, lessThan(80));
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.text('Back'));
+        await tester.pumpAndSettle();
+        expect(find.text('Open page'), findsOneWidget);
+        expect(find.text('Page content'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('information pages use the same back navigation', (tester) async {
+    await tester.pumpWidget(app((_) => const InfoPage(
+        title: 'About StallSeeker', children: [Text('Information')])));
+    await tester.tap(find.text('Open page'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppBackButton), findsOneWidget);
+    expect(tester.getRect(find.byType(AppBackButton)).left, closeTo(16, 1));
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open page'), findsOneWidget);
+  });
+
+  for (final width in [320.0, 960.0]) {
+    testWidgets('sheet close button is at top left at $width px',
         (tester) async {
       tester.view.physicalSize = Size(width, 800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-
-      final item = MenuItemModel(itemId: 'tea', name: 'Air teh', price: 2);
-      final quantities = <String, int>{};
-      var submitted = false;
       await tester.pumpWidget(MaterialApp(
-        theme: AppTheme.lightTheme,
-        home: Scaffold(
-          appBar: AppBar(title: const Text('Your order')),
-          body: StatefulBuilder(
-              builder: (context, setState) => BookingCartView(
-                    stallName: 'Adam stalls',
-                    items: [item],
-                    quantities: quantities,
-                    sending: false,
-                    onQuantityChanged: (item, quantity) =>
-                        setState(() => quantities[item.itemId] = quantity),
-                    onSubmit: () => submitted = true,
-                  )),
-        ),
-      ));
-
+          theme: AppTheme.lightTheme,
+          home: Builder(
+              builder: (context) => Scaffold(
+                  body: TextButton(
+                      onPressed: () => showModalBottomSheet<void>(
+                          context: context,
+                          builder: (_) => const SizedBox(
+                              height: 350,
+                              child: Column(children: [
+                                AppSheetHeader(title: Text('Saved searches')),
+                                Expanded(
+                                    child:
+                                        Center(child: Text('Sheet content'))),
+                              ]))),
+                      child: const Text('Open sheet'))))));
+      await tester.tap(find.text('Open sheet'));
+      await tester.pumpAndSettle();
+      final header = tester.getRect(find.byType(AppSheetHeader));
+      final close = tester.getRect(find.byType(AppBackButton));
+      expect(close.left, closeTo(header.left + 16, 1));
+      expect(close.top, closeTo(header.top + 12, 1));
+      expect(close.top,
+          lessThan(tester.getTopLeft(find.text('Saved searches')).dy));
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sheet content'), findsNothing);
       expect(tester.takeException(), isNull);
-      expect(find.text('Choose an item'), findsOneWidget);
-      expect(find.text('RM 0.00'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Add Air teh'));
-      await tester.pump();
-      expect(find.text('RM 2.00'), findsNWidgets(2));
-      expect(find.text('Continue to payment'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-
-      await tester.tap(find.text('Continue to payment'));
-      expect(submitted, isTrue);
     });
   }
 
-  testWidgets('out-of-stock selection cannot count toward payment',
+  testWidgets('a disabled back button cannot leave while saving',
       (tester) async {
-    final item = MenuItemModel(
-        itemId: 'tea', name: 'Air teh', price: 2, status: 'out_of_stock');
-    await tester.pumpWidget(MaterialApp(
-      theme: AppTheme.lightTheme,
-      home: Scaffold(
-        body: BookingCartView(
-          stallName: 'Adam stalls',
-          items: [item],
-          quantities: const {'tea': 1},
-          sending: false,
-          onQuantityChanged: (_, __) {},
-          onSubmit: () {},
-        ),
-      ),
-    ));
-    expect(find.text('RM 0.00'), findsOneWidget);
-    expect(find.text('Out of stock'), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byType(IconButton).last).onPressed,
-        isNull);
+    await tester.pumpWidget(app((_) => const Scaffold(
+        appBar: AppPageAppBar(title: Text('Saving'), backEnabled: false),
+        body: Text('Editor'))));
+    await tester.tap(find.text('Open page'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Editor'), findsOneWidget);
+    expect(find.text('Open page'), findsNothing);
   });
+
+  for (final customBack in [false, true]) {
+    testWidgets('back keeps the unsaved-changes prompt (custom: $customBack)',
+        (tester) async {
+      final guard = GlobalKey<UnsavedStallChangesGuardState>();
+      await tester.pumpWidget(app((_) => UnsavedStallChangesGuard(
+          key: guard,
+          hasChanges: true,
+          saving: false,
+          onSave: () async {},
+          child: Scaffold(
+              appBar: AppPageAppBar(
+                  title: const Text('Edit stall'),
+                  backLabel: 'Cancel',
+                  onBack: customBack
+                      ? () => guard.currentState!.requestLeave()
+                      : null),
+              body: const Text('Unsaved editor')))));
+      await tester.tap(find.text('Open page'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Save your changes?'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Unsaved editor'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard changes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Open page'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+````
+
+## File: test/clear_discovery_filters_test.dart
+````dart
+// Exercise the real discovery screen with read-only data and a map placeholder.
+// ignore_for_file: depend_on_referenced_packages
+import 'package:cloud_firestore_platform_interface/cloud_firestore_platform_interface.dart';
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
+import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/core/widgets/app_dropdown.dart';
+import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
+import 'package:stallseeker/features/customer/home/discovery_options.dart';
+
+class _SignedOutAuth extends FirebaseAuthPlatform {
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) => this;
+  @override
+  FirebaseAuthPlatform setInitialValues(
+          {PigeonUserDetails? currentUser, String? languageCode}) =>
+      this;
+  @override
+  UserPlatform? get currentUser => null;
+}
+
+class _DiscoveryFirestore extends FirebaseFirestorePlatform {
+  @override
+  FirebaseFirestorePlatform delegateFor(
+          {required FirebaseApp app, required String databaseId}) =>
+      this;
+  @override
+  CollectionReferencePlatform collection(String path) =>
+      _Collection(this, path);
+  @override
+  QueryPlatform collectionGroup(String path) => _Collection(this, path);
+  @override
+  DocumentReferencePlatform doc(String path) => _Document(this, path);
+}
+
+class _Collection extends CollectionReferencePlatform {
+  _Collection(super.firestore, super.path);
+  @override
+  DocumentReferencePlatform doc([String? path]) =>
+      firestore.doc('${this.path}/${path ?? 'generated'}');
+  @override
+  Stream<QuerySnapshotPlatform> snapshots(
+          {bool includeMetadataChanges = false,
+          ServerTimestampBehavior serverTimestampBehavior =
+              ServerTimestampBehavior.none,
+          required ListenSource listenSource}) =>
+      Stream.value(QuerySnapshotPlatform([
+        if (path == 'vendors')
+          DocumentSnapshotPlatform(
+              firestore,
+              'vendors/stall',
+              {
+                'stallName': 'Nasi Stall',
+                'category': 'Rice',
+                'latitude': 3.139,
+                'longitude': 101.6869,
+                'isOpen': false,
+              },
+              PigeonSnapshotMetadata(
+                  hasPendingWrites: false, isFromCache: true)),
+      ], [], SnapshotMetadataPlatform(false, true)));
+}
+
+class _Document extends DocumentReferencePlatform {
+  _Document(super.firestore, super.path);
+}
+
+class _PlaceholderMaps extends GoogleMapsFlutterPlatform {
+  @override
+  Widget buildViewWithConfiguration(
+          int creationId, PlatformViewCreatedCallback onPlatformViewCreated,
+          {required MapWidgetConfiguration widgetConfiguration,
+          MapConfiguration mapConfiguration = const MapConfiguration(),
+          MapObjects mapObjects = const MapObjects()}) =>
+      const SizedBox.expand();
+}
+
+class _NoLocation extends GeolocatorPlatform {
+  @override
+  Future<bool> isLocationServiceEnabled() async => false;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setupFirebaseCoreMocks();
+  setUpAll(() async {
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _SignedOutAuth();
+    FirebaseFirestorePlatform.instance = _DiscoveryFirestore();
+    GoogleMapsFlutterPlatform.instance = _PlaceholderMaps();
+    GeolocatorPlatform.instance = _NoLocation();
+  });
+  setUp(() => SharedPreferences.setMockInitialValues({
+        'guest_search_history_v1': ['Previous search'],
+      }));
+
+  for (final width in [320.0, 960.0]) {
+    testWidgets('clear all discovery filters in map and list views at $width',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+      await tester.pumpAndSettle();
+
+      AppDropdown<String> dropdown(String hint) =>
+          tester.widget<AppDropdown<String>>(find.byWidgetPredicate((widget) =>
+              widget is AppDropdown<String> && widget.hint == hint));
+      Finder chip(String label) => find.widgetWithText(InputChip, label);
+
+      for (final listView in [false, true]) {
+        if (listView) {
+          final switchView = find.widgetWithText(ActionChip, 'List view');
+          await Scrollable.ensureVisible(tester.element(switchView),
+              alignment: .5);
+          await tester.tap(switchView);
+          await tester.pumpAndSettle();
+        }
+        // Set several filters together, including a schedule and price range.
+        dropdown('Choose category').onChanged!('Drinks');
+        tester
+            .widget<AppDropdown<DiscoverySort>>(
+                find.byType(AppDropdown<DiscoverySort>))
+            .onChanged!(DiscoverySort.price);
+        for (final filter in [
+          'Available dishes',
+          'Self-collect',
+          'Updated in 24h'
+        ]) {
+          tester
+              .widget<FilterChip>(find.widgetWithText(FilterChip, filter))
+              .onSelected!(true);
+        }
+        await tester.pump();
+        await Scrollable.ensureVisible(tester.element(chip('Any price')),
+            alignment: .5);
+        await tester.tap(chip('Any price'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextFormField).first, '5');
+        await tester.enterText(find.byType(TextFormField).last, '10');
+        await tester.tap(find.text('Apply price range'));
+        await tester.pumpAndSettle();
+        await Scrollable.ensureVisible(tester.element(chip('Open at…')),
+            alignment: .5);
+        await tester.tap(chip('Open at…'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Tomorrow morning'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+            find.byType(TextField).first, 'No matching dish');
+        await tester.pumpAndSettle();
+        expect(dropdown('Choose category').value, 'Drinks');
+        expect(dropdown('Choose stall status').displayText, 'Scheduled');
+
+        // The reset stays visible even when the filter strip is scrolled.
+        await tester.tap(find.text('Clear filters'));
+        await tester.pumpAndSettle();
+        expect(
+            tester
+                .widget<TextField>(find.byType(TextField).first)
+                .controller!
+                .text,
+            isEmpty);
+        expect(dropdown('Choose category').value, 'All');
+        expect(dropdown('Choose stall status').value, 'All');
+        expect(dropdown('Choose stall status').displayText, isNull);
+        expect(chip('Any price'), findsOneWidget);
+        expect(chip('Open at…'), findsOneWidget);
+        for (final filter in [
+          'Available dishes',
+          'Self-collect',
+          'Updated in 24h'
+        ]) {
+          expect(
+              tester
+                  .widget<FilterChip>(find.widgetWithText(FilterChip, filter))
+                  .selected,
+              isFalse);
+        }
+        expect(
+            tester
+                .widget<AppDropdown<DiscoverySort>>(
+                    find.byType(AppDropdown<DiscoverySort>))
+                .value,
+            DiscoverySort.price);
+        expect(find.text(listView ? 'Map view' : 'List view'), findsOneWidget);
+        if (listView) {
+          expect(find.text('Nasi Stall'), findsOneWidget);
+        } else {
+          expect(
+              tester.widget<GoogleMap>(find.byType(GoogleMap)).markers.length,
+              1);
+        }
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getStringList('guest_search_history_v1'),
+            ['Previous search']);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 }
 ````
 
@@ -1908,76 +4778,6 @@ void main() {
 }
 ````
 
-## File: test/demo_booking_service_test.dart
-````dart
-import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:stallseeker/core/models/demo_order.dart';
-import 'package:stallseeker/core/models/vendor_model.dart';
-import 'package:stallseeker/core/services/local_demo_booking_service.dart';
-
-void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUp(() => SharedPreferences.setMockInitialValues({}));
-
-  test('device booking persists through vendor and customer status changes',
-      () async {
-    final vendorService = LocalDemoBookingService(actorId: 'vendor-1');
-    final customerService = LocalDemoBookingService(actorId: 'customer-1');
-    final vendor = VendorModel(
-      vendorId: 'vendor-1',
-      stallName: 'Nasi Stall',
-      description: '',
-      category: 'Food',
-      openingHours: '',
-      latitude: 3.1,
-      longitude: 101.7,
-    );
-
-    expect(await vendorService.isSelfCollectEnabled(vendor.vendorId), false);
-    await vendorService.setSelfCollectEnabled(vendor.vendorId, true);
-    final id = await customerService.requestOrder(
-      vendor,
-      const [
-        DemoOrderItem(
-            itemId: 'dish-1',
-            name: 'Nasi Lemak',
-            unitPriceCents: 650,
-            quantity: 2),
-      ],
-      customerName: 'Aina',
-    );
-
-    var vendorBookings =
-        await vendorService.watchVendorOrders('vendor-1').first;
-    expect(vendorBookings.single.id, id);
-    expect(vendorBookings.single.totalCents, 1300);
-    expect(vendorBookings.single.status, 'requested');
-
-    await vendorService.respond(id, accept: true);
-    expect(
-        (await customerService.watchCustomerOrders('customer-1').first)
-            .single
-            .status,
-        'confirmed');
-    await vendorService.advance(id);
-    await vendorService.advance(id);
-    expect(
-        (await customerService.watchCustomerOrders('customer-1').first)
-            .single
-            .status,
-        'ready');
-    await vendorService.advance(id);
-    vendorBookings = await vendorService.watchVendorOrders('vendor-1').first;
-    expect(vendorBookings.single.status, 'collected');
-
-    await customerService.removeAccountData('customer-1');
-    expect(await vendorService.watchVendorOrders('vendor-1').first, isEmpty);
-  });
-}
-````
-
 ## File: test/demo_orders_screen_test.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -2003,6 +4803,557 @@ void main() {
     expect(find.text('No bookings in this section yet.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+````
+
+## File: test/discovery_options_test.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:stallseeker/core/models/dish_search_entry.dart';
+import 'package:stallseeker/core/models/menu_item_model.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/features/customer/home/discovery_options.dart';
+import 'package:stallseeker/features/customer/home/discovery_search_filters.dart';
+
+VendorModel vendor(String id, {DateTime? created, DateTime? updated}) =>
+    VendorModel(
+        vendorId: id,
+        stallName: id,
+        category: 'Burger',
+        openingHours: '',
+        description: '',
+        latitude: id == 'a' ? 3.1 : 3.2,
+        longitude: 101.7,
+        createdAt: created,
+        updatedAt: updated);
+
+DishSearchEntry dish(String owner, String id, double price,
+        {bool known = true, String status = 'available', DateTime? updated}) =>
+    DishSearchEntry(
+        vendorId: owner,
+        priceIsKnown: known,
+        item: MenuItemModel(
+            itemId: id,
+            name: id,
+            price: price,
+            status: status,
+            statusUpdatedAt: updated));
+
+void main() {
+  test('legacy category records remain readable and multiple categories filter',
+      () {
+    final legacy = VendorModel.fromMap({'category': 'Burger'}, 'old');
+    expect(legacy.allCategories, ['Burger']);
+    final multiple = VendorModel.fromMap({
+      'category': 'Burger',
+      'categories': ['Burger', 'Beverages', 'Burger'],
+    }, 'new');
+    expect(multiple.allCategories, ['Burger', 'Beverages']);
+    expect(multiple.hasCategory('Beverages'), isTrue);
+    expect(multiple.toProfileMap()['categories'], ['Burger', 'Beverages']);
+    expect(
+        vendorMatchesQueryAndPrice(
+            vendor: multiple, dishes: [], query: 'beverages'),
+        isTrue);
+    expect(multiple.copyWith(stallName: 'Renamed').allCategories,
+        multiple.allCategories);
+  });
+
+  test('dish search handles alternatives, abbreviations and small misspellings',
+      () {
+    for (final pair in [
+      ['burgre', 'Burger ayam'],
+      ['burgr', 'Burger'],
+      ['mee grg', 'Mi goreng'],
+      ['banana fritters', 'Goreng pisang'],
+      ['roti prata', 'Roti canai'],
+      ['coconut rice', 'Nasi lemak'],
+      ['char kway teow', 'Char kuey teow'],
+    ]) {
+      expect(discoveryMatches(pair[0], pair[1]), isTrue,
+          reason: pair.toString());
+    }
+    expect(discoveryMatches('burger', 'Nasi lemak'), isFalse);
+    expect(discoveryMatches('teh', 'mee'), isFalse);
+    expect(discoverySearchScore('Burger', 'Burger'), 0);
+    expect(discoverySearchScore('burgre', 'Burger'), greaterThan(0));
+  });
+
+  test('sorting uses real prices and ratings, with unknowns last', () {
+    final vendors = [vendor('a'), vendor('b'), vendor('c')];
+    final menus = {
+      'a': [dish('a', 'Burger', 8)],
+      'b': [dish('b', 'Burger', 5)],
+      'c': [dish('c', 'Burger', 0, known: false)],
+    };
+    final ratings = {
+      'a': const StallRatingSummary(4.8, 5),
+      'b': const StallRatingSummary(4.1, 12),
+      'c': const StallRatingSummary(0, 0)
+    };
+    List<String> sort(DiscoverySort option) => (vendors.toList()
+          ..sort((a, b) => compareDiscoveryVendors(a, b,
+              sort: option,
+              center: const LatLng(3.1, 101.7),
+              ratings: ratings,
+              dishes: menus)))
+        .map((v) => v.vendorId)
+        .toList();
+    expect(sort(DiscoverySort.price), ['b', 'a', 'c']);
+    expect(sort(DiscoverySort.rating), ['a', 'b', 'c']);
+    expect(sort(DiscoverySort.distance).first, 'a');
+  });
+
+  test('newest sorting does not invent dates for old profiles', () {
+    final now = DateTime.utc(2026, 10, 24);
+    final values = [
+      vendor('unknown'),
+      vendor('old', created: now.subtract(const Duration(days: 2))),
+      vendor('new', created: now)
+    ];
+    values.sort((a, b) => compareDiscoveryVendors(a, b,
+        sort: DiscoverySort.newest, center: null, ratings: {}, dishes: {}));
+    expect(values.map((v) => v.vendorId), ['new', 'old', 'unknown']);
+  });
+
+  test('recent means profile or menu update within 24h, not live GPS', () {
+    final now = DateTime.utc(2026, 10, 24, 10);
+    final stall = VendorModel.fromMap(
+        {'locationUpdatedAt': Timestamp.fromDate(now)}, 'a');
+    expect(stallUpdatedRecently(stall, [], now: now), isFalse);
+    expect(
+        stallUpdatedRecently(
+            stall,
+            [
+              dish('a', 'food', 5,
+                  updated: now.subtract(const Duration(hours: 2)))
+            ],
+            now: now),
+        isTrue);
+    expect(
+        stallUpdatedRecently(
+            stall,
+            [
+              dish('a', 'food', 5,
+                  updated: now.subtract(const Duration(hours: 25)))
+            ],
+            now: now),
+        isFalse);
+    expect(dishIsAvailable(dish('a', 'food', 5, status: 'low_stock')), isTrue);
+    expect(
+        dishIsAvailable(dish('a', 'food', 5, status: 'out_of_stock')), isFalse);
+  });
+
+  test('menu details round trip without requiring them on old dishes', () {
+    final item = MenuItemModel(
+        itemId: 'dish',
+        name: 'Nasi Lemak',
+        price: 6,
+        description: 'Coconut rice',
+        portionSize: '1 plate',
+        ingredients: ['Rice', 'Peanuts']);
+    final restored = MenuItemModel.fromMap({
+      ...item.toMap(),
+      'statusUpdatedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 24)),
+    }, 'dish');
+    expect(restored.description, 'Coconut rice');
+    expect(restored.portionSize, '1 plate');
+    expect(restored.ingredients, ['Rice', 'Peanuts']);
+    expect(
+        MenuItemModel.fromMap({'name': 'Old dish', 'price': 5}, 'old')
+            .ingredients,
+        isEmpty);
+  });
+}
+````
+
+## File: test/edit_stall_view_test.dart
+````dart
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/stall_schedule.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/vendor/profile/edit_stall_view.dart';
+import 'package:stallseeker/features/vendor/profile/stall_profile_draft.dart';
+
+class _Harness extends StatefulWidget {
+  const _Harness(
+      {this.saving = false,
+      this.loading = false,
+      this.picking = false,
+      this.onAction});
+  final bool saving, loading, picking;
+  final ValueChanged<String>? onAction;
+  @override
+  State<_Harness> createState() => _HarnessState();
+}
+
+class _HarnessState extends State<_Harness> {
+  final form = GlobalKey<FormState>();
+  final name = TextEditingController(text: 'Uncle John Drink Stall');
+  final description = TextEditingController(
+      text: 'Freshly brewed teh tarik and refreshing local drinks.');
+  final phone = TextEditingController(text: '012-345 6789');
+  final categories = <String>{'Beverages'};
+  Map<int, List<StallHoursInterval>> hours = {
+    for (var day = 1; day <= 5; day++)
+      day: [const StallHoursInterval(540, 1020)]
+  };
+  List<TemporaryClosure> closures = [];
+  @override
+  void dispose() {
+    name.dispose();
+    description.dispose();
+    phone.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => EditStallView(
+        formKey: form,
+        nameController: name,
+        descriptionController: description,
+        phoneController: phone,
+        image: Container(
+            height: 180,
+            decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(20)),
+            alignment: Alignment.center,
+            child: FilledButton.icon(
+                onPressed: widget.saving || widget.picking
+                    ? null
+                    : () => widget.onAction?.call('photo'),
+                icon: const Icon(Icons.camera_alt_outlined),
+                label: const Text('Change photo'))),
+        categoryOptions: const ['Beverages', 'Burger', 'Malay Food'],
+        selectedCategories: categories,
+        hours: hours,
+        closures: closures,
+        loading: widget.loading,
+        saving: widget.saving,
+        pickingImage: widget.picking,
+        onCategoryChanged: (category, selected) => setState(() {
+          if (selected) {
+            categories.add(category);
+          } else {
+            categories.remove(category);
+          }
+        }),
+        onScheduleChanged: (nextHours, nextClosures) => setState(() {
+          hours = nextHours;
+          closures = nextClosures;
+        }),
+        onFormChanged: () => setState(() {}),
+        onCancel: () => widget.onAction?.call('cancel'),
+        onSave: () {
+          if (form.currentState!.validate()) {
+            widget.onAction?.call('save:${name.text}');
+          }
+        },
+        onPreview: () => widget.onAction?.call('preview:${name.text}'),
+      );
+}
+
+ThemeData _previewTheme() {
+  final theme = AppTheme.lightTheme;
+  if (!const bool.fromEnvironment('EDIT_STALL_PREVIEW')) {
+    return theme;
+  }
+  return theme.copyWith(
+    appBarTheme: theme.appBarTheme.copyWith(
+        titleTextStyle:
+            theme.appBarTheme.titleTextStyle?.copyWith(fontFamily: 'Roboto')),
+    chipTheme: theme.chipTheme.copyWith(
+        labelStyle: theme.chipTheme.labelStyle?.copyWith(fontFamily: 'Roboto')),
+  );
+}
+
+Widget _app(
+        {double scale = 1,
+        bool saving = false,
+        bool loading = false,
+        bool picking = false,
+        ValueChanged<String>? onAction}) =>
+    MaterialApp(
+      theme: _previewTheme(),
+      builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!),
+      home: RepaintBoundary(
+          key: const Key('edit-stall-preview'),
+          child: _Harness(
+              saving: saving,
+              loading: loading,
+              picking: picking,
+              onAction: onAction)),
+    );
+void _viewport(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Future<void> _capture(WidgetTester tester, String name) async {
+  if (!const bool.fromEnvironment('EDIT_STALL_PREVIEW')) return;
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const Key('edit-stall-preview')));
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 2);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    await Directory('tmp/edit-stall-previews').create(recursive: true);
+    await File('tmp/edit-stall-previews/$name.png')
+        .writeAsBytes(bytes!.buffer.asUint8List());
+    image.dispose();
+  });
+}
+
+void main() {
+  setUpAll(() async {
+    if (!const bool.fromEnvironment('EDIT_STALL_PREVIEW')) return;
+    const root = String.fromEnvironment('PREVIEW_FONT_ROOT');
+    final font = FontLoader('Roboto');
+    for (final name in ['Regular', 'Medium']) {
+      font.addFont(Future.value(ByteData.sublistView(
+          await File('$root/Roboto-$name.ttf').readAsBytes())));
+    }
+    await font.load();
+    final fallback = FontLoader('Ahem')
+      ..addFont(Future.value(ByteData.sublistView(
+          await File('$root/Roboto-Regular.ttf').readAsBytes())));
+    await fallback.load();
+    await (FontLoader('MaterialIcons')
+          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf')))
+        .load();
+  });
+  test('draft changes profile fields without changing live operational state',
+      () {
+    final original = VendorModel(
+        vendorId: 'v',
+        stallName: 'Old name',
+        description: 'Old description',
+        category: 'Beverages',
+        openingHours: '9 AM – 5 PM',
+        isOpen: true,
+        latitude: 3.14,
+        longitude: 101.69,
+        selfCollectEnabled: true,
+        locationSharingActive: true,
+        locationUpdatedAt: DateTime.utc(2026, 10, 25),
+        imageUrl: 'https://example.com/old.jpg');
+    final hours = {
+      1: [const StallHoursInterval(1320, 120)]
+    };
+    final closures = [
+      TemporaryClosure(DateTime.utc(2026, 10, 26), DateTime.utc(2026, 10, 27))
+    ];
+    final draft = buildStallProfileDraft(
+        original: original,
+        name: ' New name ',
+        description: ' New description ',
+        phone: '012-345 6789',
+        legacyHours: original.openingHours,
+        categories: ['Beverages', 'Burger'],
+        hours: hours,
+        closures: closures);
+    expect(draft.stallName, 'New name');
+    expect(draft.phoneNumber, '+60123456789');
+    expect(draft.allCategories, ['Beverages', 'Burger']);
+    expect(draft.isOpen, true);
+    expect(draft.selfCollectEnabled, true);
+    expect(draft.latitude, original.latitude);
+    expect(draft.longitude, original.longitude);
+    expect(draft.locationSharingActive, true);
+    expect(draft.locationUpdatedAt, original.locationUpdatedAt);
+    expect(draft.imageUrl, original.imageUrl);
+    expect(original.stallName, 'Old name');
+    hours[1]!.clear();
+    closures.clear();
+    expect(draft.weeklyHours[1], hasLength(1));
+    expect(draft.temporaryClosures, hasLength(1));
+  });
+  for (final size in [
+    const Size(320, 740),
+    const Size(390, 844),
+    const Size(768, 1024),
+    const Size(960, 700),
+    const Size(1280, 800)
+  ]) {
+    testWidgets('responsive Edit stall at ${size.width} × ${size.height}',
+        (tester) async {
+      _viewport(tester, size);
+      await tester.pumpWidget(_app());
+      await tester.pumpAndSettle();
+      final wide = size.width >= 900;
+      expect(
+          find.byKey(Key(
+              wide ? 'edit-stall-two-columns' : 'edit-stall-single-column')),
+          findsOneWidget);
+      final details =
+          tester.getRect(find.byKey(const Key('edit-stall-details')));
+      final hours = tester.getRect(find.byKey(const Key('edit-stall-hours')));
+      if (wide) {
+        expect(hours.left, greaterThan(details.right));
+        expect(hours.top, closeTo(details.top, 1));
+      } else {
+        expect(hours.top, greaterThan(details.bottom));
+      }
+      final save = find.byKey(const Key('edit-stall-save'));
+      expect(tester.getRect(save).bottom, lessThanOrEqualTo(size.height));
+      expect(tester.getRect(save).top, greaterThan(size.height - 100));
+      expect(tester.getSize(save).height, greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'edit-stall-${size.width.toInt()}');
+    });
+  }
+  testWidgets(
+      'Save stays fixed while scrolling and opening hours expands on phone',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_app());
+    final save = find.byKey(const Key('edit-stall-save'));
+    final before = tester.getRect(save);
+    expect(find.text('Monday'), findsNothing);
+    await tester.ensureVisible(find.text('Opening hours'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Opening hours'));
+    await tester.pumpAndSettle();
+    expect(find.text('Monday'), findsOneWidget);
+    expect(tester.getRect(save), before);
+    await tester.ensureVisible(find.text('Monday'));
+    await tester.tap(find.text('Monday'));
+    await tester.pumpAndSettle();
+    final state = tester.state<_HarnessState>(find.byType(_Harness));
+    expect(state.hours[1], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+      'hours sheet edits the draft and closing it does not save the profile',
+      (tester) async {
+    _viewport(tester, const Size(1280, 800));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(onAction: actions.add));
+    await tester.tap(find.text('Edit weekly hours'));
+    await tester.pumpAndSettle();
+    expect(find.text('Weekly opening hours'), findsOneWidget);
+    await tester.tap(find.text('Monday').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(
+        tester.state<_HarnessState>(find.byType(_Harness)).hours[1], isEmpty);
+    expect(actions, isEmpty);
+  });
+  testWidgets(
+      'category chooser keeps multiple selections and form edits on resize',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_app());
+    await tester.enterText(
+        find.byType(TextFormField).first, 'My updated stall');
+    await tester.ensureVisible(find.text('Choose categories'));
+    await tester.tap(find.text('Choose categories'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Burger'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(tester.state<_HarnessState>(find.byType(_Harness)).categories,
+        {'Beverages', 'Burger'});
+    tester.view.physicalSize = const Size(1280, 800);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('edit-stall-two-columns')), findsOneWidget);
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField).first)
+            .controller!
+            .text,
+        'My updated stall');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Preview reads unsaved text and does not trigger Save',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(onAction: actions.add));
+    await tester.enterText(find.byType(TextFormField).first, 'New stall name');
+    await tester.tap(find.text('Preview'));
+    await tester.pumpAndSettle();
+    expect(actions, ['preview:New stall name']);
+    await tester.tap(find.text('Cancel'));
+    expect(actions.last, 'cancel');
+  });
+  testWidgets('fixed Save validates and uses the latest fields',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(onAction: actions.add));
+    await tester.enterText(find.byType(TextFormField).first, '   ');
+    await tester.tap(find.byKey(const Key('edit-stall-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter your stall name.'), findsOneWidget);
+    expect(actions, isEmpty);
+    await tester.enterText(find.byType(TextFormField).first, 'New name');
+    await tester.tap(find.byKey(const Key('edit-stall-save')));
+    await tester.pumpAndSettle();
+    expect(actions, ['save:New name']);
+  });
+  testWidgets(
+      'Save and Preview disable during saving, loading and photo selection',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    for (final mode in ['saving', 'loading', 'picking']) {
+      await tester.pumpWidget(_app(
+          saving: mode == 'saving',
+          loading: mode == 'loading',
+          picking: mode == 'picking'));
+      await tester.pump();
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('edit-stall-save')))
+              .onPressed,
+          isNull);
+      expect(
+          tester
+              .widget<OutlinedButton>(
+                  find.widgetWithText(OutlinedButton, 'Preview'))
+              .onPressed,
+          isNull);
+      expect(tester.takeException(), isNull);
+    }
+  });
+  for (final width in [320.0, 960.0]) {
+    testWidgets('large text fits $width and footer remains above the keyboard',
+        (tester) async {
+      _viewport(tester, Size(width, 900));
+      await tester.pumpWidget(_app(scale: 1.6));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      final save = tester.getRect(find.byKey(const Key('edit-stall-save')));
+      expect(save.bottom, lessThanOrEqualTo(600));
+      expect(tester.takeException(), isNull);
+      tester.view.viewInsets = const FakeViewPadding();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Opening hours'));
+      await tester.tap(find.text('Opening hours'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Opens 9:00 AM').first);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 ````
 
@@ -2057,311 +5408,49 @@ void main() {
 }
 ````
 
-## File: test/payment_ui_test.dart
+## File: test/map_marker_guide_test.dart
 ````dart
-import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:stallseeker/core/models/demo_order.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
-import 'package:stallseeker/features/shared/booking_payment_card.dart';
-import 'package:stallseeker/features/vendor/dashboard/vendor_demo_sales.dart';
-
-DemoOrder order(
-        {String id = 'order',
-        String vendorId = 'seller',
-        String? mode = 'test',
-        String? payment = 'awaiting_payment',
-        bool checkoutFirst = false,
-        bool vendorUnseenRequest = false,
-        int refund = 0,
-        DateTime? paidAt}) =>
-    DemoOrder(
-        id: id,
-        customerId: 'buyer',
-        vendorId: vendorId,
-        customerName: 'Adam',
-        stallName: 'Nasi Lemak Kak Ani',
-        status: 'confirmed',
-        items: const [],
-        totalCents: 1250,
-        createdAt: DateTime(2026, 10, 20),
-        paymentMode: mode,
-        checkoutFirst: checkoutFirst,
-        vendorUnseenRequest: vendorUnseenRequest,
-        paymentStatus: payment,
-        paymentRefundedCents: refund,
-        paymentExpiresAt: DateTime.now().add(const Duration(minutes: 5)),
-        paymentPaidAt: paidAt);
-
-Future<void> preview(WidgetTester tester, String name) async {
-  if (!const bool.fromEnvironment('PAYMENT_PREVIEW')) return;
-  final boundary = tester
-      .renderObject<RenderRepaintBoundary>(find.byKey(const Key('preview')));
-  await tester.runAsync(() async {
-    final image = await boundary.toImage(pixelRatio: 2);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    await Directory('tmp/payment-previews').create(recursive: true);
-    await File('tmp/payment-previews/$name.png')
-        .writeAsBytes(data!.buffer.asUint8List());
-    image.dispose();
-  });
-}
-
-Widget app(Widget child) => MaterialApp(
-    theme: AppTheme.lightTheme,
-    home: RepaintBoundary(
-        key: const Key('preview'),
-        child: Scaffold(
-            appBar: AppBar(
-                title: const Text('StallSeeker',
-                    style: TextStyle(fontFamily: 'Roboto'))),
-            body: SingleChildScrollView(
-                padding: const EdgeInsets.all(16), child: child))));
+import 'package:stallseeker/features/customer/home/map_marker_guide.dart';
 
 void main() {
-  setUpAll(() async {
-    if (!const bool.fromEnvironment('PAYMENT_PREVIEW')) return;
-    const fontRoot = String.fromEnvironment('PREVIEW_FONT_ROOT');
-    final bytes = await File('$fontRoot/roboto-regular.ttf').readAsBytes();
-    for (final family in ['Roboto', 'Ahem']) {
-      final font = FontLoader(family)
-        ..addFont(Future.value(ByteData.sublistView(bytes)));
-      await font.load();
+  for (final width in [320.0, 390.0, 420.0]) {
+    for (final scale in [1.0, 1.6]) {
+      testWidgets(
+          'marker guide reserves enough space at $width px / $scale text',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+            child: Scaffold(
+              body: Builder(builder: (context) {
+                return SizedBox(
+                  height: MapMarkerGuide.heightFor(context, width) + 112,
+                  child: const Column(children: [
+                    MapMarkerGuide(),
+                    SizedBox(height: 112, child: Text('Stall card')),
+                  ]),
+                );
+              }),
+            ),
+          ),
+        ));
+        expect(find.text('Search location'), findsOneWidget);
+        expect(find.text('Other stalls'), findsOneWidget);
+        expect(find.text('Selected stall'), findsOneWidget);
+        expect(tester.getBottomLeft(find.byType(MapMarkerGuide)).dy,
+            lessThanOrEqualTo(tester.getTopLeft(find.text('Stall card')).dy));
+        expect(tester.takeException(), isNull);
+      });
     }
-    final icons = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
-    await icons.load();
-  });
-  test(
-      'legacy records remain payable outside the app and test payment metadata survives round trips',
-      () {
-    final legacy = order(mode: null, payment: null);
-    expect(legacy.canPrepare, isTrue);
-    expect(legacy.hasTestPayment, isFalse);
-    final paid = order(payment: 'paid', paidAt: DateTime.utc(2026, 10, 20));
-    final decoded = DemoOrder.fromMap(paid.toMap()).withStatus('preparing');
-    expect(decoded.paymentStatus, 'paid');
-    expect(decoded.paymentPaidAt, paid.paymentPaidAt);
-    expect(decoded.paymentMode, 'test');
-    expect(order(checkoutFirst: true).toMap()['checkoutFirst'], isTrue);
-    expect(DemoOrder.fromMap(order(checkoutFirst: true).toMap()).checkoutFirst,
-        isTrue);
-    expect(order().canPrepare, isFalse);
-    expect(paid.canPrepare, isTrue);
-  });
-
-  test('customer may cancel a paid test booking until it is collected', () {
-    final paid = order(payment: 'paid');
-    for (final status in ['confirmed', 'preparing', 'ready']) {
-      expect(paid.withStatus(status).canCustomerCancel, isTrue);
-    }
-    expect(paid.withStatus('collected').canCustomerCancel, isFalse);
-    expect(order(mode: null).canCustomerCancel, isFalse);
-    expect(bookingStatusLabel(order(checkoutFirst: true)), 'Awaiting payment');
-    expect(bookingStatusLabel(order(checkoutFirst: true, payment: 'paid')),
-        'Paid · awaiting preparation');
-    expect(
-        order(checkoutFirst: true, payment: 'paid', vendorUnseenRequest: true)
-            .vendorNeedsAttention,
-        isTrue);
-    expect(
-        order(
-                checkoutFirst: true,
-                payment: 'pending',
-                vendorUnseenRequest: true)
-            .vendorNeedsAttention,
-        isFalse);
-  });
-
-  test(
-      'demo sales exclude other stalls, old bookings, unpaid and refunded orders',
-      () {
-    final now =
-        DateTime.utc(2026, 10, 19, 17); // 1am on 20 October in Malaysia.
-    final result = DemoSalesSummary.fromOrders([
-      order(payment: 'paid', paidAt: now),
-      order(payment: 'paid', paidAt: now, refund: 250),
-      order(payment: 'paid', paidAt: DateTime.utc(2026, 10, 19, 15)),
-      order(vendorId: 'other', payment: 'paid', paidAt: now),
-      order(mode: null, payment: 'paid', paidAt: now),
-      order(payment: 'refunded', paidAt: now),
-      order(payment: 'refund_pending', paidAt: now),
-      order(payment: 'pending', paidAt: now),
-    ], vendorId: 'seller', now: now);
-    expect(result.todayCents, 2250);
-    expect(result.totalCents, 3500);
-    expect(result.paidOrders, 3);
-  });
-
-  testWidgets(
-      'customer can pay only eligible bookings and sees test disclosure',
-      (tester) async {
-    tester.view.resetPhysicalSize();
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    var tapped = 0;
-    await tester.pumpWidget(app(BookingPaymentCard(
-        booking: order(),
-        isVendor: false,
-        onPay: () => tapped++,
-        onRefresh: () {})));
-    await tester.pumpAndSettle();
-    expect(find.text('Pay RM 12.50'), findsOneWidget);
-    expect(find.textContaining('No real money'), findsOneWidget);
-    await tester.tap(find.text('Pay RM 12.50'));
-    expect(tapped, 1);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    await preview(tester, 'customer-payment');
-
-    await tester.pumpWidget(app(BookingPaymentCard(
-        booking: order(payment: 'paid'),
-        isVendor: false,
-        onPay: () => tapped++)));
-    expect(find.text('Pay RM 12.50'), findsNothing);
-    expect(find.text('Paid · Test'), findsOneWidget);
-  });
-
-  testWidgets('vendor and busy payment cards cannot launch checkout',
-      (tester) async {
-    await tester
-        .pumpWidget(app(BookingPaymentCard(booking: order(), isVendor: true)));
-    expect(find.text('Pay RM 12.50'), findsNothing);
-    expect(find.textContaining('Preparation unlocks'), findsOneWidget);
-    await tester.pumpWidget(app(BookingPaymentCard(
-        booking: order(),
-        isVendor: false,
-        busy: true,
-        onPay: () => fail('Must not start another payment'))));
-    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
-        isNull);
-  });
-
-  testWidgets('sales card is labelled as a simulation and fits narrow screens',
-      (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(app(DemoSalesCard(
-        summary: const DemoSalesSummary(
-            todayCents: 8500, totalCents: 12500, paidOrders: 8),
-        onHistory: () {})));
-    await tester.pumpAndSettle();
-    expect(find.text('RM 85.00'), findsOneWidget);
-    expect(find.textContaining('no bank deposits'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await preview(tester, 'vendor-sales');
-  });
-}
-````
-
-## File: test/profile_page_test.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:stallseeker/features/shared/profile_page.dart';
-
-ProfilePage page({
-  bool guest = false,
-  String name = 'Adam Danish',
-  String email = 'adam@example.com',
-  VoidCallback? onHome,
-  VoidCallback? onCustom,
-  VoidCallback? onSignIn,
-}) {
-  void noop() {}
-  return ProfilePage(
-    name: name,
-    email: email,
-    isVendor: false,
-    isGuest: guest,
-    canChangePassword: true,
-    location: 'Johor Bahru, Johor',
-    isLoadingLocation: false,
-    onRefresh: () async {},
-    onLocation: noop,
-    onEdit: noop,
-    onPassword: noop,
-    onFaq: noop,
-    onAbout: noop,
-    onLogout: noop,
-    onSignIn: onSignIn ?? noop,
-    onNotificationSettings: noop,
-    onPrivacyPolicy: noop,
-    onTerms: noop,
-    onDeleteAccount: noop,
-    onHomeLocation: onHome,
-    onCustomLocation: onCustom,
-  );
-}
-
-void main() {
-  testWidgets(
-      'saved pin rows invoke their actions and remain available to guests',
-      (tester) async {
-    var homes = 0;
-    var customs = 0;
-    var signIns = 0;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: page(
-          guest: true,
-          name: 'Guest',
-          email: '',
-          onHome: () => homes++,
-          onCustom: () => customs++,
-          onSignIn: () => signIns++,
-        ),
-      ),
-    ));
-
-    await tester.tap(find.text('Home location'));
-    await tester.tap(find.text('Custom pins'));
-    await tester.tap(find.text('Sign in'));
-    expect(homes, 1);
-    expect(customs, 1);
-    expect(signIns, 1);
-    expect(find.text('Change password'), findsNothing);
-    expect(find.text('Delete account'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('long account details wrap on small screens with larger text',
-      (tester) async {
-    tester.view.physicalSize = const Size(320, 740);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(MaterialApp(
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: const TextScaler.linear(1.5),
-        ),
-        child: child!,
-      ),
-      home: Scaffold(
-        body: page(
-          name: 'Adam Danish bin Muhammad Abdullah',
-          email: 'adam.danish.muhammad.abdullah@example.com',
-          onHome: () {},
-          onCustom: () {},
-        ),
-      ),
-    ));
-    await tester.pump();
-    expect(tester.takeException(), isNull);
-    await tester.scrollUntilVisible(find.text('Logout'), 200);
-    await tester.pumpAndSettle();
-    expect(find.text('Logout'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  }
 }
 ````
 
@@ -2753,6 +5842,566 @@ void main() {
 }
 ````
 
+## File: test/saved_search_access_test.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/services/saved_search_service.dart';
+
+class _Auth extends Fake implements FirebaseAuth {
+  _Auth(this.currentUser);
+  @override
+  final User? currentUser;
+}
+
+class _User extends Fake implements User {
+  _User(this.isAnonymous, this.emailVerified);
+  @override
+  final bool isAnonymous;
+  @override
+  final bool emailVerified;
+}
+
+class _Database extends Fake implements FirebaseFirestore {}
+
+void main() {
+  test(
+      'saved searches reject signed-out, guest and unverified users before accessing data',
+      () async {
+    for (final user in <User?>[null, _User(true, false), _User(false, false)]) {
+      final service =
+          SavedSearchService(auth: _Auth(user), firestore: _Database());
+      await expectLater(service.load(), throwsStateError);
+      await expectLater(service.save('My burgers', {}), throwsStateError);
+      expect(() => service.remove('search'), throwsStateError);
+    }
+  });
+}
+````
+
+## File: test/show_all_dishes_regression_test.dart
+````dart
+// Read-only Firebase platform fakes exercise the real stall-details widget.
+// The interfaces are already installed FlutterFire dependencies; no package is added.
+// ignore_for_file: depend_on_referenced_packages
+import 'dart:async';
+import 'package:cloud_firestore_platform_interface/cloud_firestore_platform_interface.dart';
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/customer/vendor_details/vendor_details_screen.dart';
+
+class _SignedOutAuth extends FirebaseAuthPlatform {
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) => this;
+  @override
+  FirebaseAuthPlatform setInitialValues(
+          {PigeonUserDetails? currentUser, String? languageCode}) =>
+      this;
+  @override
+  UserPlatform? get currentUser => null;
+}
+
+class _ReadOnlyFirestore extends FirebaseFirestorePlatform {
+  _ReadOnlyFirestore() {
+    menu = StreamController<QuerySnapshotPlatform>.broadcast(
+        onListen: () => menuListens++, onCancel: () => menuCancels++);
+    reviews = StreamController<QuerySnapshotPlatform>.broadcast(
+        onListen: () => reviewListens++, onCancel: () => reviewCancels++);
+  }
+  late final StreamController<QuerySnapshotPlatform> menu;
+  late final StreamController<QuerySnapshotPlatform> reviews;
+  int menuListens = 0, menuCancels = 0, reviewListens = 0, reviewCancels = 0;
+  @override
+  FirebaseFirestorePlatform delegateFor(
+          {required FirebaseApp app, required String databaseId}) =>
+      this;
+  @override
+  CollectionReferencePlatform collection(String path) =>
+      _ReadOnlyCollection(this, path);
+  @override
+  DocumentReferencePlatform doc(String path) => _ReadOnlyDocument(this, path);
+  QuerySnapshotPlatform snapshot(
+          String collectionPath, List<Map<String, Object?>> data) =>
+      QuerySnapshotPlatform([
+        for (var index = 0; index < data.length; index++)
+          DocumentSnapshotPlatform(
+              this,
+              '$collectionPath/item-$index',
+              data[index],
+              PigeonSnapshotMetadata(
+                  hasPendingWrites: false, isFromCache: true)),
+      ], [], SnapshotMetadataPlatform(false, true));
+  Future<void> close() async {
+    await menu.close();
+    await reviews.close();
+  }
+}
+
+class _ReadOnlyCollection extends CollectionReferencePlatform {
+  _ReadOnlyCollection(this.owner, String path) : super(owner, path);
+  final _ReadOnlyFirestore owner;
+  @override
+  DocumentReferencePlatform doc([String? path]) =>
+      owner.doc('${this.path}/${path ?? 'generated'}');
+  @override
+  Stream<QuerySnapshotPlatform> snapshots(
+          {bool includeMetadataChanges = false,
+          ServerTimestampBehavior serverTimestampBehavior =
+              ServerTimestampBehavior.none,
+          required ListenSource listenSource}) =>
+      path.endsWith('/menu') ? owner.menu.stream : owner.reviews.stream;
+}
+
+class _ReadOnlyDocument extends DocumentReferencePlatform {
+  _ReadOnlyDocument(super.firestore, super.path);
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setupFirebaseCoreMocks();
+  final firestore = _ReadOnlyFirestore();
+  setUpAll(() async {
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _SignedOutAuth();
+    FirebaseFirestorePlatform.instance = firestore;
+  });
+  tearDownAll(firestore.close);
+  for (final width in [390.0, 960.0]) {
+    testWidgets('Show all dishes keeps the loaded menu and reviews at $width',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 2200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+      firestore.menuListens = 0;
+      firestore.menuCancels = 0;
+      firestore.reviewListens = 0;
+      firestore.reviewCancels = 0;
+      final vendor = VendorModel(
+          vendorId: 'seller',
+          stallName: 'Burger Pak Ali',
+          description: 'Fresh burgers',
+          category: 'Burger',
+          openingHours: '9 AM – 5 PM');
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: VendorDetailsScreen(
+              vendor: vendor,
+              initialDishId: 'item-0',
+              previewOnly: true,
+              draftPreview: true)));
+      await tester.pump();
+      // A live broadcast emits once. No future database update should be needed
+      // merely to remove the selected-dish filter and reveal cached dishes.
+      firestore.menu.add(firestore.snapshot('vendors/seller/menu', [
+        {
+          'name': 'Beef burger',
+          'price': 8.0,
+          'status': 'available',
+          'section': 'Burgers'
+        },
+        {
+          'name': 'Chicken burger',
+          'price': 7.0,
+          'status': 'available',
+          'section': 'Burgers'
+        },
+      ]));
+      firestore.reviews.add(firestore.snapshot('stallReviews/seller/entries', [
+        {
+          'customerName': 'Aina',
+          'rating': 4,
+          'text': 'Customer feedback remains visible',
+          'photoUrls': <String>[]
+        },
+      ]));
+      await tester.pumpAndSettle();
+      expect(find.text('Beef burger'), findsOneWidget);
+      expect(find.text('Chicken burger'), findsNothing);
+      expect(find.text('Customer feedback remains visible'), findsOneWidget);
+      expect(firestore.menuListens, 1);
+      expect(firestore.reviewListens, 1);
+      await tester.ensureVisible(find.text('Show all dishes'));
+      await tester.tap(find.text('Show all dishes'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Chicken burger'), findsOneWidget,
+          reason:
+              'Clearing a local filter must reveal already-loaded dishes without another server event.');
+      expect(find.text('Beef burger'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Customer feedback remains visible'), findsOneWidget);
+      expect(firestore.menuListens, 1);
+      expect(firestore.menuCancels, 0);
+      expect(firestore.reviewListens, 1);
+      expect(firestore.reviewCancels, 0);
+      // The preserved subscription must still accept real menu updates.
+      firestore.menu.add(firestore.snapshot('vendors/seller/menu', [
+        {
+          'name': 'Beef burger',
+          'price': 8.0,
+          'status': 'available',
+          'section': 'Burgers'
+        },
+        {
+          'name': 'Chicken burger',
+          'price': 7.0,
+          'status': 'available',
+          'section': 'Burgers'
+        },
+        {
+          'name': 'Fish burger',
+          'price': 9.0,
+          'status': 'available',
+          'section': 'Burgers'
+        },
+      ]));
+      await tester.pumpAndSettle();
+      expect(find.text('Fish burger'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+````
+
+## File: test/unsaved_stall_changes_guard_test.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/vendor/profile/unsaved_stall_changes_guard.dart';
+
+void main() {
+  for (final choice in ['Keep editing', 'Discard changes', 'Save changes']) {
+    testWidgets('leaving with unsaved changes: $choice', (tester) async {
+      final guard = GlobalKey<UnsavedStallChangesGuardState>();
+      var saved = 0;
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Builder(
+              builder: (context) => Scaffold(
+                  body: TextButton(
+                      child: const Text('Open editor'),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => UnsavedStallChangesGuard(
+                                  key: guard,
+                                  hasChanges: true,
+                                  saving: false,
+                                  onSave: () async {
+                                    saved++;
+                                    guard.currentState!.close();
+                                  },
+                                  child: Scaffold(
+                                      appBar: AppBar(
+                                          title: const Text('Edit stall')),
+                                      body: TextButton(
+                                          onPressed: () => guard.currentState!
+                                              .requestLeave(),
+                                          child: const Text('Cancel')))))))))));
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle();
+      // Exercise system back rather than only the custom Cancel button.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Save your changes?'), findsOneWidget);
+      await tester.tap(find.text(choice));
+      await tester.pumpAndSettle();
+      expect(saved, choice == 'Save changes' ? 1 : 0);
+      expect(find.text('Edit stall'),
+          choice == 'Keep editing' ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+````
+
+## File: test/vendor_reviews_test.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/stall_review.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/shared/stall_review_card.dart';
+import 'package:stallseeker/features/vendor/reviews/vendor_reply_editor.dart';
+import 'package:stallseeker/features/vendor/reviews/vendor_review_filters.dart';
+import 'package:stallseeker/features/vendor/reviews/vendor_reviews_screen.dart';
+import 'package:stallseeker/features/vendor/reviews/vendor_reviews_dashboard_card.dart';
+
+final posted = DateTime.utc(2026, 10, 24, 1);
+StallReview review(String id, int stars,
+        {bool replied = false,
+        bool updated = false,
+        List<String> photos = const []}) =>
+    StallReview(
+        customerId: id,
+        customerName: id,
+        rating: stars,
+        text: 'Feedback from $id',
+        photoUrls: photos,
+        createdAt: posted,
+        updatedAt: updated ? posted.add(const Duration(days: 2)) : posted,
+        edited: updated,
+        vendorReply: replied
+            ? VendorReviewReply(
+                text: 'Thank you, $id',
+                createdAt: posted.add(const Duration(days: 1)),
+                updatedAt: posted.add(const Duration(days: 3)),
+                reviewUpdatedAt: posted,
+                edited: true)
+            : null);
+
+void main() {
+  test('legacy reviews load without new metadata or private profile reads', () {
+    final value = StallReview.fromMap({
+      'customerName': 'Aina',
+      'rating': 4,
+      'text': 'Good',
+      'photoUrls': ['https://example.com/photo.jpg'],
+      'updatedAt': Timestamp.fromDate(posted)
+    }, 'a');
+    expect(value.postedAt!.isAtSameMomentAs(posted), true);
+    expect(value.hasReply, false);
+    expect(value.edited, false);
+    expect(value.customerAvatarUrl, '');
+    expect(value.updatedAfterReply, false);
+  });
+  test(
+      'replies do not change totals and updated reviews are separate from unanswered',
+      () {
+    final reviews = [
+      review('Aina', 3, replied: true, updated: true),
+      review('Daniel', 5)
+    ];
+    final summary = StallReviewSummary(reviews);
+    expect(summary.average, 4);
+    expect(summary.total, 2);
+    expect(summary.unanswered, 1);
+    expect(summary.updated, 1);
+    expect(StallReviewSummary([]).average, isNull);
+  });
+  test(
+      'updated flag compares the answered version even if reply was posted later',
+      () {
+    expect(review('Aina', 3, replied: true, updated: true).updatedAfterReply,
+        true);
+    expect(review('Aina', 3, replied: true).updatedAfterReply, false);
+  });
+  test('reply filters, star filters and rating sorts compose', () {
+    final reviews = [
+      review('A', 3, replied: true, updated: true),
+      review('B', 5),
+      review('C', 1, replied: true)
+    ];
+    expect(
+        filterVendorReviews(reviews, filter: VendorReviewFilter.unanswered)
+            .map((r) => r.customerId),
+        ['B']);
+    expect(
+        filterVendorReviews(reviews, filter: VendorReviewFilter.updated)
+            .map((r) => r.customerId),
+        ['A']);
+    expect(
+        filterVendorReviews(reviews,
+                filter: VendorReviewFilter.replied, stars: 1)
+            .map((r) => r.customerId),
+        ['C']);
+    expect(
+        filterVendorReviews(reviews, sort: VendorReviewSort.lowest)
+            .map((r) => r.rating),
+        [1, 3, 5]);
+    expect(
+        filterVendorReviews(reviews, sort: VendorReviewSort.highest)
+            .map((r) => r.rating),
+        [5, 3, 1]);
+  });
+  test('newest sorts by review posting date, not owner reply activity', () {
+    final older = review('Old', 3, replied: true, updated: true);
+    final newer = StallReview(
+        customerId: 'New',
+        customerName: 'New',
+        rating: 5,
+        text: '',
+        photoUrls: const [],
+        createdAt: posted.add(const Duration(days: 1)),
+        updatedAt: posted.add(const Duration(days: 1)));
+    expect(filterVendorReviews([older, newer]).first.customerId, 'New');
+  });
+  testWidgets('opening review list does not clear awaiting reply count',
+      (tester) async {
+    final reviews = [
+      review('Aina', 3, replied: true, updated: true),
+      review('Daniel', 5)
+    ];
+    final replies = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+            body: VendorReviewsView(
+                reviews: reviews,
+                stallName: 'Burger Pak Ali',
+                onReply: (r) => replies.add(r.customerId),
+                onDeleteReply: (_) {}))));
+    expect(find.text('2 reviews · 1 awaiting reply'), findsOneWidget);
+    await tester.tap(find.text('Unanswered'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aina'), findsNothing);
+    expect(find.text('Daniel'), findsOneWidget);
+    await tester.ensureVisible(find.text('Reply'));
+    await tester.tap(find.text('Reply'));
+    expect(replies, ['Daniel']);
+    expect(find.text('2 reviews · 1 awaiting reply'), findsOneWidget);
+    await tester.ensureVisible(find.text('Updated after reply'));
+    await tester.tap(find.text('Updated after reply'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aina'), findsOneWidget);
+    expect(find.text('Daniel'), findsNothing);
+    expect(find.text('Stall owner'), findsOneWidget);
+  });
+  for (final width in [320.0, 960.0]) {
+    testWidgets('review list fits $width with enlarged text', (tester) async {
+      tester.view.physicalSize = Size(width, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme,
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.6)),
+              child: child!),
+          home: Scaffold(
+              body: VendorReviewsView(
+                  reviews: [
+                review('A customer with a long public name', 2,
+                    replied: true, updated: true)
+              ],
+                  stallName: 'Burger Pak Ali',
+                  onReply: (_) {},
+                  onDeleteReply: (_) {}))));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('Delete reply'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('summary counts remain unchanged when owner reply is shown',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VendorReviewSummaryContent(
+                reviews: [review('A', 3, replied: true), review('B', 5)]))));
+    expect(find.text('4.0 ★'), findsOneWidget);
+    expect(find.text('2 reviews'), findsOneWidget);
+    expect(find.text('1 awaiting reply'), findsOneWidget);
+  });
+  testWidgets('reply editor keeps draft on failure and posts it on retry',
+      (tester) async {
+    var calls = 0;
+    String? postedText;
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Builder(
+            builder: (context) => Scaffold(
+                body: TextButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => VendorReplyEditor(
+                                review: review('Aina', 3),
+                                stallName: 'Burger Pak Ali',
+                                onSave: (text) async {
+                                  calls++;
+                                  if (calls == 1) throw Exception('Offline');
+                                  postedText = text;
+                                }))),
+                    child: const Text('Open'))))));
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Feedback from Aina'), findsOneWidget);
+    await tester.ensureVisible(find.text('Post reply'));
+    await tester.tap(find.text('Post reply'));
+    await tester.pumpAndSettle();
+    expect(find.text('Write a reply before posting.'), findsOneWidget);
+    expect(calls, 0);
+    await tester.enterText(
+        find.byType(TextFormField), '  Thank you for your feedback.  ');
+    await tester.ensureVisible(find.text('Post reply'));
+    await tester.tap(find.text('Post reply'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Your draft is still here'), findsOneWidget);
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField))
+            .controller!
+            .text,
+        '  Thank you for your feedback.  ');
+    await tester.ensureVisible(find.text('Retry'));
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(postedText, 'Thank you for your feedback.');
+    expect(find.text('Open'), findsOneWidget);
+  });
+  testWidgets(
+      'edit reply preloads text and cancel asks before discarding draft',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: VendorReplyEditor(
+            review: review('Aina', 3, replied: true),
+            stallName: 'Burger Pak Ali',
+            onSave: (_) async {})));
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField))
+            .controller!
+            .text,
+        'Thank you, Aina');
+    await tester.enterText(find.byType(TextFormField), 'A new reply');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Discard this draft?'), findsOneWidget);
+    await tester.tap(find.text('Keep writing'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField))
+            .controller!
+            .text,
+        'A new reply');
+  });
+  testWidgets('photo thumbnail opens the full-screen viewer', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+            body: StallReviewCard(
+                review: review('Aina', 3,
+                    photos: ['https://example.com/photo.jpg']),
+                stallName: 'Burger Pak Ali'))));
+    await tester.tap(find.byType(Image).first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewPhotoViewer), findsOneWidget);
+    expect(find.text('Photo 1 of 1'), findsOneWidget);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewPhotoViewer), findsNothing);
+  });
+}
+````
+
 ## File: lib/core/constants/firestore_collections.dart
 ````dart
 class FirestoreCollections {
@@ -2760,255 +6409,6 @@ class FirestoreCollections {
   static const String vendors = 'vendors';
   static const String menus = 'menus';
   static const String follows = 'follows';
-}
-````
-
-## File: lib/core/models/demo_order.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-class DemoOrderItem {
-  const DemoOrderItem(
-      {required this.itemId,
-      required this.name,
-      required this.unitPriceCents,
-      required this.quantity});
-
-  final String itemId;
-  final String name;
-  final int unitPriceCents;
-  final int quantity;
-
-  int get subtotalCents => unitPriceCents * quantity;
-
-  Map<String, dynamic> toMap() => {
-        'itemId': itemId,
-        'name': name,
-        'unitPriceCents': unitPriceCents,
-        'quantity': quantity,
-      };
-
-  factory DemoOrderItem.fromMap(Map<String, dynamic> data) => DemoOrderItem(
-        itemId: data['itemId'] as String? ?? '',
-        name: data['name'] as String? ?? '',
-        unitPriceCents: (data['unitPriceCents'] as num?)?.toInt() ?? 0,
-        quantity: (data['quantity'] as num?)?.toInt() ?? 0,
-      );
-}
-
-class DemoOrder {
-  const DemoOrder(
-      {required this.id,
-      required this.customerId,
-      required this.vendorId,
-      required this.customerName,
-      required this.stallName,
-      required this.status,
-      required this.items,
-      required this.totalCents,
-      required this.createdAt,
-      this.expiresAt,
-      this.pickupLatitude,
-      this.pickupLongitude,
-      this.paymentMode,
-      this.checkoutFirst = false,
-      this.paymentStatus,
-      this.paymentReference,
-      this.paymentExpiresAt,
-      this.paymentPaidAt,
-      this.paymentRefundedCents = 0,
-      this.vendorUnseenRequest = false,
-      this.customerUnseenReady = false});
-
-  final String id;
-  final String customerId;
-  final String vendorId;
-  final String customerName;
-  final String stallName;
-  final String status;
-  final List<DemoOrderItem> items;
-  final int totalCents;
-  final DateTime? createdAt;
-  final DateTime? expiresAt;
-  final double? pickupLatitude;
-  final double? pickupLongitude;
-  final String? paymentMode;
-  final bool checkoutFirst;
-  final String? paymentStatus;
-  final String? paymentReference;
-  final DateTime? paymentExpiresAt;
-  final DateTime? paymentPaidAt;
-  final int paymentRefundedCents;
-
-  bool get hasTestPayment => paymentMode == 'test';
-  bool get awaitingPayment =>
-      hasTestPayment &&
-      status == 'confirmed' &&
-      {'awaiting_payment', 'pending', 'failed'}.contains(paymentStatus);
-  bool get canPay =>
-      awaitingPayment &&
-      paymentExpiresAt != null &&
-      DateTime.now().isBefore(paymentExpiresAt!);
-  bool get canPrepare =>
-      status == 'confirmed' && (!hasTestPayment || paymentStatus == 'paid');
-  bool get canCustomerCancel =>
-      effectiveStatus == 'requested' ||
-      (hasTestPayment &&
-          {'confirmed', 'preparing', 'ready'}.contains(effectiveStatus));
-  bool get vendorNeedsAttention =>
-      vendorUnseenRequest &&
-      (effectiveStatus == 'requested' ||
-          (checkoutFirst && paymentStatus == 'paid'));
-  int get demoSalesCents => hasTestPayment && paymentStatus == 'paid'
-      ? (totalCents - paymentRefundedCents).clamp(0, totalCents)
-      : 0;
-  final bool vendorUnseenRequest;
-  final bool customerUnseenReady;
-
-  String get effectiveStatus {
-    if (status == 'requested' &&
-        expiresAt != null &&
-        DateTime.now().isAfter(expiresAt!)) {
-      return 'expired';
-    }
-    return status;
-  }
-
-  bool get isActive => !{'collected', 'rejected', 'cancelled', 'expired'}
-      .contains(effectiveStatus);
-
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'customerId': customerId,
-        'vendorId': vendorId,
-        'customerName': customerName,
-        'stallName': stallName,
-        'status': status,
-        'items': items.map((item) => item.toMap()).toList(),
-        'totalCents': totalCents,
-        'createdAt': createdAt?.toIso8601String(),
-        'expiresAt': expiresAt?.toIso8601String(),
-        'pickupLatitude': pickupLatitude,
-        'pickupLongitude': pickupLongitude,
-        'paymentMode': paymentMode,
-        'checkoutFirst': checkoutFirst,
-        'paymentStatus': paymentStatus,
-        'paymentReference': paymentReference,
-        'paymentExpiresAt': paymentExpiresAt?.toIso8601String(),
-        'paymentPaidAt': paymentPaidAt?.toIso8601String(),
-        'paymentRefundedCents': paymentRefundedCents,
-        'vendorUnseenRequest': vendorUnseenRequest,
-        'customerUnseenReady': customerUnseenReady,
-      };
-
-  DemoOrder withStatus(String nextStatus) => DemoOrder(
-        id: id,
-        customerId: customerId,
-        vendorId: vendorId,
-        customerName: customerName,
-        stallName: stallName,
-        status: nextStatus,
-        items: items,
-        totalCents: totalCents,
-        createdAt: createdAt,
-        expiresAt: nextStatus == 'requested' ? expiresAt : null,
-        pickupLatitude: pickupLatitude,
-        pickupLongitude: pickupLongitude,
-        paymentMode: paymentMode,
-        checkoutFirst: checkoutFirst,
-        paymentStatus: paymentStatus,
-        paymentReference: paymentReference,
-        paymentExpiresAt: paymentExpiresAt,
-        paymentPaidAt: paymentPaidAt,
-        paymentRefundedCents: paymentRefundedCents,
-        vendorUnseenRequest: vendorUnseenRequest,
-        customerUnseenReady: customerUnseenReady,
-      );
-
-  factory DemoOrder.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? const <String, dynamic>{};
-    final rawItems = data['items'] as List<dynamic>? ?? const [];
-    return DemoOrder(
-      id: doc.id,
-      customerId: data['customerId'] as String? ?? '',
-      vendorId: data['vendorId'] as String? ?? '',
-      customerName: data['customerName'] as String? ?? 'Customer',
-      stallName: data['stallName'] as String? ?? 'Stall',
-      status: data['status'] as String? ?? 'requested',
-      items: rawItems
-          .whereType<Map>()
-          .map((item) => DemoOrderItem.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
-      totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
-      expiresAt: (data['expiresAt'] as Timestamp?)?.toDate(),
-      pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
-      pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
-      paymentMode: data['paymentMode'] as String?,
-      checkoutFirst: data['checkoutFirst'] == true,
-      paymentStatus: data['paymentStatus'] as String?,
-      paymentReference: data['paymentReference'] as String?,
-      paymentExpiresAt: (data['paymentExpiresAt'] as Timestamp?)?.toDate(),
-      paymentPaidAt: (data['paymentPaidAt'] as Timestamp?)?.toDate(),
-      paymentRefundedCents:
-          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
-      vendorUnseenRequest: data['vendorUnseenRequest'] == true,
-      customerUnseenReady: data['customerUnseenReady'] == true,
-    );
-  }
-
-  factory DemoOrder.fromMap(Map<String, dynamic> data) {
-    final rawItems = data['items'] as List<dynamic>? ?? const [];
-    return DemoOrder(
-      id: data['id'] as String? ?? '',
-      customerId: data['customerId'] as String? ?? '',
-      vendorId: data['vendorId'] as String? ?? '',
-      customerName: data['customerName'] as String? ?? 'Customer',
-      stallName: data['stallName'] as String? ?? 'Stall',
-      status: data['status'] as String? ?? 'requested',
-      items: rawItems
-          .whereType<Map>()
-          .map((item) => DemoOrderItem.fromMap(Map<String, dynamic>.from(item)))
-          .toList(),
-      totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.tryParse(data['createdAt'] as String? ?? ''),
-      expiresAt: DateTime.tryParse(data['expiresAt'] as String? ?? ''),
-      pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
-      pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
-      paymentMode: data['paymentMode'] as String?,
-      checkoutFirst: data['checkoutFirst'] == true,
-      paymentStatus: data['paymentStatus'] as String?,
-      paymentReference: data['paymentReference'] as String?,
-      paymentExpiresAt:
-          DateTime.tryParse(data['paymentExpiresAt'] as String? ?? ''),
-      paymentPaidAt: DateTime.tryParse(data['paymentPaidAt'] as String? ?? ''),
-      paymentRefundedCents:
-          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
-      vendorUnseenRequest: data['vendorUnseenRequest'] == true,
-      customerUnseenReady: data['customerUnseenReady'] == true,
-    );
-  }
-}
-
-String demoOrderStatusLabel(String status) => switch (status) {
-      'requested' => 'Booking requested',
-      'confirmed' => 'Booking confirmed',
-      'preparing' => 'Preparing',
-      'ready' => 'Ready for collection',
-      'collected' => 'Collected',
-      'rejected' => 'Rejected',
-      'cancelled' => 'Cancelled',
-      'expired' => 'Expired',
-      _ => status,
-    };
-
-String bookingStatusLabel(DemoOrder booking) {
-  if (booking.checkoutFirst && booking.status == 'confirmed') {
-    return booking.paymentStatus == 'paid'
-        ? 'Paid · awaiting preparation'
-        : 'Awaiting payment';
-  }
-  return demoOrderStatusLabel(booking.effectiveStatus);
 }
 ````
 
@@ -3028,6 +6428,111 @@ class DishSearchEntry {
   // Older menu records may not contain a price. Their model fallback of zero
   // must not make them appear as free dishes in a price filter.
   final bool priceIsKnown;
+}
+````
+
+## File: lib/core/models/stall_review.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+DateTime? _date(Object? value) => value is Timestamp ? value.toDate() : null;
+
+class VendorReviewReply {
+  const VendorReviewReply({
+    required this.text,
+    this.createdAt,
+    this.updatedAt,
+    this.reviewUpdatedAt,
+    this.edited = false,
+  });
+  final String text;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? reviewUpdatedAt;
+  final bool edited;
+  factory VendorReviewReply.fromMap(Map<String, dynamic> map) =>
+      VendorReviewReply(
+        text: map['text'] is String ? map['text'] as String : '',
+        createdAt: _date(map['createdAt']),
+        updatedAt: _date(map['updatedAt']),
+        reviewUpdatedAt: _date(map['reviewUpdatedAt']),
+        edited: map['edited'] == true,
+      );
+}
+
+class StallReview {
+  const StallReview({
+    required this.customerId,
+    required this.customerName,
+    required this.rating,
+    required this.text,
+    required this.photoUrls,
+    this.customerAvatarUrl = '',
+    this.createdAt,
+    this.updatedAt,
+    this.edited = false,
+    this.vendorReply,
+  });
+  final String customerId;
+  final String customerName;
+  final String customerAvatarUrl;
+  final int rating;
+  final String text;
+  final List<String> photoUrls;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool edited;
+  final VendorReviewReply? vendorReply;
+  bool get hasReply => vendorReply?.text.trim().isNotEmpty == true;
+  DateTime? get postedAt => createdAt ?? updatedAt;
+  bool get updatedAfterReply {
+    final answeredVersion =
+        vendorReply?.reviewUpdatedAt ?? vendorReply?.updatedAt;
+    return hasReply &&
+        updatedAt != null &&
+        answeredVersion != null &&
+        updatedAt!.isAfter(answeredVersion);
+  }
+
+  factory StallReview.fromMap(Map<String, dynamic> map, String id) =>
+      StallReview(
+        customerId: id,
+        customerName: map['customerName'] is String &&
+                (map['customerName'] as String).trim().isNotEmpty
+            ? map['customerName'] as String
+            : 'Customer',
+        customerAvatarUrl: map['customerAvatarUrl'] is String
+            ? map['customerAvatarUrl'] as String
+            : '',
+        rating: map['rating'] is int ? (map['rating'] as int).clamp(1, 5) : 1,
+        text: map['text'] is String ? map['text'] as String : '',
+        photoUrls: map['photoUrls'] is List
+            ? (map['photoUrls'] as List).whereType<String>().take(5).toList()
+            : const [],
+        createdAt: _date(map['createdAt']),
+        updatedAt: _date(map['updatedAt']),
+        edited: map['edited'] == true,
+        vendorReply: map['vendorReply'] is Map
+            ? VendorReviewReply.fromMap(
+                Map<String, dynamic>.from(map['vendorReply'] as Map),
+              )
+            : null,
+      );
+}
+
+class StallReviewSummary {
+  StallReviewSummary(List<StallReview> reviews)
+      : total = reviews.length,
+        unanswered = reviews.where((review) => !review.hasReply).length,
+        updated = reviews.where((review) => review.updatedAfterReply).length,
+        average = reviews.isEmpty
+            ? null
+            : reviews.fold<int>(0, (total, review) => total + review.rating) /
+                reviews.length;
+  final int total;
+  final int unanswered;
+  final int updated;
+  final double? average;
 }
 ````
 
@@ -3187,125 +6692,6 @@ String formatStallTime(int minutes) {
 }
 ````
 
-## File: lib/core/services/demo_order_service.dart
-````dart
-import 'dart:math';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-
-import '../models/demo_order.dart';
-import '../models/vendor_model.dart';
-
-/// Live self-collect bookings shared between customer and vendor accounts.
-/// The old same-phone demo is read separately by LocalDemoBookingService.
-class DemoOrderService {
-  DemoOrderService({FirebaseFirestore? firestore, FirebaseFunctions? functions})
-      : _db = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instance;
-
-  final FirebaseFirestore _db;
-  final FirebaseFunctions _functions;
-
-  Stream<List<DemoOrder>> watchCustomerOrders(String customerId) => _watch(_db
-      .collection('bookings')
-      .where('customerId', isEqualTo: customerId)
-      .orderBy('createdAt', descending: true));
-
-  Stream<List<DemoOrder>> watchVendorOrders(String vendorId) => _watch(_db
-          .collection('bookings')
-          .where('vendorId', isEqualTo: vendorId)
-          .orderBy('createdAt', descending: true))
-      .map((orders) => orders
-          .where((order) => !order.checkoutFirst || order.paymentPaidAt != null)
-          .toList());
-
-  Stream<List<DemoOrder>> _watch(Query<Map<String, dynamic>> query) => query
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map(DemoOrder.fromDocument).toList());
-
-  Stream<DemoOrder?> watchBooking(String bookingId) => _db
-      .collection('bookings')
-      .doc(bookingId)
-      .snapshots()
-      .map((doc) => doc.exists ? DemoOrder.fromDocument(doc) : null);
-
-  Stream<int> watchUnseenCount(String uid, {required bool isVendor}) =>
-      (isVendor ? watchVendorOrders(uid) : watchCustomerOrders(uid)).map(
-          (orders) => orders
-              .where((booking) => isVendor
-                  ? booking.vendorNeedsAttention
-                  : booking.customerUnseenReady)
-              .length);
-
-  Future<String> requestOrder(
-      VendorModel vendor, List<DemoOrderItem> items) async {
-    final random = Random.secure();
-    final key = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
-        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}'
-        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}';
-    final result = await _functions.httpsCallable('createBooking').call({
-      'vendorId': vendor.vendorId,
-      'requestKey': key,
-      'items': [
-        for (final item in items)
-          {'itemId': item.itemId, 'quantity': item.quantity}
-      ],
-    });
-    return (result.data as Map)['bookingId'] as String;
-  }
-
-  Future<void> respond(String bookingId, {required bool accept}) =>
-      _action(bookingId, accept ? 'accept' : 'reject');
-
-  Future<void> advance(String bookingId, String status) => _action(
-        bookingId,
-        switch (status) {
-          'confirmed' => 'startPreparing',
-          'preparing' => 'markReady',
-          'ready' => 'markCollected',
-          _ => throw StateError('Booking cannot advance.'),
-        },
-      );
-
-  Future<void> cancel(String bookingId) => _action(bookingId, 'cancel');
-
-  Future<Uri> createTestCheckout(String bookingId) async {
-    final result = await _functions
-        .httpsCallable('createStripeCheckout',
-            options:
-                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
-        .call({'bookingId': bookingId});
-    final uri = Uri.parse((result.data as Map)['checkoutUrl'] as String);
-    if (uri.scheme != 'https' || uri.host != 'checkout.stripe.com') {
-      throw StateError('Invalid checkout URL.');
-    }
-    return uri;
-  }
-
-  Future<void> refreshPayment(String bookingId) async {
-    await _functions
-        .httpsCallable('refreshStripePayment',
-            options:
-                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
-        .call({'bookingId': bookingId});
-  }
-
-  Future<void> markViewed(String bookingId) async {
-    await _functions.httpsCallable('markBookingViewed').call({
-      'bookingId': bookingId,
-    });
-  }
-
-  Future<void> _action(String bookingId, String action) async {
-    await _functions.httpsCallable('updateBooking').call({
-      'bookingId': bookingId,
-      'action': action,
-    });
-  }
-}
-````
-
 ## File: lib/core/services/dish_search_service.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -3337,6 +6723,179 @@ class DishSearchService {
           a.item.name.toLowerCase().compareTo(b.item.name.toLowerCase()));
       return dishes;
     });
+  }
+}
+````
+
+## File: lib/core/services/local_demo_booking_service.dart
+````dart
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/demo_order.dart';
+import '../models/vendor_model.dart';
+
+/// Device-only self-collect bookings for the prototype APK.
+/// Nothing here sends a booking to another phone or charges a customer.
+class LocalDemoBookingService {
+  LocalDemoBookingService({String? actorId}) : _testActorId = actorId;
+
+  static const _bookingsKey = 'self_collect_bookings_v1';
+  static const _enabledPrefix = 'self_collect_enabled_v1_';
+  static final _changed = StreamController<void>.broadcast();
+
+  final String? _testActorId;
+
+  String? get _actorId =>
+      _testActorId ?? FirebaseAuth.instance.currentUser?.uid;
+
+  Future<bool> isSelfCollectEnabled(String vendorId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('$_enabledPrefix$vendorId') ?? false;
+  }
+
+  Future<void> setSelfCollectEnabled(String vendorId, bool enabled) async {
+    if (_actorId != vendorId) throw StateError('Vendor account required.');
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setBool('$_enabledPrefix$vendorId', enabled)) {
+      throw StateError('Could not save booking preference.');
+    }
+    _changed.add(null);
+  }
+
+  Stream<List<DemoOrder>> watchCustomerOrders(String customerId) =>
+      _watch((booking) => booking.customerId == customerId);
+
+  Stream<List<DemoOrder>> watchVendorOrders(String vendorId) =>
+      _watch((booking) => booking.vendorId == vendorId);
+
+  Stream<List<DemoOrder>> _watch(bool Function(DemoOrder) include) async* {
+    Future<List<DemoOrder>> current() async {
+      final bookings = (await _load()).where(include).toList();
+      bookings.sort((a, b) => (b.createdAt ?? DateTime(1970))
+          .compareTo(a.createdAt ?? DateTime(1970)));
+      return bookings;
+    }
+
+    yield await current();
+    yield* _changed.stream.asyncMap((_) => current());
+  }
+
+  Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
+      {String? customerName, String specialInstructions = ''}) async {
+    final customerId = _actorId;
+    if (customerId == null || customerId == vendor.vendorId) {
+      throw StateError('Customer account required.');
+    }
+    if (!await isSelfCollectEnabled(vendor.vendorId)) {
+      throw StateError('Self-collect booking is unavailable.');
+    }
+    if (items.isEmpty || items.any((item) => item.quantity < 1)) {
+      throw ArgumentError('Choose at least one dish.');
+    }
+    final user =
+        _testActorId == null ? FirebaseAuth.instance.currentUser : null;
+    final name = customerName?.trim().isNotEmpty == true
+        ? customerName!.trim()
+        : (user?.displayName?.trim().isNotEmpty == true
+            ? user!.displayName!.trim()
+            : user?.email?.split('@').first ?? 'Customer');
+    final now = DateTime.now();
+    final booking = DemoOrder(
+      id: '${now.microsecondsSinceEpoch}_$customerId',
+      customerId: customerId,
+      vendorId: vendor.vendorId,
+      customerName: name,
+      stallName: vendor.stallName,
+      status: 'requested',
+      items: items,
+      totalCents: items.fold(0, (sum, item) => sum + item.subtotalCents),
+      createdAt: now,
+      specialInstructions: specialInstructions.trim(),
+      pickupLatitude: vendor.hasValidLocation ? vendor.latitude : null,
+      pickupLongitude: vendor.hasValidLocation ? vendor.longitude : null,
+    );
+    final bookings = await _load();
+    bookings.insert(0, booking);
+    await _save(bookings);
+    return booking.id;
+  }
+
+  Future<void> removeAccountData(String accountId) async {
+    final bookings = await _load();
+    await _save(bookings
+        .where((booking) =>
+            booking.customerId != accountId && booking.vendorId != accountId)
+        .toList());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_enabledPrefix$accountId');
+  }
+
+  Future<void> respond(String bookingId, {required bool accept}) =>
+      _update(bookingId, (booking) {
+        if (_actorId != booking.vendorId ||
+            booking.effectiveStatus != 'requested') {
+          throw StateError('This booking can no longer be answered.');
+        }
+        return booking.withStatus(accept ? 'confirmed' : 'rejected');
+      });
+
+  Future<void> advance(String bookingId) => _update(bookingId, (booking) {
+        if (_actorId != booking.vendorId) {
+          throw StateError('Vendor account required.');
+        }
+        final next = switch (booking.effectiveStatus) {
+          'confirmed' => 'preparing',
+          'preparing' => 'ready',
+          'ready' => 'collected',
+          _ => null,
+        };
+        if (next == null) throw StateError('This booking cannot advance.');
+        return booking.withStatus(next);
+      });
+
+  Future<void> cancel(String bookingId) => _update(bookingId, (booking) {
+        final status = booking.effectiveStatus;
+        final customerCanCancel =
+            _actorId == booking.customerId && status == 'requested';
+        final vendorCanCancel = _actorId == booking.vendorId &&
+            {'requested', 'confirmed', 'preparing', 'ready'}.contains(status);
+        if (!customerCanCancel && !vendorCanCancel) {
+          throw StateError('This booking cannot be cancelled.');
+        }
+        return booking.withStatus('cancelled');
+      });
+
+  Future<void> _update(
+      String bookingId, DemoOrder Function(DemoOrder) change) async {
+    final bookings = await _load();
+    final index = bookings.indexWhere((booking) => booking.id == bookingId);
+    if (index < 0) throw StateError('Booking not found on this device.');
+    bookings[index] = change(bookings[index]);
+    await _save(bookings);
+  }
+
+  Future<List<DemoOrder>> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_bookingsKey);
+    if (raw == null) return [];
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .whereType<Map>()
+        .map((item) => DemoOrder.fromMap(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> _save(List<DemoOrder> bookings) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString(_bookingsKey,
+        jsonEncode(bookings.map((booking) => booking.toMap()).toList()))) {
+      throw StateError('Could not save booking on this device.');
+    }
+    _changed.add(null);
   }
 }
 ````
@@ -3546,6 +7105,128 @@ class SearchHistoryService {
 
   String _documentId(String query) =>
       base64Url.encode(utf8.encode(query.toLowerCase())).replaceAll('=', '');
+}
+````
+
+## File: lib/core/services/stall_review_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/stall_review.dart';
+
+class StallReviewService {
+  StallReviewService({FirebaseFirestore? firestore})
+    : _db = firestore ?? FirebaseFirestore.instance;
+  final FirebaseFirestore _db;
+  DocumentReference<Map<String, dynamic>> _review(
+    String vendorId,
+    String customerId,
+  ) => _db
+      .collection('stallReviews')
+      .doc(vendorId)
+      .collection('entries')
+      .doc(customerId);
+
+  Stream<List<StallReview>> watchReviews(String vendorId) => _db
+      .collection('stallReviews')
+      .doc(vendorId)
+      .collection('entries')
+      .snapshots()
+      .map((snapshot) {
+        final reviews = snapshot.docs
+            .map((doc) => StallReview.fromMap(doc.data(), doc.id))
+            .toList();
+        reviews.sort(
+          (a, b) =>
+              (b.postedAt ?? DateTime(0)).compareTo(a.postedAt ?? DateTime(0)),
+        );
+        return reviews;
+      });
+
+  Future<void> saveReview(
+    String vendorId,
+    String customerId,
+    String customerName,
+    int rating,
+    String text,
+    List<String> photoUrls, {
+    String customerAvatarUrl = '',
+  }) async {
+    if (rating < 1 ||
+        rating > 5 ||
+        photoUrls.length > 5 ||
+        text.trim().length > 1000) {
+      throw ArgumentError('Invalid review');
+    }
+    final ref = _review(vendorId, customerId);
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(ref);
+      final old = snapshot.data();
+      final name = customerName.trim().isEmpty
+          ? 'Customer'
+          : customerName.trim();
+      // Merge only customer fields. A concurrent owner reply is never replaced.
+      transaction.set(ref, {
+        'customerId': customerId,
+        'customerName': name.length > 80 ? name.substring(0, 80) : name,
+        'customerAvatarUrl':
+            customerAvatarUrl.startsWith('https://') &&
+                customerAvatarUrl.length <= 2048
+            ? customerAvatarUrl
+            : '',
+        'rating': rating,
+        'text': text.trim(),
+        'photoUrls': photoUrls,
+        'createdAt':
+            old?['createdAt'] ??
+            old?['updatedAt'] ??
+            FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'edited': snapshot.exists,
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<void> saveVendorReply(
+    String vendorId,
+    StallReview review,
+    String text,
+  ) async {
+    final reply = text.trim();
+    if (reply.isEmpty || reply.length > 1000) {
+      throw ArgumentError('Enter a reply between 1 and 1,000 characters.');
+    }
+    final ref = _review(vendorId, review.customerId);
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw StateError('This review was deleted.');
+      final data = snapshot.data()!;
+      final old = data['vendorReply'] is Map
+          ? data['vendorReply'] as Map
+          : null;
+      // Record the version visible in the editor. If the customer edited while
+      // the editor was open, the updated-after-reply indicator remains visible.
+      transaction.update(ref, {
+        'vendorReply': {
+          'text': reply,
+          'createdAt': old?['createdAt'] ?? FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'edited': old != null,
+          'reviewUpdatedAt': review.updatedAt == null
+              ? data['updatedAt']
+              : Timestamp.fromDate(review.updatedAt!),
+        },
+      });
+    });
+  }
+
+  Future<void> deleteVendorReply(String vendorId, String customerId) => _review(
+    vendorId,
+    customerId,
+  ).update({'vendorReply': FieldValue.delete()});
+
+  // The single reply belongs to the same document and disappears atomically.
+  Future<void> deleteReview(String vendorId, String customerId) =>
+      _review(vendorId, customerId).delete();
 }
 ````
 
@@ -3937,183 +7618,6 @@ class _AppDropdownState<T> extends State<AppDropdown<T>> {
 }
 ````
 
-## File: lib/features/auth/screens/change_email_screen.dart
-````dart
-import 'dart:async';
-
-import 'package:flutter/material.dart';
-
-import '../../../core/services/auth_service.dart';
-
-class ChangeEmailScreen extends StatefulWidget {
-  const ChangeEmailScreen({super.key});
-
-  @override
-  State<ChangeEmailScreen> createState() => _ChangeEmailScreenState();
-}
-
-class _ChangeEmailScreenState extends State<ChangeEmailScreen>
-    with WidgetsBindingObserver {
-  final _authService = AuthService();
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  bool _linkSent = false;
-  bool _isBusy = false;
-  Timer? _cooldownTimer;
-  int _resendSeconds = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _linkSent && !_isBusy) {
-      _checkNewEmail(quiet: true);
-    }
-  }
-
-  Future<void> _sendLink() async {
-    if (!_formKey.currentState!.validate() || _isBusy || _resendSeconds > 0) {
-      return;
-    }
-    setState(() => _isBusy = true);
-    final error = await _authService.sendEmailChangeLink(
-      _emailController.text.trim(),
-    );
-    if (!mounted) return;
-    setState(() {
-      _isBusy = false;
-      if (error == null) {
-        _linkSent = true;
-        _resendSeconds = 60;
-      }
-    });
-    if (error == null) _startCooldown();
-    _showMessage(
-      error ?? 'Verification link sent to ${_emailController.text.trim()}.',
-      error: error != null,
-    );
-  }
-
-  void _startCooldown() {
-    _cooldownTimer?.cancel();
-    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() => _resendSeconds--);
-      if (_resendSeconds <= 0) timer.cancel();
-    });
-  }
-
-  Future<void> _checkNewEmail({bool quiet = false}) async {
-    if (_isBusy) return;
-    setState(() => _isBusy = true);
-    final error = await _authService.refreshEmailChange(
-      _emailController.text.trim(),
-    );
-    if (!mounted) return;
-    setState(() => _isBusy = false);
-    if (error == null) {
-      _showMessage('Email changed and verified successfully.');
-      Navigator.pop(context, true);
-    } else if (!quiet) {
-      _showMessage(error, error: true);
-    }
-  }
-
-  void _showMessage(String message, {bool error = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: error ? Colors.red : Colors.green,
-    ));
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cooldownTimer?.cancel();
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Change Email')),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(_linkSent
-                      ? 'Open the verification link sent to your new email, then return here and confirm.'
-                      : 'Firebase will send a verification link to your new email. Your address changes only after you open that link.'),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _emailController,
-                    readOnly: _linkSent,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                        labelText: 'New email', border: OutlineInputBorder()),
-                    validator: (value) {
-                      final email = value?.trim() ?? '';
-                      return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                              .hasMatch(email)
-                          ? null
-                          : 'Enter a valid email address';
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (_linkSent) ...[
-                    FilledButton.icon(
-                      onPressed: _isBusy ? null : () => _checkNewEmail(),
-                      icon: _isBusy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.refresh),
-                      label: Text(_isBusy
-                          ? 'Checking…'
-                          : 'I Have Verified My New Email'),
-                    ),
-                    TextButton(
-                      onPressed:
-                          _isBusy || _resendSeconds > 0 ? null : _sendLink,
-                      child: Text(_resendSeconds > 0
-                          ? 'Resend in ${_resendSeconds}s'
-                          : 'Resend verification email'),
-                    ),
-                  ] else
-                    FilledButton(
-                      onPressed: _isBusy ? null : _sendLink,
-                      child: _isBusy
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Text('Send Verification Link'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-}
-````
-
 ## File: lib/features/auth/screens/email_verification_screen.dart
 ````dart
 import 'dart:async';
@@ -4285,695 +7789,361 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen>
 }
 ````
 
-## File: lib/features/customer/home/open_at_picker.dart
+## File: lib/features/auth/screens/forgot_password_screen.dart
 ````dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../../core/models/stall_schedule.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/ios_grouped.dart';
+import '../../../core/services/auth_service.dart';
+import '../../shared/account_ui.dart';
 
-class OpeningTimeFilter {
-  const OpeningTimeFilter(this.start, this.label, {this.end});
-  final DateTime start;
-  final DateTime? end;
-  final String label;
-}
-
-Future<OpeningTimeFilter?> showOpeningTimePicker(BuildContext context) async {
-  final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      builder: (context) => SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 36,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text('When would you like to visit?',
-                    style:
-                        TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                const Text(
-                  'Based on vendor schedules in Malaysia time (MYT). Actual opening may change.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 22),
-                AppGroupedCard(children: [
-                  ListTile(
-                      leading: const AppIconTile(
-                          icon: Icons.nightlight_outlined,
-                          color: AppColors.primary),
-                      title: const Text('After 10 PM tonight'),
-                      subtitle: const Text('10 PM to 6 AM'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.pop(context, 'tonight')),
-                  ListTile(
-                      leading: const AppIconTile(
-                          icon: Icons.wb_sunny_outlined,
-                          color: AppColors.primaryLight),
-                      title: const Text('Tomorrow morning'),
-                      subtitle: const Text('6 AM to 12 PM'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.pop(context, 'morning')),
-                  ListTile(
-                      leading: const AppIconTile(
-                          icon: Icons.calendar_month, color: AppColors.primary),
-                      title: const Text('Choose date and time'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.pop(context, 'custom')),
-                ]),
-              ]),
-            ),
-          ));
-  if (choice == null || !context.mounted) return null;
-  final now = DateTime.now();
-  final local = malaysiaTime(now);
-  final today = DateTime(local.year, local.month, local.day);
-  final tomorrow = today.add(const Duration(days: 1));
-  if (choice == 'tonight') {
-    final ten = malaysiaInstant(today.year, today.month, today.day, 22, 0);
-    return OpeningTimeFilter(
-        ten.isBefore(now) ? now : ten, 'After 10 PM tonight',
-        end:
-            malaysiaInstant(tomorrow.year, tomorrow.month, tomorrow.day, 6, 0));
-  }
-  if (choice == 'morning') {
-    return OpeningTimeFilter(
-        malaysiaInstant(tomorrow.year, tomorrow.month, tomorrow.day, 6, 0),
-        'Tomorrow morning',
-        end: malaysiaInstant(
-            tomorrow.year, tomorrow.month, tomorrow.day, 12, 0));
-  }
-  final date = await showDatePicker(
-      context: context,
-      initialDate: today,
-      firstDate: today,
-      lastDate: today.add(const Duration(days: 365)));
-  if (date == null || !context.mounted) return null;
-  final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: local.hour, minute: local.minute),
-      helpText: 'Visit time (MYT)');
-  if (time == null || !context.mounted) return null;
-  final instant =
-      malaysiaInstant(date.year, date.month, date.day, time.hour, time.minute);
-  if (instant.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose a future date and time.')));
-    return null;
-  }
-  return OpeningTimeFilter(instant,
-      '${date.day}/${date.month}/${date.year} · ${formatStallTime(time.hour * 60 + time.minute)} MYT');
-}
-````
-
-## File: lib/features/customer/home/price_range_picker.dart
-````dart
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
-import '../../../core/constants/app_colors.dart';
-import 'discovery_search_filters.dart';
-
-Future<MenuPriceRange?> showPriceRangePicker(
-  BuildContext context, {
-  MenuPriceRange? initialRange,
-}) =>
-    showModalBottomSheet<MenuPriceRange>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      builder: (_) => _PriceRangePicker(initialRange: initialRange),
-    );
-
-class _PriceRangePicker extends StatefulWidget {
-  const _PriceRangePicker({this.initialRange});
-
-  final MenuPriceRange? initialRange;
-
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key, this.initialEmail = ''});
+  final String initialEmail;
   @override
-  State<_PriceRangePicker> createState() => _PriceRangePickerState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _PriceRangePickerState extends State<_PriceRangePicker> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _minimum;
-  late final TextEditingController _maximum;
-
-  @override
-  void initState() {
-    super.initState();
-    _minimum = TextEditingController(
-        text: widget.initialRange?.minimum?.toStringAsFixed(2) ?? '');
-    _maximum = TextEditingController(
-        text: widget.initialRange?.maximum?.toStringAsFixed(2) ?? '');
-  }
-
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _form = GlobalKey<FormState>();
+  late final _email = TextEditingController(text: widget.initialEmail);
+  Timer? _timer;
+  int _seconds = 0;
+  bool _busy = false;
+  bool _sent = false;
+  String? _error;
+  String _sentTo = '';
   @override
   void dispose() {
-    _minimum.dispose();
-    _maximum.dispose();
+    _timer?.cancel();
+    _email.dispose();
     super.dispose();
   }
 
-  String? _validateAmount(String? text) {
-    if (text == null || text.trim().isEmpty) return null;
-    final amount = double.tryParse(text);
-    if (amount == null || !amount.isFinite || amount < 0) {
-      return 'Enter a valid price';
-    }
-    return null;
-  }
-
-  void _apply() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(
-      context,
-      MenuPriceRange(
-        minimum: double.tryParse(_minimum.text),
-        maximum: double.tryParse(_maximum.text),
-      ),
-    );
-  }
-
-  Widget _amountField(TextEditingController controller,
-          {required bool isMax}) =>
-      TextFormField(
-        controller: controller,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textInputAction: isMax ? TextInputAction.done : TextInputAction.next,
-        inputFormatters: [
-          TextInputFormatter.withFunction((oldValue, newValue) =>
-              RegExp(r'^\d*(\.\d{0,2})?$').hasMatch(newValue.text)
-                  ? newValue
-                  : oldValue),
-        ],
-        decoration: InputDecoration(
-          labelText: isMax ? 'Maximum' : 'Minimum',
-          hintText: 'Any',
-          prefixText: 'RM ',
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        validator: (value) {
-          final error = _validateAmount(value);
-          if (error != null || !isMax) return error;
-          final min = double.tryParse(_minimum.text);
-          final max = double.tryParse(value ?? '');
-          if (min != null && max != null && max < min) {
-            return 'Must be at least the minimum';
-          }
-          return null;
-        },
-        onFieldSubmitted: isMax ? (_) => _apply() : null,
-      );
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            20, 12, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    const Expanded(
-                      child: Text('Dish price range',
-                          style: TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.w600)),
-                    ),
-                    Material(
-                      color: Colors.white,
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: 'Close price filter',
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ),
-                  ]),
-                  const Text(
-                    'Find stalls with a dish in your budget. Leave a price blank for any amount.',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: _amountField(_minimum, isMax: false)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _amountField(_maximum, isMax: true)),
-                  ]),
-                  const SizedBox(height: 24),
-                  Row(children: [
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.pop(context, const MenuPriceRange()),
-                      child: const Text('Reset'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: _apply,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Apply price range'),
-                    ),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-}
-````
-
-## File: lib/features/shared/booking_payment_card.dart
-````dart
-import 'package:flutter/material.dart';
-
-import '../../core/models/demo_order.dart';
-
-String bookingPaymentLabel(DemoOrder booking) {
-  if (booking.paymentStatus == 'paid' && booking.paymentRefundedCents > 0) {
-    return 'Partially refunded · Test';
-  }
-  return switch (booking.paymentStatus) {
-    'paid' => 'Paid · Test',
-    'refund_pending' => 'Test refund pending',
-    'refund_failed' => 'Test refund needs attention',
-    'refunded' => 'Refunded · Test',
-    'failed' => 'Payment failed · Test',
-    'expired' => 'Payment window ended',
-    'cancelled' => 'Payment cancelled',
-    'unpaid' => booking.status == 'requested'
-        ? 'Available after acceptance'
-        : 'Awaiting payment',
-    _ => 'Awaiting payment · Test',
-  };
-}
-
-class BookingPaymentCard extends StatelessWidget {
-  const BookingPaymentCard(
-      {super.key,
-      required this.booking,
-      required this.isVendor,
-      this.busy = false,
-      this.busyLabel = 'Processing…',
-      this.onPay,
-      this.onRefresh});
-
-  final DemoOrder booking;
-  final bool isVendor;
-  final bool busy;
-  final String busyLabel;
-  final VoidCallback? onPay;
-  final VoidCallback? onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final paid = booking.paymentStatus == 'paid';
-    final problem = {'failed', 'refund_failed'}.contains(booking.paymentStatus);
-    final color = paid
-        ? const Color(0xFF137547)
-        : problem
-            ? Theme.of(context).colorScheme.error
-            : const Color(0xFF9A5B13);
-    final remaining = booking.paymentExpiresAt?.difference(DateTime.now());
-    final seconds = remaining?.inSeconds.clamp(0, 600) ?? 0;
-    return Card(
-        child: Padding(
-            padding: const EdgeInsets.all(18),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.credit_card_outlined),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: Text('Payment',
-                        style: Theme.of(context).textTheme.titleMedium)),
-                const Chip(
-                    label: Text('TEST MODE'),
-                    visualDensity: VisualDensity.compact),
-              ]),
-              const SizedBox(height: 8),
-              Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Icon(
-                    paid
-                        ? Icons.check_circle
-                        : problem
-                            ? Icons.error_outline
-                            : Icons.schedule,
-                    size: 19,
-                    color: color),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(bookingPaymentLabel(booking),
-                        style: TextStyle(
-                            color: color, fontWeight: FontWeight.w600))),
-              ]),
-              const SizedBox(height: 10),
-              if (booking.status == 'requested')
-                const Text('Payment opens when the stall accepts this booking.')
-              else if (booking.awaitingPayment)
-                Text(seconds > 0
-                    ? isVendor
-                        ? 'Waiting for the customer to pay. Preparation unlocks after confirmation.'
-                        : 'Pay within ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}.'
-                    : 'The payment window has ended. Check payment to confirm the final status.'),
-              if (booking.paymentStatus == 'refund_pending')
-                const Text(
-                    'This booking was cancelled. The full test refund to the original payment method is pending.')
-              else if (booking.paymentStatus == 'refund_failed')
-                const Text(
-                    'The simulated refund did not complete. Contact the prototype administrator.'),
-              if (booking.paymentReference != null) ...[
-                const SizedBox(height: 10),
-                Text('Payment reference',
-                    style: Theme.of(context).textTheme.labelSmall),
-                SelectableText(booking.paymentReference!,
-                    style: Theme.of(context).textTheme.bodySmall),
-              ],
-              if (booking.paymentRefundedCents > 0)
-                Text(
-                    'Refunded: RM ${(booking.paymentRefundedCents / 100).toStringAsFixed(2)}'),
-              if (!isVendor && booking.canPay) ...[
-                const SizedBox(height: 16),
-                SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                        onPressed: busy ? null : onPay,
-                        icon: const Icon(Icons.lock_outline, size: 18),
-                        label: Text(busy
-                            ? busyLabel
-                            : 'Pay RM ${(booking.totalCents / 100).toStringAsFixed(2)}'))),
-                const SizedBox(height: 8),
-                const Text(
-                    'Use test card 4242 4242 4242 4242, any future expiry and any 3-digit CVC.',
-                    style: TextStyle(fontSize: 12)),
-              ],
-              if (booking.paymentStatus != 'unpaid' &&
-                  booking.paymentStatus != 'refunded')
-                TextButton.icon(
-                    onPressed: busy ? null : onRefresh,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: Text(busy ? 'Checking…' : 'Check payment')),
-              const Divider(height: 24),
-              const Text(
-                  'Simulated payment only. No real money is charged or paid to the stall.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF666666))),
-            ])));
-  }
-}
-````
-
-## File: lib/features/shared/delete_account_screen.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-
-import '../../core/constants/app_colors.dart';
-import '../../core/services/auth_service.dart';
-import 'account_ui.dart';
-
-class DeleteAccountScreen extends StatefulWidget {
-  const DeleteAccountScreen({super.key});
-
-  @override
-  State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
-}
-
-class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
-  final _auth = AuthService();
-  final _confirmation = TextEditingController();
-  final _password = TextEditingController();
-  bool _busy = false;
-  bool _hidePassword = true;
-  String? _error;
-
-  bool get _usesPassword =>
-      FirebaseAuth.instance.currentUser?.providerData
-          .any((provider) => provider.providerId == 'password') ??
-      false;
-
-  Future<void> _delete() async {
-    if (_busy) return;
-    if (_confirmation.text.trim().toUpperCase() != 'DELETE') {
-      setState(() => _error = 'Type DELETE to confirm.');
+  Future<void> _send() async {
+    if (_busy || _seconds > 0) {
       return;
     }
-    if (_usesPassword && _password.text.isEmpty) {
-      setState(() => _error = 'Enter your current password.');
+    if (!_sent && !_form.currentState!.validate()) {
       return;
     }
     FocusScope.of(context).unfocus();
+    final address = _email.text.trim();
     setState(() {
       _busy = true;
       _error = null;
     });
-    final error = await _auth.deleteAccount(
-      currentPassword: _usesPassword ? _password.text : null,
-    );
-    if (!mounted) return;
+    final error = await AuthService().resetPassword(email: address);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = error;
+      if (error == null) {
+        _sent = true;
+        _sentTo = address;
+        _seconds = 60;
+      }
+    });
     if (error == null) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } else {
-      setState(() {
-        _busy = false;
-        _error = error;
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          if (_seconds > 0) {
+            _seconds--;
+          }
+        });
+        if (_seconds == 0) {
+          timer.cancel();
+        }
       });
     }
   }
 
   @override
-  void dispose() {
-    _confirmation.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AccountLayout(
-        title: 'Delete Account',
-        busy: _busy,
-        children: [
-          Center(
-            child: Container(
-              width: 92,
-              height: 92,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFE9E7),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                CupertinoIcons.delete_solid,
-                color: AppColors.closedRed,
-                size: 42,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Delete your account?',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Your StallSeeker account and its data will be permanently removed.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.4,
-              color: AppColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 32),
-          Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('What will be removed',
-                      style:
-                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                  SizedBox(height: 10),
-                  Text(
-                    'Your profile, followed stalls and dishes, notification history, and any vendor stall data.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.5,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'This cannot be undone.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.closedRed,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 28),
-          const Padding(
-            padding: EdgeInsets.only(left: 16, bottom: 10),
-            child: Text(
-              'CONFIRM DELETION',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textMuted,
-              ),
-            ),
-          ),
-          TextField(
-            controller: _confirmation,
-            enabled: !_busy,
-            textCapitalization: TextCapitalization.characters,
-            textInputAction:
-                _usesPassword ? TextInputAction.next : TextInputAction.done,
-            onSubmitted: _usesPassword ? null : (_) => _delete(),
-            decoration: accountField('Type DELETE to confirm'),
-          ),
-          if (_usesPassword) ...[
-            const SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              enabled: !_busy,
-              obscureText: _hidePassword,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _delete(),
-              decoration: accountField(
-                'Current password',
-                suffix: IconButton(
-                  onPressed: _busy
+  Widget build(BuildContext context) =>
+      AccountLayout(title: 'Forgot password', busy: _busy, children: [
+        const SizedBox(height: 24),
+        AccountIntro(
+            icon: _sent
+                ? Icons.mark_email_read_outlined
+                : Icons.lock_reset_rounded,
+            title: _sent ? 'Check your email' : 'Reset your password',
+            body: _sent
+                ? 'If an account uses $_sentTo, you will receive a link to reset its password.'
+                : 'Enter the email address linked to your account. We will send you a reset link.'),
+        if (!_sent) ...[
+          Form(
+              key: _form,
+              child: TextFormField(
+                  controller: _email,
+                  enabled: !_busy,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.email],
+                  autocorrect: false,
+                  decoration: accountField('Email address'),
+                  validator: (v) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                          .hasMatch((v ?? '').trim())
                       ? null
-                      : () => setState(() => _hidePassword = !_hidePassword),
-                  icon: Icon(_hidePassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                ),
-              ),
-            ),
-          ],
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 9, 16, 0),
-            child: Text(
-              'Type DELETE exactly to confirm this permanent action.',
-              style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-            ),
-          ),
-          const SizedBox(height: 22),
+                      : 'Enter a valid email address.',
+                  onFieldSubmitted: (_) => _send())),
+          const SizedBox(height: 24),
           AccountError(_error),
           AccountButton(
-            label: 'Delete Account',
-            busy: _busy,
-            color: AppColors.closedRed,
-            onPressed: _delete,
-          ),
+              label: _seconds > 0
+                  ? 'Send again in ${_seconds}s'
+                  : 'Send reset link',
+              busy: _busy,
+              onPressed: _seconds > 0 ? null : _send),
+          const SizedBox(height: 20),
+          const Text(
+              'Signed up with Google? Use Continue with Google to sign in.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 13, color: Color(0xFF707078), height: 1.5)),
+        ] else ...[
+          const Text(
+              'Open the email and follow the link to choose a new password. Check Spam or Junk if it is missing.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14, color: Color(0xFF707078), height: 1.5)),
+          const SizedBox(height: 28),
+          AccountError(_error),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
-              onPressed: _busy ? null : () => Navigator.pop(context),
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppColors.textDark,
-                minimumSize: const Size.fromHeight(54),
-                shape: const StadiumBorder(),
-              ),
-              child: const Text('Cancel'),
-            ),
-          ),
+          TextButton(
+              onPressed: _busy || _seconds > 0 ? null : _send,
+              child: Text(_busy
+                  ? 'Sending…'
+                  : _seconds > 0
+                      ? 'Resend in ${_seconds}s'
+                      : 'Resend email')),
+          TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                        _sent = false;
+                        _error = null;
+                      }),
+              child: const Text('Use another email')),
         ],
-      );
+      ]);
 }
 ````
 
-## File: lib/features/shared/edit_profile_screen.dart
+## File: lib/features/customer/home/discovery_search_filters.dart
 ````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'discovery_options.dart';
+import '../../../core/models/dish_search_entry.dart';
+import '../../../core/models/vendor_model.dart';
 
-import '../../core/constants/app_colors.dart';
-import '../../core/services/auth_service.dart';
-import 'account_ui.dart';
-import 'profile_header.dart';
+String normalizeDiscoveryQuery(String value) =>
+    value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 
-class EditProfileScreen extends StatefulWidget {
-  const EditProfileScreen({super.key, required this.name, required this.email});
+class MenuPriceRange {
+  const MenuPriceRange({this.minimum, this.maximum});
 
-  final String name;
-  final String email;
+  final double? minimum;
+  final double? maximum;
 
-  @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  bool get isActive => minimum != null || maximum != null;
+
+  bool contains(DishSearchEntry dish) =>
+      dish.priceIsKnown &&
+      dish.item.price.isFinite &&
+      dish.item.price >= 0 &&
+      (minimum == null || dish.item.price >= minimum!) &&
+      (maximum == null || dish.item.price <= maximum!);
+
+  String get label {
+    String amount(double value) => value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+    if (minimum != null && maximum != null) {
+      return 'RM ${amount(minimum!)}–${amount(maximum!)}';
+    }
+    if (minimum != null) return 'RM ${amount(minimum!)}+';
+    if (maximum != null) return 'Up to RM ${amount(maximum!)}';
+    return 'Any price';
+  }
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
-  final _form = GlobalKey<FormState>();
-  final _auth = AuthService();
-  late final TextEditingController _name =
-      TextEditingController(text: widget.name);
-  bool _busy = false;
-  String? _error;
+/// For a dish query, the matching dish itself must meet the price range.
+/// Stall/category queries can match any genuinely priced dish on that menu.
+bool vendorMatchesQueryAndPrice({
+  required VendorModel vendor,
+  required Iterable<DishSearchEntry> dishes,
+  required String query,
+  MenuPriceRange? priceRange,
+}) {
+  final normalized = normalizeDiscoveryQuery(query);
+  final vendorMatches = discoveryMatches(normalized, vendor.stallName) ||
+      vendor.allCategories
+          .any((category) => discoveryMatches(normalized, category));
+  final matchingDishes = normalized.isEmpty
+      ? dishes
+      : dishes.where((dish) => discoveryMatches(normalized, dish.item.name));
+  if (priceRange == null || !priceRange.isActive) {
+    return normalized.isEmpty || vendorMatches || matchingDishes.isNotEmpty;
+  }
+  // Do not let a cheap unrelated menu item make an expensive dish match.
+  if (matchingDishes.isNotEmpty) {
+    return matchingDishes.any(priceRange.contains);
+  }
+  return vendorMatches && dishes.any(priceRange.contains);
+}
 
+enum DiscoverySuggestionKind { dish, stall, category, recent }
+
+class DiscoverySuggestion {
+  const DiscoverySuggestion({
+    required this.label,
+    required this.kind,
+    this.isRecent = false,
+  });
+
+  final String label;
+  final DiscoverySuggestionKind kind;
+  final bool isRecent;
+
+  String get detail => switch (kind) {
+        DiscoverySuggestionKind.dish => 'Dish',
+        DiscoverySuggestionKind.stall => 'Stall',
+        DiscoverySuggestionKind.category => 'Category',
+        DiscoverySuggestionKind.recent => 'Recent search',
+      };
+}
+
+List<DiscoverySuggestion> buildDiscoverySuggestions({
+  required String query,
+  required Iterable<VendorModel> vendors,
+  required Iterable<DishSearchEntry> dishes,
+  required Iterable<String> categories,
+  required List<String> recentSearches,
+  MenuPriceRange? priceRange,
+  int limit = 8,
+}) {
+  final typed = normalizeDiscoveryQuery(query);
+  final recentKeys = recentSearches.map(normalizeDiscoveryQuery).toSet();
+  final suggestions = <String, DiscoverySuggestion>{};
+
+  void add(String rawLabel, DiscoverySuggestionKind kind) {
+    final label = rawLabel.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final key = normalizeDiscoveryQuery(label);
+    if (key.isEmpty || (typed.isNotEmpty && !discoveryMatches(typed, key))) {
+      return;
+    }
+    final current = suggestions[key];
+    if (current == null || kind.index < current.kind.index) {
+      suggestions[key] = DiscoverySuggestion(
+        label: label,
+        kind: kind,
+        isRecent: recentKeys.contains(key),
+      );
+    }
+  }
+
+  for (final recent in recentSearches) {
+    add(recent, DiscoverySuggestionKind.recent);
+  }
+  if (typed.isEmpty) return suggestions.values.take(limit).toList();
+
+  final vendorById = {
+    for (final vendor in vendors) vendor.vendorId: vendor,
+  };
+  final eligibleDishes = dishes.where((dish) =>
+      vendorById.containsKey(dish.vendorId) &&
+      (priceRange == null ||
+          !priceRange.isActive ||
+          priceRange.contains(dish)));
+  final pricedVendorIds = eligibleDishes.map((dish) => dish.vendorId).toSet();
+  final eligibleVendors = vendorById.values.where((vendor) =>
+      priceRange == null ||
+      !priceRange.isActive ||
+      pricedVendorIds.contains(vendor.vendorId));
+
+  for (final dish in eligibleDishes) {
+    add(dish.item.name, DiscoverySuggestionKind.dish);
+  }
+  for (final vendor in eligibleVendors) {
+    add(vendor.stallName, DiscoverySuggestionKind.stall);
+  }
+  final offeredCategories = eligibleVendors
+      .expand((vendor) => vendor.allCategories.map(normalizeDiscoveryQuery))
+      .toSet();
+  for (final category in categories) {
+    if (offeredCategories.contains(normalizeDiscoveryQuery(category))) {
+      add(category, DiscoverySuggestionKind.category);
+    }
+  }
+
+  int matchRank(String label) {
+    final normalized = normalizeDiscoveryQuery(label);
+    if (normalized == typed) return 0;
+    if (normalized.startsWith(typed)) return 1;
+    if (normalized.split(' ').any((word) => word.startsWith(typed))) return 2;
+    return 3;
+  }
+
+  final ranked = suggestions.values.toList()
+    ..sort((a, b) {
+      final matchOrder = matchRank(a.label).compareTo(matchRank(b.label));
+      if (matchOrder != 0) return matchOrder;
+      final sourceOrder = a.kind.index.compareTo(b.kind.index);
+      if (sourceOrder != 0) return sourceOrder;
+      if (a.kind == DiscoverySuggestionKind.recent) {
+        return recentSearches
+            .indexWhere((value) =>
+                normalizeDiscoveryQuery(value) ==
+                normalizeDiscoveryQuery(a.label))
+            .compareTo(recentSearches.indexWhere((value) =>
+                normalizeDiscoveryQuery(value) ==
+                normalizeDiscoveryQuery(b.label)));
+      }
+      return normalizeDiscoveryQuery(a.label)
+          .compareTo(normalizeDiscoveryQuery(b.label));
+    });
+  return ranked.take(limit).toList();
+}
+````
+
+## File: lib/features/shared/change_password_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../core/services/auth_service.dart';
+import '../auth/screens/forgot_password_screen.dart';
+import 'account_ui.dart';
+
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key, required this.email});
+  final String email;
+  @override
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  final _form = GlobalKey<FormState>();
+  final _current = TextEditingController();
+  final _next = TextEditingController();
+  final _confirm = TextEditingController();
+  final _hidden = [true, true, true];
+  bool _busy = false;
+  bool _saved = false;
+  String? _error;
   @override
   void dispose() {
-    _name.dispose();
+    _current.dispose();
+    _next.dispose();
+    _confirm.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    if (_busy || !_form.currentState!.validate()) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) {
-      setState(() => _error = 'Please sign in to edit your profile.');
+    if (_busy || !_form.currentState!.validate()) {
       return;
     }
     FocusScope.of(context).unfocus();
@@ -4981,131 +8151,210 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _busy = true;
       _error = null;
     });
-    final error = await _auth.updateFullName(user.uid, _name.text.trim());
-    if (!mounted) return;
+    // Do not trim passwords: spaces may be intentional.
+    final error = await AuthService()
+        .changePassword(_next.text, currentPassword: _current.text);
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _busy = false;
       _error = error;
+      _saved = error == null;
     });
-    if (error == null) Navigator.pop(context, true);
+    if (_saved) {
+      _current.clear();
+      _next.clear();
+      _confirm.clear();
+    }
   }
 
+  Widget _field(String label, TextEditingController controller, int index,
+          String? Function(String?) validator) =>
+      Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: TextFormField(
+              controller: controller,
+              enabled: !_busy,
+              obscureText: _hidden[index],
+              enableSuggestions: false,
+              autocorrect: false,
+              autofillHints: [
+                index == 0 ? AutofillHints.password : AutofillHints.newPassword
+              ],
+              textInputAction:
+                  index == 2 ? TextInputAction.done : TextInputAction.next,
+              onFieldSubmitted: index == 2 ? (_) => _save() : null,
+              validator: validator,
+              decoration: accountField(label,
+                  suffix: IconButton(
+                      tooltip:
+                          _hidden[index] ? 'Show password' : 'Hide password',
+                      onPressed: () =>
+                          setState(() => _hidden[index] = !_hidden[index]),
+                      icon: Icon(
+                          _hidden[index]
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          size: 21,
+                          color: const Color(0xFF707078))))));
+
   @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !_busy,
-        child: Scaffold(
-          backgroundColor: AppColors.background,
-          body: SafeArea(
-            child: Form(
-              key: _form,
-              child: ListView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                children: [
-                  SizedBox(
-                    height: 116,
-                    child: Stack(alignment: Alignment.topCenter, children: [
-                      Positioned(
-                        top: 12,
-                        child: ProfileAvatar(
-                          name: widget.name,
-                          photoUrl: FirebaseAuth.instance.currentUser?.photoURL,
-                          size: 100,
+  Widget build(BuildContext context) => AccountLayout(
+      title: 'Change password',
+      busy: _busy,
+      children: _saved
+          ? [
+              const SizedBox(height: 40),
+              const AccountIntro(
+                  icon: Icons.check_rounded,
+                  title: 'Password changed',
+                  body:
+                      'Your new password is ready. Use it the next time you sign in.'),
+            ]
+          : [
+              const AccountIntro(
+                  icon: Icons.lock_outline_rounded,
+                  title: 'Choose a new password',
+                  body: 'Confirm your current password, then enter a new one.'),
+              Form(
+                  key: _form,
+                  child: AutofillGroup(
+                      child: Column(children: [
+                    _field(
+                        'Current password',
+                        _current,
+                        0,
+                        (v) => (v ?? '').isEmpty
+                            ? 'Enter your current password.'
+                            : null),
+                    _field('New password', _next, 1, (v) {
+                      if ((v ?? '').length < 6) {
+                        return 'Use at least 6 characters.';
+                      }
+                      if (v == _current.text) {
+                        return 'Choose a different password.';
+                      }
+                      return null;
+                    }),
+                    _field(
+                        'Confirm new password',
+                        _confirm,
+                        2,
+                        (v) => v != _next.text
+                            ? 'Your passwords do not match.'
+                            : null),
+                  ]))),
+              const Padding(
+                  padding: EdgeInsets.only(bottom: 20),
+                  child: Text(
+                      'Use a long, unique password. Your account may require extra characters.',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF707078),
+                          height: 1.4))),
+              AccountError(_error),
+              AccountButton(
+                  label: 'Update password', busy: _busy, onPressed: _save),
+              const SizedBox(height: 12),
+              TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => ForgotPasswordScreen(
+                                  initialEmail: widget.email))),
+                  child: const Text('Forgot your current password?')),
+            ]);
+}
+````
+
+## File: lib/features/shared/info_page.dart
+````dart
+import '../../core/widgets/app_page_app_bar.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/constants/app_colors.dart';
+
+class InfoPage extends StatelessWidget {
+  const InfoPage({
+    super.key,
+    required this.title,
+    required this.children,
+  });
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tablet = MediaQuery.sizeOf(context).width >= 700;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: const AppPageAppBar(showBackButton: true),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(tablet ? 24 : 8),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 720,
+                maxHeight: 900,
+              ),
+              child: SizedBox.expand(
+                child: Material(
+                  color: Colors.white,
+                  elevation: tablet ? 4 : 0,
+                  shadowColor: const Color(0x18000000),
+                  borderRadius: BorderRadius.circular(28),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: DefaultTextStyle.merge(
+                          style: const TextStyle(
+                            fontSize: 15,
+                            height: 1.6,
+                            color: AppColors.textDark,
+                          ),
+                          child: ListView(
+                            padding: EdgeInsets.fromLTRB(
+                              tablet ? 32 : 20,
+                              12,
+                              tablet ? 32 : 20,
+                              28,
+                            ),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            children: [
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                  letterSpacing: -.3,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              ...children,
+                            ],
+                          ),
                         ),
                       ),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        child: ProfileTopAction(
-                          label: 'Cancel',
-                          onTap: _busy ? null : () => Navigator.pop(context),
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: ProfileTopAction(
-                          label: _busy ? 'Saving…' : 'Done',
-                          onTap: _busy ? null : _save,
-                        ),
-                      ),
-                    ]),
+                    ],
                   ),
-                  const SizedBox(height: 46),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(26),
-                    clipBehavior: Clip.antiAlias,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextFormField(
-                        controller: _name,
-                        enabled: !_busy,
-                        maxLength: 80,
-                        textCapitalization: TextCapitalization.words,
-                        autofillHints: const [AutofillHints.name],
-                        textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(
-                          hintText: 'Full name',
-                          counterText: '',
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 19),
-                        ),
-                        style: const TextStyle(fontSize: 17),
-                        validator: (value) => (value ?? '').trim().isEmpty
-                            ? 'Enter your name.'
-                            : null,
-                        onFieldSubmitted: (_) => _save(),
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Text(
-                      'This name appears on your StallSeeker account.',
-                      style:
-                          TextStyle(fontSize: 13, color: AppColors.textMuted),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(26),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 15),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Email address',
-                              style: TextStyle(
-                                  fontSize: 13, color: AppColors.textMuted)),
-                          const SizedBox(height: 5),
-                          Text(widget.email,
-                              style: const TextStyle(fontSize: 17)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Text(
-                      'Your sign-in email cannot be changed here.',
-                      style:
-                          TextStyle(fontSize: 13, color: AppColors.textMuted),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  AccountError(_error),
-                ],
+                ),
               ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 ````
 
@@ -5210,331 +8459,60 @@ class _LiveBookingSectionState extends State<LiveBookingSection> {
 }
 ````
 
-## File: lib/features/shared/pin_location_screen.dart
+## File: lib/features/shared/profile_header.dart
 ````dart
-import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/cupertino.dart';
+
 import '../../core/constants/app_colors.dart';
-import 'manual_location_dialog.dart';
+import '../../core/widgets/app_top_action.dart';
 
-class PinLocationScreen extends StatefulWidget {
-  const PinLocationScreen({super.key, required this.initialLocation});
-  final LatLng initialLocation;
+class ProfileAvatar extends StatelessWidget {
+  const ProfileAvatar(
+      {super.key, required this.name, this.photoUrl, this.size = 100});
 
-  @override
-  State<PinLocationScreen> createState() => _PinLocationScreenState();
-}
-
-class _PinLocationScreenState extends State<PinLocationScreen> {
-  GoogleMapController? _controller;
-  late LatLng _position = widget.initialLocation;
-  String? _address;
-  bool _saving = false;
-  bool _mapReady = false;
+  final String name;
+  final String? photoUrl;
+  final double size;
 
   @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _search() async {
-    final location = await showManualLocationDialog(context,
-        initialLocation: _position, title: 'Find a place to pin');
-    if (!mounted || location == null) return;
-    setState(() {
-      _position = location.coordinates;
-      _address = location.label;
-    });
-    await _controller
-        ?.animateCamera(CameraUpdate.newLatLngZoom(location.coordinates, 17));
-  }
-
-  Future<void> _usePin() async {
-    setState(() => _saving = true);
-    final position = _position;
-    var label = _address;
-    if (label == null) {
-      try {
-        label = await describeLocation(position);
-      } catch (_) {
-        label = '${position.latitude.toStringAsFixed(5)}, '
-            '${position.longitude.toStringAsFixed(5)}';
-      }
-    }
-    if (mounted) {
-      Navigator.pop(
-          context, LocationSelection(coordinates: position, label: label));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Pin a location')),
-        body: Column(children: [
-          Padding(
-              padding: const EdgeInsets.all(16),
-              child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _search,
-                  icon: const Icon(Icons.search),
-                  label: const Text('Search for a place'))),
-          Expanded(
-              child: Stack(alignment: Alignment.center, children: [
-            GoogleMap(
-              initialCameraPosition:
-                  CameraPosition(target: _position, zoom: 16),
-              onMapCreated: (controller) {
-                _controller = controller;
-                if (mounted) setState(() => _mapReady = true);
-              },
-              onCameraMove: (camera) {
-                if (_saving) return;
-                if ((_position.latitude - camera.target.latitude).abs() >
-                        .00001 ||
-                    (_position.longitude - camera.target.longitude).abs() >
-                        .00001) {
-                  _address = null;
-                }
-                _position = camera.target;
-              },
-              scrollGesturesEnabled: !_saving,
-              zoomGesturesEnabled: !_saving,
-              rotateGesturesEnabled: false,
-              tiltGesturesEnabled: false,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-            ),
-            const IgnorePointer(
-                child: Padding(
-                    padding: EdgeInsets.only(bottom: 48),
-                    child: Icon(Icons.location_pin,
-                        size: 48, color: AppColors.primary))),
-            const Positioned(
-                top: 12,
-                left: 20,
-                right: 20,
-                child: IgnorePointer(
-                    child: Card(
-                        child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: Text(
-                                'Move the map to place the pin at the exact location.',
-                                textAlign: TextAlign.center))))),
-          ])),
-          SafeArea(
-              top: false,
-              child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                          onPressed: _saving || !_mapReady ? null : _usePin,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Text('Use this pin'))))),
-        ]),
-      );
-}
-````
-
-## File: lib/features/vendor/profile/stall_schedule_editor.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../../core/models/stall_schedule.dart';
-
-class StallScheduleEditor extends StatelessWidget {
-  const StallScheduleEditor(
-      {super.key,
-      required this.hours,
-      required this.closures,
-      required this.onChanged});
-
-  final Map<int, List<StallHoursInterval>> hours;
-  final List<TemporaryClosure> closures;
-  final void Function(
-      Map<int, List<StallHoursInterval>>, List<TemporaryClosure>) onChanged;
-
-  static const _days = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday'
-  ];
-
-  Map<int, List<StallHoursInterval>> _copyHours() => {
-        for (var day = 1; day <= 7; day++) day: [...?hours[day]],
-      };
-
-  Future<void> _pickTime(BuildContext context, int day, int index,
-      {required bool opening}) async {
-    final interval = hours[day]![index];
-    final current = opening ? interval.openMinute : interval.closeMinute;
-    final picked = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60));
-    if (picked == null || !context.mounted) return;
-    final minutes = picked.hour * 60 + picked.minute;
-    if (minutes == (opening ? interval.closeMinute : interval.openMinute)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Opening and closing times must be different.')));
-      return;
-    }
-    final next = _copyHours();
-    next[day]![index] = StallHoursInterval(
-      opening ? minutes : interval.openMinute,
-      opening ? interval.closeMinute : minutes,
-    );
-    onChanged(next, closures);
-  }
-
-  Future<DateTime?> _pickDateTime(
-      BuildContext context, DateTime initial) async {
-    final date = await showDatePicker(
-        context: context,
-        initialDate: initial,
-        firstDate: DateTime.now().subtract(const Duration(days: 1)),
-        lastDate: DateTime.now().add(const Duration(days: 730)));
-    if (date == null || !context.mounted) return null;
-    final time = await showTimePicker(
-        context: context, initialTime: TimeOfDay.fromDateTime(initial));
-    if (time == null) return null;
-    // The stall operates in Malaysia time, independently of device timezone.
-    return DateTime.utc(
-        date.year, date.month, date.day, time.hour - 8, time.minute);
-  }
-
-  Future<void> _addClosure(BuildContext context) async {
-    if (closures.length >= 20) return;
-    final nowMy = DateTime.now().toUtc().add(const Duration(hours: 8));
-    final start = await _pickDateTime(context, nowMy);
-    if (start == null || !context.mounted) return;
-    final end = await _pickDateTime(
-        context, start.toUtc().add(const Duration(hours: 18)));
-    if (end == null || !context.mounted) return;
-    if (!end.isAfter(start)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Closure end must be after its start.')));
-      return;
-    }
-    onChanged(
-        hours,
-        [...closures, TemporaryClosure(start, end)]
-          ..sort((a, b) => a.start.compareTo(b.start)));
-  }
-
-  String _formatClosure(DateTime value) {
-    final my = value.toUtc().add(const Duration(hours: 8));
-    return '${my.day}/${my.month}/${my.year} ${formatStallTime(my.hour * 60 + my.minute)}';
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Weekly opening hours',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 5),
-          const Text(
-              'These are planned hours. Use the Open switch when you start serving.'),
-          const SizedBox(height: 8),
-          Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Column(children: [
-                for (var day = 1; day <= 7; day++) ...[
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(_days[day - 1]),
-                    subtitle: Text(
-                        (hours[day] ?? []).isEmpty ? 'Closed' : 'Scheduled'),
-                    value: (hours[day] ?? []).isNotEmpty,
-                    onChanged: (enabled) {
-                      final next = _copyHours();
-                      next[day] = enabled
-                          ? [const StallHoursInterval(9 * 60, 17 * 60)]
-                          : [];
-                      onChanged(next, closures);
-                    },
+  Widget build(BuildContext context) => ClipOval(
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: photoUrl == null || photoUrl!.trim().isEmpty
+              ? const ColoredBox(
+                  color: AppColors.mint,
+                  child: Icon(CupertinoIcons.person_fill,
+                      size: 58, color: AppColors.primary),
+                )
+              : Image.network(
+                  photoUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const ColoredBox(
+                    color: AppColors.mint,
+                    child: Icon(CupertinoIcons.person_fill,
+                        size: 58, color: AppColors.primary),
                   ),
-                  for (var index = 0;
-                      index < (hours[day] ?? []).length;
-                      index++)
-                    Padding(
-                        padding: const EdgeInsets.only(left: 12, bottom: 8),
-                        child: Row(children: [
-                          Expanded(
-                              child: OutlinedButton(
-                                  onPressed: () => _pickTime(
-                                      context, day, index, opening: true),
-                                  child: Text(formatStallTime(
-                                      hours[day]![index].openMinute)))),
-                          const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 5),
-                              child: Text('to')),
-                          Expanded(
-                              child: OutlinedButton(
-                                  onPressed: () => _pickTime(
-                                      context, day, index, opening: false),
-                                  child: Text(formatStallTime(
-                                      hours[day]![index].closeMinute)))),
-                          IconButton(
-                              tooltip: 'Remove time',
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                final next = _copyHours();
-                                next[day]!.removeAt(index);
-                                onChanged(next, closures);
-                              }),
-                        ])),
-                  if ((hours[day] ?? []).isNotEmpty && hours[day]!.length < 3)
-                    TextButton.icon(
-                        onPressed: () {
-                          final next = _copyHours();
-                          next[day]!
-                              .add(const StallHoursInterval(18 * 60, 22 * 60));
-                          onChanged(next, closures);
-                        },
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add time')),
-                  if (day < 7) const Divider(height: .5, thickness: .5),
-                ],
-              ]),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Temporary closures',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 5),
-          const Text(
-              'Choose dates and times for breaks or days off. Your stall will close during a break. Use the Open switch to reopen afterward.'),
-          for (var index = 0; index < closures.length; index++)
-            ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('${_formatClosure(closures[index].start)} –'),
-                subtitle: Text(_formatClosure(closures[index].end)),
-                trailing: IconButton(
-                    tooltip: 'Remove closure',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () {
-                      final next = [...closures]..removeAt(index);
-                      onChanged(hours, next);
-                    })),
-          TextButton.icon(
-              onPressed:
-                  closures.length >= 20 ? null : () => _addClosure(context),
-              icon: const Icon(Icons.event_busy_outlined),
-              label: const Text('Add closure')),
-        ],
+                ),
+        ),
       );
+}
+
+class ProfileTopAction extends StatelessWidget {
+  const ProfileTopAction({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) =>
+      AppTopAction(label: label, onTap: onTap, icon: icon);
 }
 ````
 
@@ -5694,6 +8672,268 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+}
+````
+
+## File: test/booking_card_test.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/demo_order.dart';
+import 'package:stallseeker/features/shared/booking_detail_screen.dart';
+
+void main() {
+  for (final isVendor in [false, true]) {
+    testWidgets('special instructions appear for vendor=$isVendor',
+        (tester) async {
+      final booking = DemoOrder.fromMap(const {
+        'id': 'with-instructions',
+        'customerName': 'Aina',
+        'stallName': 'Nasi Stall',
+        'specialInstructions': 'Less spicy, please\nNo onions.',
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Column(children: [
+            BookingSummaryCard(
+                booking: booking, isVendor: isVendor, onTap: () {}),
+            BookingSpecialInstructionsCard(
+                instructions: booking.specialInstructions),
+          ]),
+        ),
+      ));
+      expect(find.text('Special instructions: Less spicy, please\nNo onions.'),
+          findsOneWidget);
+      expect(find.text('Less spicy, please\nNo onions.'), findsOneWidget);
+      expect(find.text('Requests are subject to vendor acceptance.'),
+          findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      'simultaneous bookings show separate progress and open separately',
+      (tester) async {
+    final opened = <String>[];
+    DemoOrder booking(String id, String status, bool unseen) => DemoOrder(
+          id: id,
+          customerId: 'customer',
+          vendorId: 'vendor',
+          customerName: 'Customer',
+          stallName: 'Stall $id',
+          status: status,
+          items: const [],
+          totalCents: 1200,
+          createdAt: DateTime(2026, 10, 8),
+          customerUnseenReady: unseen,
+        );
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Column(children: [
+      BookingSummaryCard(
+          booking: booking('first', 'preparing', false),
+          isVendor: false,
+          onTap: () => opened.add('first')),
+      BookingSummaryCard(
+          booking: booking('second', 'ready', true),
+          isVendor: false,
+          onTap: () => opened.add('second')),
+    ]))));
+
+    expect(find.text('Preparing'), findsOneWidget);
+    expect(find.text('Ready for collection'), findsOneWidget);
+    expect(find.byType(CircleAvatar), findsOneWidget);
+    await tester.tap(find.text('Stall second'));
+    expect(opened, ['second']);
+  });
+}
+````
+
+## File: test/booking_cart_view_test.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/menu_item_model.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/customer/orders/demo_order_cart_screen.dart';
+
+void main() {
+  for (final width in [320.0, 390.0, 960.0]) {
+    testWidgets('booking cart fits ${width.toInt()}px and updates the total',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final item = MenuItemModel(itemId: 'tea', name: 'Air teh', price: 2);
+      final quantities = <String, int>{};
+      final instructions = TextEditingController();
+      addTearDown(instructions.dispose);
+      var submitted = false;
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          appBar: AppBar(title: const Text('Your order')),
+          body: StatefulBuilder(
+              builder: (context, setState) => BookingCartView(
+                    stallName: 'Adam stalls',
+                    items: [item],
+                    quantities: quantities,
+                    sending: false,
+                    specialInstructionsController: instructions,
+                    onQuantityChanged: (item, quantity) =>
+                        setState(() => quantities[item.itemId] = quantity),
+                    onSubmit: () => submitted = true,
+                  )),
+        ),
+      ));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Choose an item'), findsOneWidget);
+      expect(find.text('RM 0.00'), findsOneWidget);
+
+      final field = find.byType(TextField);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, 'Less spicy, please');
+      expect(find.text('Requests are subject to vendor acceptance.'),
+          findsOneWidget);
+      expect(tester.widget<TextField>(field).maxLength, 500);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+
+      await tester.ensureVisible(find.byTooltip('Add Air teh'));
+      await tester.tap(find.byTooltip('Add Air teh'));
+      await tester.pump();
+      expect(find.text('RM 2.00'), findsNWidgets(2));
+      expect(find.text('Continue to payment'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(instructions.text, 'Less spicy, please');
+
+      await tester.tap(find.text('Continue to payment'));
+      expect(submitted, isTrue);
+      expect(instructions.text, 'Less spicy, please');
+    });
+  }
+
+  testWidgets('out-of-stock selection cannot count toward payment',
+      (tester) async {
+    final item = MenuItemModel(
+        itemId: 'tea', name: 'Air teh', price: 2, status: 'out_of_stock');
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: Scaffold(
+        body: BookingCartView(
+          stallName: 'Adam stalls',
+          items: [item],
+          quantities: const {'tea': 1},
+          sending: false,
+          onQuantityChanged: (_, __) {},
+          onSubmit: () {},
+        ),
+      ),
+    ));
+    expect(find.text('RM 0.00'), findsOneWidget);
+    expect(find.text('Out of stock'), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byType(IconButton).last).onPressed,
+        isNull);
+  });
+
+  testWidgets('special instructions are disabled while submitting',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BookingCartView(
+          stallName: 'Stall',
+          items: [MenuItemModel(itemId: 'tea', name: 'Tea', price: 2)],
+          quantities: const {'tea': 1},
+          sending: true,
+          onQuantityChanged: (_, __) {},
+          onSubmit: () {},
+        ),
+      ),
+    ));
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+  });
+}
+````
+
+## File: test/demo_booking_service_test.dart
+````dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stallseeker/core/models/demo_order.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/core/services/local_demo_booking_service.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('device booking persists through vendor and customer status changes',
+      () async {
+    final vendorService = LocalDemoBookingService(actorId: 'vendor-1');
+    final customerService = LocalDemoBookingService(actorId: 'customer-1');
+    final vendor = VendorModel(
+      vendorId: 'vendor-1',
+      stallName: 'Nasi Stall',
+      description: '',
+      category: 'Food',
+      openingHours: '',
+      latitude: 3.1,
+      longitude: 101.7,
+    );
+
+    expect(await vendorService.isSelfCollectEnabled(vendor.vendorId), false);
+    await vendorService.setSelfCollectEnabled(vendor.vendorId, true);
+    final id = await customerService.requestOrder(
+      vendor,
+      const [
+        DemoOrderItem(
+            itemId: 'dish-1',
+            name: 'Nasi Lemak',
+            unitPriceCents: 650,
+            quantity: 2),
+      ],
+      customerName: 'Aina',
+      specialInstructions: '  Less spicy, please  ',
+    );
+
+    var vendorBookings =
+        await vendorService.watchVendorOrders('vendor-1').first;
+    expect(vendorBookings.single.id, id);
+    expect(vendorBookings.single.totalCents, 1300);
+    expect(vendorBookings.single.status, 'requested');
+    expect(vendorBookings.single.specialInstructions, 'Less spicy, please');
+
+    await vendorService.respond(id, accept: true);
+    expect(
+        (await customerService.watchCustomerOrders('customer-1').first)
+            .single
+            .status,
+        'confirmed');
+    await vendorService.advance(id);
+    await vendorService.advance(id);
+    expect(
+        (await customerService.watchCustomerOrders('customer-1').first)
+            .single
+            .status,
+        'ready');
+    await vendorService.advance(id);
+    vendorBookings = await vendorService.watchVendorOrders('vendor-1').first;
+    expect(vendorBookings.single.status, 'collected');
+    expect(vendorBookings.single.specialInstructions, 'Less spicy, please');
+
+    await customerService.removeAccountData('customer-1');
+    expect(await vendorService.watchVendorOrders('vendor-1').first, isEmpty);
+  });
+
+  test('older bookings without special instructions remain readable', () {
+    final booking = DemoOrder.fromMap(const {'id': 'old-booking'});
+    expect(booking.specialInstructions, isEmpty);
+    expect(DemoOrder.fromMap(booking.toMap()).specialInstructions, isEmpty);
+  });
 }
 ````
 
@@ -5959,55 +9199,945 @@ void main() {
 }
 ````
 
-## File: lib/core/models/menu_item_model.dart
+## File: test/payment_ui_test.dart
+````dart
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/demo_order.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/features/shared/booking_payment_card.dart';
+import 'package:stallseeker/features/vendor/dashboard/vendor_demo_sales.dart';
+
+DemoOrder order(
+        {String id = 'order',
+        String vendorId = 'seller',
+        String? mode = 'test',
+        String? payment = 'awaiting_payment',
+        bool checkoutFirst = false,
+        bool vendorUnseenRequest = false,
+        int refund = 0,
+        DateTime? paidAt}) =>
+    DemoOrder(
+        id: id,
+        customerId: 'buyer',
+        vendorId: vendorId,
+        customerName: 'Adam',
+        stallName: 'Nasi Lemak Kak Ani',
+        status: 'confirmed',
+        items: const [],
+        totalCents: 1250,
+        createdAt: DateTime(2026, 10, 20),
+        paymentMode: mode,
+        checkoutFirst: checkoutFirst,
+        vendorUnseenRequest: vendorUnseenRequest,
+        paymentStatus: payment,
+        paymentRefundedCents: refund,
+        paymentExpiresAt: DateTime.now().add(const Duration(minutes: 5)),
+        paymentPaidAt: paidAt);
+
+Future<void> preview(WidgetTester tester, String name) async {
+  if (!const bool.fromEnvironment('PAYMENT_PREVIEW')) return;
+  final boundary = tester
+      .renderObject<RenderRepaintBoundary>(find.byKey(const Key('preview')));
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 2);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    await Directory('tmp/payment-previews').create(recursive: true);
+    await File('tmp/payment-previews/$name.png')
+        .writeAsBytes(data!.buffer.asUint8List());
+    image.dispose();
+  });
+}
+
+Widget app(Widget child) => MaterialApp(
+    theme: AppTheme.lightTheme,
+    home: RepaintBoundary(
+        key: const Key('preview'),
+        child: Scaffold(
+            appBar: AppBar(
+                title: const Text('StallSeeker',
+                    style: TextStyle(fontFamily: 'Roboto'))),
+            body: SingleChildScrollView(
+                padding: const EdgeInsets.all(16), child: child))));
+
+void main() {
+  setUpAll(() async {
+    if (!const bool.fromEnvironment('PAYMENT_PREVIEW')) return;
+    const fontRoot = String.fromEnvironment('PREVIEW_FONT_ROOT');
+    final bytes = await File('$fontRoot/roboto-regular.ttf').readAsBytes();
+    for (final family in ['Roboto', 'Ahem']) {
+      final font = FontLoader(family)
+        ..addFont(Future.value(ByteData.sublistView(bytes)));
+      await font.load();
+    }
+    final icons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await icons.load();
+  });
+  test(
+      'legacy records remain payable outside the app and test payment metadata survives round trips',
+      () {
+    final legacy = order(mode: null, payment: null);
+    expect(legacy.canPrepare, isTrue);
+    expect(legacy.hasTestPayment, isFalse);
+    final paid = order(payment: 'paid', paidAt: DateTime.utc(2026, 10, 20));
+    final decoded = DemoOrder.fromMap(paid.toMap()).withStatus('preparing');
+    expect(decoded.paymentStatus, 'paid');
+    expect(decoded.paymentPaidAt, paid.paymentPaidAt);
+    expect(decoded.paymentMode, 'test');
+    expect(order(checkoutFirst: true).toMap()['checkoutFirst'], isTrue);
+    expect(DemoOrder.fromMap(order(checkoutFirst: true).toMap()).checkoutFirst,
+        isTrue);
+    expect(order().canPrepare, isFalse);
+    expect(paid.canPrepare, isTrue);
+  });
+
+  test('customer may cancel a paid test booking until it is collected', () {
+    final paid = order(payment: 'paid');
+    for (final status in ['confirmed', 'preparing', 'ready']) {
+      expect(paid.withStatus(status).canCustomerCancel, isTrue);
+    }
+    expect(paid.withStatus('collected').canCustomerCancel, isFalse);
+    expect(order(mode: null).canCustomerCancel, isFalse);
+    expect(bookingStatusLabel(order(checkoutFirst: true)), 'Awaiting payment');
+    expect(bookingStatusLabel(order(checkoutFirst: true, payment: 'paid')),
+        'Paid · awaiting preparation');
+    expect(
+        order(checkoutFirst: true, payment: 'paid', vendorUnseenRequest: true)
+            .vendorNeedsAttention,
+        isTrue);
+    expect(
+        order(
+                checkoutFirst: true,
+                payment: 'pending',
+                vendorUnseenRequest: true)
+            .vendorNeedsAttention,
+        isFalse);
+  });
+
+  test(
+      'demo sales exclude other stalls, old bookings, unpaid and refunded orders',
+      () {
+    final now =
+        DateTime.utc(2026, 10, 19, 17); // 1am on 20 October in Malaysia.
+    final result = DemoSalesSummary.fromOrders([
+      order(payment: 'paid', paidAt: now),
+      order(payment: 'paid', paidAt: now, refund: 250),
+      order(payment: 'paid', paidAt: DateTime.utc(2026, 10, 19, 15)),
+      order(vendorId: 'other', payment: 'paid', paidAt: now),
+      order(mode: null, payment: 'paid', paidAt: now),
+      order(payment: 'refunded', paidAt: now),
+      order(payment: 'refund_pending', paidAt: now),
+      order(payment: 'pending', paidAt: now),
+    ], vendorId: 'seller', now: now);
+    expect(result.todayCents, 2250);
+    expect(result.totalCents, 3500);
+    expect(result.paidOrders, 3);
+  });
+
+  testWidgets(
+      'customer can pay only eligible bookings and sees payment information',
+      (tester) async {
+    tester.view.resetPhysicalSize();
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var tapped = 0;
+    await tester.pumpWidget(app(BookingPaymentCard(
+        booking: order(),
+        isVendor: false,
+        onPay: () => tapped++,
+        onRefresh: () {})));
+    await tester.pumpAndSettle();
+    expect(find.text('Pay RM 12.50'), findsOneWidget);
+    expect(find.text('Complete your payment securely with Stripe.'),
+        findsOneWidget);
+    expect(find.textContaining('TEST MODE'), findsNothing);
+    await tester.tap(find.text('Pay RM 12.50'));
+    expect(tapped, 1);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await preview(tester, 'customer-payment');
+
+    await tester.pumpWidget(app(BookingPaymentCard(
+        booking: order(payment: 'paid'),
+        isVendor: false,
+        onPay: () => tapped++)));
+    expect(find.text('Pay RM 12.50'), findsNothing);
+    expect(find.text('Paid'), findsOneWidget);
+  });
+
+  testWidgets('vendor and busy payment cards cannot launch checkout',
+      (tester) async {
+    await tester
+        .pumpWidget(app(BookingPaymentCard(booking: order(), isVendor: true)));
+    expect(find.text('Pay RM 12.50'), findsNothing);
+    expect(find.textContaining('Preparation unlocks'), findsOneWidget);
+    await tester.pumpWidget(app(BookingPaymentCard(
+        booking: order(),
+        isVendor: false,
+        busy: true,
+        onPay: () => fail('Must not start another payment'))));
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull);
+  });
+
+  testWidgets('sales card uses release wording and fits narrow screens',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(app(DemoSalesCard(
+        summary: const DemoSalesSummary(
+            todayCents: 8500, totalCents: 12500, paidOrders: 8),
+        onHistory: () {})));
+    await tester.pumpAndSettle();
+    expect(find.text('RM 85.00'), findsOneWidget);
+    expect(find.text('Sales'), findsOneWidget);
+    expect(find.textContaining('TEST MODE'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await preview(tester, 'vendor-sales');
+  });
+}
+````
+
+## File: test/profile_page_test.dart
+````dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/features/shared/profile_page.dart';
+
+ProfilePage page({
+  bool guest = false,
+  bool vendor = false,
+  String name = 'Adam Danish',
+  String email = 'adam@example.com',
+  VoidCallback? onHome,
+  VoidCallback? onCustom,
+  VoidCallback? onSignIn,
+}) {
+  void noop() {}
+  return ProfilePage(
+    name: name,
+    email: email,
+    isVendor: vendor,
+    isGuest: guest,
+    canChangePassword: true,
+    location: 'Johor Bahru, Johor',
+    isLoadingLocation: false,
+    onRefresh: () async {},
+    onLocation: noop,
+    onEdit: noop,
+    onPassword: noop,
+    onFaq: noop,
+    onAbout: noop,
+    onLogout: noop,
+    onSignIn: onSignIn ?? noop,
+    onNotificationSettings: noop,
+    onPrivacyPolicy: noop,
+    onTerms: noop,
+    onDeleteAccount: noop,
+    onHomeLocation: onHome,
+    onCustomLocation: onCustom,
+  );
+}
+
+void main() {
+  testWidgets('follow notification settings are available only to customers',
+      (tester) async {
+    for (final vendor in [false, true]) {
+      await tester
+          .pumpWidget(MaterialApp(home: Scaffold(body: page(vendor: vendor))));
+      await tester.drag(find.byType(ListView), const Offset(0, -350));
+      await tester.pumpAndSettle();
+      expect(find.text('Notifications and Sounds'),
+          vendor ? findsNothing : findsOneWidget);
+      expect(find.text('Privacy Policy'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets(
+      'saved pin rows invoke their actions and remain available to guests',
+      (tester) async {
+    var homes = 0;
+    var customs = 0;
+    var signIns = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: page(
+          guest: true,
+          name: 'Guest',
+          email: '',
+          onHome: () => homes++,
+          onCustom: () => customs++,
+          onSignIn: () => signIns++,
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('Home location'));
+    await tester.tap(find.text('Custom pins'));
+    await tester.tap(find.text('Sign in'));
+    expect(homes, 1);
+    expect(customs, 1);
+    expect(signIns, 1);
+    expect(find.text('Change password'), findsNothing);
+    expect(find.text('Delete account'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long account details wrap on small screens with larger text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(1.5),
+        ),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: page(
+          name: 'Adam Danish bin Muhammad Abdullah',
+          email: 'adam.danish.muhammad.abdullah@example.com',
+          onHome: () {},
+          onCustom: () {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(find.text('Logout'), 200);
+    await tester.pumpAndSettle();
+    expect(find.text('Logout'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+````
+
+## File: test/vendor_dashboard_view_test.dart
+````dart
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:stallseeker/core/models/demo_order.dart';
+import 'package:stallseeker/core/models/stall_schedule.dart';
+import 'package:stallseeker/core/models/vendor_model.dart';
+import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/core/widgets/app_pill_navigation.dart';
+import 'package:stallseeker/features/vendor/dashboard/vendor_dashboard_view.dart';
+
+final _now = DateTime.utc(2026, 10, 24, 4);
+
+VendorModel _vendor({bool temporaryClosure = false}) => VendorModel(
+      vendorId: 'seller',
+      stallName: 'Warung Pak Ali',
+      description: 'Fresh local favourites',
+      category: 'Malay',
+      openingHours: '8 AM – 4 PM',
+      phoneNumber: '0123456789',
+      isOpen: true,
+      selfCollectEnabled: true,
+      temporaryClosures: temporaryClosure
+          ? [
+              TemporaryClosure(
+                  DateTime.now().subtract(const Duration(hours: 1)),
+                  DateTime.now().add(const Duration(hours: 1))),
+            ]
+          : [],
+    );
+
+DemoOrder _booking(String id, String status,
+        {bool paid = true, DateTime? createdAt, DateTime? expiresAt}) =>
+    DemoOrder(
+      id: id,
+      customerId: id,
+      vendorId: 'seller',
+      customerName: id,
+      stallName: 'Warung Pak Ali',
+      status: status,
+      items: const [
+        DemoOrderItem(
+            itemId: 'dish',
+            name: 'Nasi Lemak',
+            unitPriceCents: 600,
+            quantity: 2),
+      ],
+      totalCents: 1200,
+      createdAt: createdAt ?? _now,
+      expiresAt: expiresAt,
+      paymentMode: 'test',
+      paymentStatus: paid ? 'paid' : 'awaiting_payment',
+      paymentPaidAt: paid ? _now : null,
+    );
+
+Widget _app({
+  List<DemoOrder> bookings = const [],
+  VendorModel? vendor,
+  bool error = false,
+  bool loading = false,
+  bool sharing = true,
+  bool saving = false,
+  String? locationError,
+  Set<String> busy = const {},
+  double scale = 1,
+  ValueChanged<String>? onAction,
+}) {
+  void action(String name) => onAction?.call(name);
+  return MaterialApp(
+    theme: AppTheme.lightTheme,
+    builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!),
+    home: RepaintBoundary(
+      key: const Key('dashboard-preview'),
+      child: Scaffold(
+        extendBody: true,
+        body: SafeArea(
+          bottom: false,
+          child: VendorDashboardView(
+            vendor: vendor ?? _vendor(),
+            bookings: bookings,
+            bookingsLoading: loading,
+            bookingsError: error,
+            saving: saving,
+            locationSharing: sharing,
+            locationError: locationError,
+            busyBookings: busy,
+            now: _now,
+            onRefresh: () async => action('refresh'),
+            onToggleOpen: (open) => action('open:$open'),
+            onToggleSelfCollect: (enabled) => action('collect:$enabled'),
+            onResumeLocation: () => action('resume'),
+            onPreview: () => action('preview'),
+            onEditStall: () => action('edit'),
+            onMenu: () => action('menu'),
+            onStock: () => action('stock'),
+            onBookings: () => action('bookings'),
+            onPaymentHistory: () => action('history'),
+            onOpenBooking: (booking) => action('view:${booking.id}'),
+            onAdvanceBooking: (booking) => action('advance:${booking.id}'),
+          ),
+        ),
+        bottomNavigationBar: AppPillNavigation(
+          selectedIndex: 0,
+          onDestinationSelected: (_) {},
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.grid_view), label: 'Dashboard'),
+            NavigationDestination(
+                icon: Icon(Icons.settings), label: 'Settings'),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+void _viewport(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Future<void> _show(WidgetTester tester, Finder target) async {
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _preview(WidgetTester tester, String name) async {
+  if (!const bool.fromEnvironment('DASHBOARD_PREVIEW')) return;
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const Key('dashboard-preview')));
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 2);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    await Directory('tmp/vendor-dashboard').create(recursive: true);
+    await File('tmp/vendor-dashboard/$name.png')
+        .writeAsBytes(data!.buffer.asUint8List());
+    image.dispose();
+  });
+}
+
+void main() {
+  setUpAll(() async {
+    if (!const bool.fromEnvironment('DASHBOARD_PREVIEW')) return;
+    const fontRoot = String.fromEnvironment('PREVIEW_FONT_ROOT');
+    final fonts = FontLoader('Roboto');
+    for (final name in ['Regular', 'Medium']) {
+      final bytes = await File('$fontRoot/Roboto-$name.ttf').readAsBytes();
+      fonts.addFont(Future.value(ByteData.sublistView(bytes)));
+    }
+    await fonts.load();
+    final fallback = FontLoader('Ahem')
+      ..addFont(Future.value(ByteData.sublistView(
+          await File('$fontRoot/Roboto-Regular.ttf').readAsBytes())));
+    await fallback.load();
+    final icons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await icons.load();
+  });
+
+  testWidgets('stall controls, preview and each quick action are connected',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(onAction: actions.add));
+    expect(tester.getTopLeft(find.text('Stall open')).dy,
+        lessThan(tester.getTopLeft(find.text('Quick actions')).dy));
+    await tester.tap(find.text('Preview'));
+    await tester.tap(find.text('Edit stall'));
+    await tester.tap(find.text('Menu'));
+    await tester.tap(find.text('Stock'));
+    await tester.tap(find.text('Bookings').first);
+    await tester.tap(find.byType(Switch).first);
+    await tester.tap(find.byType(Switch).last);
+    expect(actions, [
+      'preview',
+      'edit',
+      'menu',
+      'stock',
+      'bookings',
+      'open:false',
+      'collect:false'
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('requests come first and expired requests are excluded',
+      (tester) async {
+    _viewport(tester, const Size(390, 1400));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(bookings: [
+      _booking('Daniel', 'preparing'),
+      _booking('Old request', 'requested',
+          expiresAt: DateTime.now().subtract(const Duration(minutes: 1))),
+      _booking('Aisyah', 'requested'),
+    ], onAction: actions.add));
+    expect(find.text('Old request'), findsNothing);
+    expect(tester.getTopLeft(find.text('Aisyah')).dy,
+        lessThan(tester.getTopLeft(find.text('Daniel')).dy));
+    await _show(tester, find.text('Review booking'));
+    await tester.tap(find.text('Review booking'));
+    await _show(tester, find.text('Mark ready'));
+    await tester.tap(find.text('Mark ready'));
+    expect(actions, ['view:Aisyah', 'advance:Daniel']);
+    expect(find.textContaining('Collect at'), findsNothing);
+    expect(find.textContaining('Booked 24/10'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await _preview(tester, 'dashboard-full');
+  });
+
+  testWidgets('unpaid bookings cannot prepare and busy actions are disabled',
+      (tester) async {
+    _viewport(tester, const Size(390, 1400));
+    await tester.pumpWidget(_app(bookings: [
+      _booking('Unpaid', 'confirmed', paid: false),
+      _booking('Paid', 'confirmed'),
+    ], busy: {
+      'Paid'
+    }, saving: true));
+    expect(find.text('Start preparing'), findsNothing);
+    expect(find.text('Updating…'), findsOneWidget);
+    expect(find.text('View booking'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull);
+    for (final control in tester.widgetList<Switch>(find.byType(Switch))) {
+      expect(control.onChanged, isNull);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('closure and location problems have clear recovery actions',
+      (tester) async {
+    _viewport(tester, const Size(390, 844));
+    final actions = <String>[];
+    await tester.pumpWidget(
+        _app(vendor: _vendor(temporaryClosure: true), onAction: actions.add));
+    expect(find.text('Temporarily closed'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch).first).onChanged, isNull);
+    await tester.tap(find.text('Manage temporary closure'));
+    expect(actions, ['edit']);
+    await tester.pumpWidget(
+        _app(sharing: true, locationError: 'Check GPS', onAction: actions.add));
+    expect(find.text('Check GPS'), findsOneWidget);
+    await tester.tap(find.text('Retry location'));
+    expect(actions.last, 'resume');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('overview counts Malaysia dates and uses release wording',
+      (tester) async {
+    _viewport(tester, const Size(390, 1400));
+    await tester.pumpWidget(_app(bookings: [
+      _booking('Today', 'collected', createdAt: DateTime.utc(2026, 10, 23, 16)),
+      _booking('Yesterday', 'collected',
+          createdAt: DateTime.utc(2026, 10, 23, 15, 59)),
+    ]));
+    await _show(tester, find.text('Today’s overview'));
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('RM 24.00'), findsOneWidget);
+    expect(find.text('Sales'), findsOneWidget);
+    expect(
+        find.textContaining(RegExp(r'test|demo|simulat', caseSensitive: false)),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final size in [const Size(320, 720), const Size(960, 1000)]) {
+    testWidgets('dashboard fits ${size.width} wide with enlarged text',
+        (tester) async {
+      _viewport(tester, size);
+      await tester.pumpWidget(_app(scale: 1.6, bookings: [
+        _booking('A customer with a very long name', 'confirmed'),
+        _booking('Another customer', 'preparing'),
+      ]));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await _show(tester, find.text('Today’s overview'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final size in [
+    const Size(320, 900),
+    const Size(390, 1100),
+    const Size(768, 1024),
+    const Size(960, 700),
+    const Size(1280, 800),
+  ]) {
+    testWidgets('responsive dashboard at ${size.width} × ${size.height}',
+        (tester) async {
+      _viewport(tester, size);
+      await tester.pumpWidget(_app(bookings: [
+        _booking('Aina', 'requested'),
+        _booking('Daniel', 'preparing'),
+        _booking('Farah', 'ready'),
+      ]));
+      await tester.pumpAndSettle();
+      final wide = size.width >= 900;
+      expect(
+          find.byKey(
+              Key(wide ? 'dashboard-two-columns' : 'dashboard-single-column')),
+          findsOneWidget);
+      final bookings = tester.getTopLeft(find.text('Active bookings'));
+      final quickActions = tester.getTopLeft(find.text('Quick actions'));
+      if (wide) {
+        expect(bookings.dx, lessThan(quickActions.dx));
+        expect(bookings.dy, closeTo(quickActions.dy, 1));
+        expect(tester.getTopLeft(find.text('Today’s overview')).dx,
+            quickActions.dx);
+      } else {
+        expect(bookings.dy, greaterThan(quickActions.dy));
+        if (size.width <= 600) {
+          final button = find.widgetWithText(FilledButton, 'Review booking');
+          expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+          expect(tester.getSize(button).width, greaterThan(size.width - 120));
+        }
+      }
+      expect(find.text('RM 12.00'), findsNWidgets(3));
+      expect(tester.takeException(), isNull);
+      await _preview(tester, 'dashboard-${size.width.toInt()}');
+    });
+  }
+
+  testWidgets('tablet window switches to one column when resized',
+      (tester) async {
+    _viewport(tester, const Size(1280, 800));
+    await tester.pumpWidget(_app());
+    expect(find.byKey(const Key('dashboard-two-columns')), findsOneWidget);
+    tester.view.physicalSize = const Size(700, 800);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dashboard-single-column')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('loading and failure do not present zero sales as real data',
+      (tester) async {
+    _viewport(tester, const Size(390, 1400));
+    final actions = <String>[];
+    await tester.pumpWidget(_app(error: true, onAction: actions.add));
+    expect(find.text('Could not load bookings.'), findsOneWidget);
+    expect(find.text('RM 0.00'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    expect(actions, ['refresh']);
+    await tester.pumpWidget(_app(loading: true));
+    expect(find.text('Loading bookings…'), findsOneWidget);
+    expect(find.text('No active bookings'), findsNothing);
+    expect(find.text('RM 0.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}
+````
+
+## File: lib/core/models/demo_order.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class MenuItemModel {
+class DemoOrderItem {
+  const DemoOrderItem(
+      {required this.itemId,
+      required this.name,
+      required this.unitPriceCents,
+      required this.quantity});
+
   final String itemId;
   final String name;
-  final double price;
-  final String
-      status; // 'available' (Green), 'low_stock' (Yellow), 'out_of_stock' (Red)
-  final String imageUrl;
-  final String section;
-  final DateTime? statusUpdatedAt;
+  final int unitPriceCents;
+  final int quantity;
 
-  MenuItemModel({
-    required this.itemId,
-    required this.name,
-    required this.price,
-    this.status = 'available',
-    this.imageUrl = '',
-    this.section = 'Main menu',
-    this.statusUpdatedAt,
-  });
+  int get subtotalCents => unitPriceCents * quantity;
 
-  Map<String, dynamic> toMap() {
-    return {
-      'itemId': itemId,
-      'name': name,
-      'price': price,
-      'status': status,
-      'imageUrl': imageUrl,
-      'section': section,
-      'statusUpdatedAt': statusUpdatedAt == null
-          ? FieldValue.serverTimestamp() : Timestamp.fromDate(statusUpdatedAt!),
-    };
+  Map<String, dynamic> toMap() => {
+        'itemId': itemId,
+        'name': name,
+        'unitPriceCents': unitPriceCents,
+        'quantity': quantity,
+      };
+
+  factory DemoOrderItem.fromMap(Map<String, dynamic> data) => DemoOrderItem(
+        itemId: data['itemId'] as String? ?? '',
+        name: data['name'] as String? ?? '',
+        unitPriceCents: (data['unitPriceCents'] as num?)?.toInt() ?? 0,
+        quantity: (data['quantity'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class DemoOrder {
+  const DemoOrder(
+      {required this.id,
+      required this.customerId,
+      required this.vendorId,
+      required this.customerName,
+      required this.stallName,
+      required this.status,
+      required this.items,
+      required this.totalCents,
+      required this.createdAt,
+      this.specialInstructions = '',
+      this.expiresAt,
+      this.pickupLatitude,
+      this.pickupLongitude,
+      this.paymentMode,
+      this.checkoutFirst = false,
+      this.paymentStatus,
+      this.paymentReference,
+      this.paymentExpiresAt,
+      this.paymentPaidAt,
+      this.paymentRefundedCents = 0,
+      this.vendorUnseenRequest = false,
+      this.customerUnseenReady = false});
+
+  final String id;
+  final String customerId;
+  final String vendorId;
+  final String customerName;
+  final String stallName;
+  final String status;
+  final List<DemoOrderItem> items;
+  final int totalCents;
+  final DateTime? createdAt;
+  final String specialInstructions;
+  final DateTime? expiresAt;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final String? paymentMode;
+  final bool checkoutFirst;
+  final String? paymentStatus;
+  final String? paymentReference;
+  final DateTime? paymentExpiresAt;
+  final DateTime? paymentPaidAt;
+  final int paymentRefundedCents;
+
+  bool get hasTestPayment => paymentMode == 'test';
+  bool get awaitingPayment =>
+      hasTestPayment &&
+      status == 'confirmed' &&
+      {'awaiting_payment', 'pending', 'failed'}.contains(paymentStatus);
+  bool get canPay =>
+      awaitingPayment &&
+      paymentExpiresAt != null &&
+      DateTime.now().isBefore(paymentExpiresAt!);
+  bool get canPrepare =>
+      status == 'confirmed' && (!hasTestPayment || paymentStatus == 'paid');
+  bool get canCustomerCancel =>
+      effectiveStatus == 'requested' ||
+      (hasTestPayment &&
+          {'confirmed', 'preparing', 'ready'}.contains(effectiveStatus));
+  bool get vendorNeedsAttention =>
+      vendorUnseenRequest &&
+      (effectiveStatus == 'requested' ||
+          (checkoutFirst && paymentStatus == 'paid'));
+  int get demoSalesCents => hasTestPayment && paymentStatus == 'paid'
+      ? (totalCents - paymentRefundedCents).clamp(0, totalCents)
+      : 0;
+  final bool vendorUnseenRequest;
+  final bool customerUnseenReady;
+
+  String get effectiveStatus {
+    if (status == 'requested' &&
+        expiresAt != null &&
+        DateTime.now().isAfter(expiresAt!)) {
+      return 'expired';
+    }
+    return status;
   }
 
-  factory MenuItemModel.fromMap(Map<String, dynamic> map, String id) {
-    return MenuItemModel(
-      itemId: id,
-      name: map['name'] ?? '',
-      price: (map['price'] ?? 0.0).toDouble(),
-      status: map['status'] ?? 'available',
-      imageUrl: map['imageUrl'] ?? '',
-      section: (map['section'] as String?)?.trim().isNotEmpty == true
-          ? map['section'] as String : 'Main menu',
-      statusUpdatedAt: (map['statusUpdatedAt'] as Timestamp?)?.toDate(),
+  bool get isActive => !{'collected', 'rejected', 'cancelled', 'expired'}
+      .contains(effectiveStatus);
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'customerId': customerId,
+        'vendorId': vendorId,
+        'customerName': customerName,
+        'stallName': stallName,
+        'status': status,
+        'items': items.map((item) => item.toMap()).toList(),
+        'totalCents': totalCents,
+        'createdAt': createdAt?.toIso8601String(),
+        'specialInstructions': specialInstructions,
+        'expiresAt': expiresAt?.toIso8601String(),
+        'pickupLatitude': pickupLatitude,
+        'pickupLongitude': pickupLongitude,
+        'paymentMode': paymentMode,
+        'checkoutFirst': checkoutFirst,
+        'paymentStatus': paymentStatus,
+        'paymentReference': paymentReference,
+        'paymentExpiresAt': paymentExpiresAt?.toIso8601String(),
+        'paymentPaidAt': paymentPaidAt?.toIso8601String(),
+        'paymentRefundedCents': paymentRefundedCents,
+        'vendorUnseenRequest': vendorUnseenRequest,
+        'customerUnseenReady': customerUnseenReady,
+      };
+
+  DemoOrder withStatus(String nextStatus) => DemoOrder(
+        id: id,
+        customerId: customerId,
+        vendorId: vendorId,
+        customerName: customerName,
+        stallName: stallName,
+        status: nextStatus,
+        items: items,
+        totalCents: totalCents,
+        createdAt: createdAt,
+        specialInstructions: specialInstructions,
+        expiresAt: nextStatus == 'requested' ? expiresAt : null,
+        pickupLatitude: pickupLatitude,
+        pickupLongitude: pickupLongitude,
+        paymentMode: paymentMode,
+        checkoutFirst: checkoutFirst,
+        paymentStatus: paymentStatus,
+        paymentReference: paymentReference,
+        paymentExpiresAt: paymentExpiresAt,
+        paymentPaidAt: paymentPaidAt,
+        paymentRefundedCents: paymentRefundedCents,
+        vendorUnseenRequest: vendorUnseenRequest,
+        customerUnseenReady: customerUnseenReady,
+      );
+
+  factory DemoOrder.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    final rawItems = data['items'] as List<dynamic>? ?? const [];
+    return DemoOrder(
+      id: doc.id,
+      customerId: data['customerId'] as String? ?? '',
+      vendorId: data['vendorId'] as String? ?? '',
+      customerName: data['customerName'] as String? ?? 'Customer',
+      stallName: data['stallName'] as String? ?? 'Stall',
+      status: data['status'] as String? ?? 'requested',
+      items: rawItems
+          .whereType<Map>()
+          .map((item) => DemoOrderItem.fromMap(Map<String, dynamic>.from(item)))
+          .toList(),
+      totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      specialInstructions: data['specialInstructions'] as String? ?? '',
+      expiresAt: (data['expiresAt'] as Timestamp?)?.toDate(),
+      pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
+      pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
+      paymentMode: data['paymentMode'] as String?,
+      checkoutFirst: data['checkoutFirst'] == true,
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentReference: data['paymentReference'] as String?,
+      paymentExpiresAt: (data['paymentExpiresAt'] as Timestamp?)?.toDate(),
+      paymentPaidAt: (data['paymentPaidAt'] as Timestamp?)?.toDate(),
+      paymentRefundedCents:
+          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
+      vendorUnseenRequest: data['vendorUnseenRequest'] == true,
+      customerUnseenReady: data['customerUnseenReady'] == true,
     );
   }
+
+  factory DemoOrder.fromMap(Map<String, dynamic> data) {
+    final rawItems = data['items'] as List<dynamic>? ?? const [];
+    return DemoOrder(
+      id: data['id'] as String? ?? '',
+      customerId: data['customerId'] as String? ?? '',
+      vendorId: data['vendorId'] as String? ?? '',
+      customerName: data['customerName'] as String? ?? 'Customer',
+      stallName: data['stallName'] as String? ?? 'Stall',
+      status: data['status'] as String? ?? 'requested',
+      items: rawItems
+          .whereType<Map>()
+          .map((item) => DemoOrderItem.fromMap(Map<String, dynamic>.from(item)))
+          .toList(),
+      totalCents: (data['totalCents'] as num?)?.toInt() ?? 0,
+      createdAt: DateTime.tryParse(data['createdAt'] as String? ?? ''),
+      specialInstructions: data['specialInstructions'] as String? ?? '',
+      expiresAt: DateTime.tryParse(data['expiresAt'] as String? ?? ''),
+      pickupLatitude: (data['pickupLatitude'] as num?)?.toDouble(),
+      pickupLongitude: (data['pickupLongitude'] as num?)?.toDouble(),
+      paymentMode: data['paymentMode'] as String?,
+      checkoutFirst: data['checkoutFirst'] == true,
+      paymentStatus: data['paymentStatus'] as String?,
+      paymentReference: data['paymentReference'] as String?,
+      paymentExpiresAt:
+          DateTime.tryParse(data['paymentExpiresAt'] as String? ?? ''),
+      paymentPaidAt: DateTime.tryParse(data['paymentPaidAt'] as String? ?? ''),
+      paymentRefundedCents:
+          (data['paymentRefundedCents'] as num?)?.toInt() ?? 0,
+      vendorUnseenRequest: data['vendorUnseenRequest'] == true,
+      customerUnseenReady: data['customerUnseenReady'] == true,
+    );
+  }
+}
+
+String demoOrderStatusLabel(String status) => switch (status) {
+      'requested' => 'Booking requested',
+      'confirmed' => 'Booking confirmed',
+      'preparing' => 'Preparing',
+      'ready' => 'Ready for collection',
+      'collected' => 'Collected',
+      'rejected' => 'Rejected',
+      'cancelled' => 'Cancelled',
+      'expired' => 'Expired',
+      _ => status,
+    };
+
+String bookingStatusLabel(DemoOrder booking) {
+  if (booking.checkoutFirst && booking.status == 'confirmed') {
+    return booking.paymentStatus == 'paid'
+        ? 'Paid · awaiting preparation'
+        : 'Awaiting payment';
+  }
+  return demoOrderStatusLabel(booking.effectiveStatus);
 }
 ````
 
@@ -6051,6 +10181,126 @@ class NotificationModel {
 }
 
 // represent saved notifcation
+````
+
+## File: lib/core/services/demo_order_service.dart
+````dart
+import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+
+import '../models/demo_order.dart';
+import '../models/vendor_model.dart';
+
+/// Live self-collect bookings shared between customer and vendor accounts.
+/// The old same-phone demo is read separately by LocalDemoBookingService.
+class DemoOrderService {
+  DemoOrderService({FirebaseFirestore? firestore, FirebaseFunctions? functions})
+      : _db = firestore ?? FirebaseFirestore.instance,
+        _functions = functions ?? FirebaseFunctions.instance;
+
+  final FirebaseFirestore _db;
+  final FirebaseFunctions _functions;
+
+  Stream<List<DemoOrder>> watchCustomerOrders(String customerId) => _watch(_db
+      .collection('bookings')
+      .where('customerId', isEqualTo: customerId)
+      .orderBy('createdAt', descending: true));
+
+  Stream<List<DemoOrder>> watchVendorOrders(String vendorId) => _watch(_db
+          .collection('bookings')
+          .where('vendorId', isEqualTo: vendorId)
+          .orderBy('createdAt', descending: true))
+      .map((orders) => orders
+          .where((order) => !order.checkoutFirst || order.paymentPaidAt != null)
+          .toList());
+
+  Stream<List<DemoOrder>> _watch(Query<Map<String, dynamic>> query) => query
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map(DemoOrder.fromDocument).toList());
+
+  Stream<DemoOrder?> watchBooking(String bookingId) => _db
+      .collection('bookings')
+      .doc(bookingId)
+      .snapshots()
+      .map((doc) => doc.exists ? DemoOrder.fromDocument(doc) : null);
+
+  Stream<int> watchUnseenCount(String uid, {required bool isVendor}) =>
+      (isVendor ? watchVendorOrders(uid) : watchCustomerOrders(uid)).map(
+          (orders) => orders
+              .where((booking) => isVendor
+                  ? booking.vendorNeedsAttention
+                  : booking.customerUnseenReady)
+              .length);
+
+  Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
+      {String specialInstructions = ''}) async {
+    final random = Random.secure();
+    final key = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}'
+        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}';
+    final result = await _functions.httpsCallable('createBooking').call({
+      'vendorId': vendor.vendorId,
+      'requestKey': key,
+      'specialInstructions': specialInstructions.trim(),
+      'items': [
+        for (final item in items)
+          {'itemId': item.itemId, 'quantity': item.quantity}
+      ],
+    });
+    return (result.data as Map)['bookingId'] as String;
+  }
+
+  Future<void> respond(String bookingId, {required bool accept}) =>
+      _action(bookingId, accept ? 'accept' : 'reject');
+
+  Future<void> advance(String bookingId, String status) => _action(
+        bookingId,
+        switch (status) {
+          'confirmed' => 'startPreparing',
+          'preparing' => 'markReady',
+          'ready' => 'markCollected',
+          _ => throw StateError('Booking cannot advance.'),
+        },
+      );
+
+  Future<void> cancel(String bookingId) => _action(bookingId, 'cancel');
+
+  Future<Uri> createTestCheckout(String bookingId) async {
+    final result = await _functions
+        .httpsCallable('createStripeCheckout',
+            options:
+                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
+        .call({'bookingId': bookingId});
+    final uri = Uri.parse((result.data as Map)['checkoutUrl'] as String);
+    if (uri.scheme != 'https' || uri.host != 'checkout.stripe.com') {
+      throw StateError('Invalid checkout URL.');
+    }
+    return uri;
+  }
+
+  Future<void> refreshPayment(String bookingId) async {
+    await _functions
+        .httpsCallable('refreshStripePayment',
+            options:
+                HttpsCallableOptions(timeout: const Duration(seconds: 120)))
+        .call({'bookingId': bookingId});
+  }
+
+  Future<void> markViewed(String bookingId) async {
+    await _functions.httpsCallable('markBookingViewed').call({
+      'bookingId': bookingId,
+    });
+  }
+
+  Future<void> _action(String bookingId, String action) async {
+    await _functions.httpsCallable('updateBooking').call({
+      'bookingId': bookingId,
+      'action': action,
+    });
+  }
+}
 ````
 
 ## File: lib/core/services/place_search_service.dart
@@ -6146,73 +10396,6 @@ class PlaceSearchService {
 }
 ````
 
-## File: lib/core/services/storage_service.dart
-````dart
-import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
-
-class StorageService {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
-
-  // Opens the gallery picker. Returns null if the vendor backed out
-  // without choosing anything.
-  Future<File?> pickImage() async {
-    final XFile? picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1080,
-      imageQuality: 80,
-    );
-    if (picked == null) { return null; }
-    return File(picked.path);
-  }
-
-  // Uploads a stall's cover photo. Always uses the same file name per
-  // vendor, so re-uploading overwrites the old photo instead of leaving
-  // unused files in Storage.
-  Future<String> uploadStallImage(String vendorId, File imageFile) async {
-    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
-  }
-
-  // Uploads a photo for one menu item. Named by itemId so each dish has
-  // its own file, and re-uploading a photo for the same dish overwrites it.
-  Future<String> uploadMenuItemImage(
-    String vendorId,
-    String itemId,
-    File imageFile,
-  ) async {
-    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
-    await ref.putFile(imageFile);
-    return await ref.getDownloadURL();
-  }
-
-  Future<List<File>> pickReviewImages(int remaining) async {
-    final picked = await _picker.pickMultiImage(maxWidth: 1080, imageQuality: 75);
-    return picked.take(remaining.clamp(0, 5))
-        .map((image) => File(image.path)).toList();
-  }
-
-  Future<String> uploadReviewImage(String vendorId, String customerId,
-      String imageId, File imageFile) async {
-    final ref = _storage.ref().child('review_images/$vendorId/$customerId/$imageId.jpg');
-    await ref.putFile(imageFile);
-    return ref.getDownloadURL();
-  }
-
-  Future<void> deleteReviewImageUrl(String vendorId, String customerId,
-      String url) async {
-    final ref = _storage.refFromURL(url);
-    if (!ref.fullPath.startsWith('review_images/$vendorId/$customerId/')) {
-      throw ArgumentError('Review photo does not belong to this customer.');
-    }
-    await ref.delete();
-  }
-}
-````
-
 ## File: lib/core/widgets/app_pill_navigation.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -6301,6 +10484,184 @@ class AppPillNavigation extends StatelessWidget {
                       ),
                   ]),
                 ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+````
+
+## File: lib/features/auth/screens/change_email_screen.dart
+````dart
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../../core/services/auth_service.dart';
+
+class ChangeEmailScreen extends StatefulWidget {
+  const ChangeEmailScreen({super.key});
+
+  @override
+  State<ChangeEmailScreen> createState() => _ChangeEmailScreenState();
+}
+
+class _ChangeEmailScreenState extends State<ChangeEmailScreen>
+    with WidgetsBindingObserver {
+  final _authService = AuthService();
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  bool _linkSent = false;
+  bool _isBusy = false;
+  Timer? _cooldownTimer;
+  int _resendSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _linkSent && !_isBusy) {
+      _checkNewEmail(quiet: true);
+    }
+  }
+
+  Future<void> _sendLink() async {
+    if (!_formKey.currentState!.validate() || _isBusy || _resendSeconds > 0) {
+      return;
+    }
+    setState(() => _isBusy = true);
+    final error = await _authService.sendEmailChangeLink(
+      _emailController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _isBusy = false;
+      if (error == null) {
+        _linkSent = true;
+        _resendSeconds = 60;
+      }
+    });
+    if (error == null) _startCooldown();
+    _showMessage(
+      error ?? 'Verification link sent to ${_emailController.text.trim()}.',
+      error: error != null,
+    );
+  }
+
+  void _startCooldown() {
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _resendSeconds--);
+      if (_resendSeconds <= 0) timer.cancel();
+    });
+  }
+
+  Future<void> _checkNewEmail({bool quiet = false}) async {
+    if (_isBusy) return;
+    setState(() => _isBusy = true);
+    final error = await _authService.refreshEmailChange(
+      _emailController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _isBusy = false);
+    if (error == null) {
+      _showMessage('Email changed and verified successfully.');
+      Navigator.pop(context, true);
+    } else if (!quiet) {
+      _showMessage(error, error: true);
+    }
+  }
+
+  void _showMessage(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: error ? Colors.red : Colors.green,
+    ));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cooldownTimer?.cancel();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppPageAppBar(title: const Text('Change Email')),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(_linkSent
+                      ? 'Open the verification link sent to your new email, then return here and confirm.'
+                      : 'Firebase will send a verification link to your new email. Your address changes only after you open that link.'),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _emailController,
+                    readOnly: _linkSent,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: const InputDecoration(
+                        labelText: 'New email', border: OutlineInputBorder()),
+                    validator: (value) {
+                      final email = value?.trim() ?? '';
+                      return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                              .hasMatch(email)
+                          ? null
+                          : 'Enter a valid email address';
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  if (_linkSent) ...[
+                    FilledButton.icon(
+                      onPressed: _isBusy ? null : () => _checkNewEmail(),
+                      icon: _isBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.refresh),
+                      label: Text(_isBusy
+                          ? 'Checking…'
+                          : 'I Have Verified My New Email'),
+                    ),
+                    TextButton(
+                      onPressed:
+                          _isBusy || _resendSeconds > 0 ? null : _sendLink,
+                      child: Text(_resendSeconds > 0
+                          ? 'Resend in ${_resendSeconds}s'
+                          : 'Resend verification email'),
+                    ),
+                  ] else
+                    FilledButton(
+                      onPressed: _isBusy ? null : _sendLink,
+                      child: _isBusy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('Send Verification Link'),
+                    ),
+                ],
               ),
             ),
           ),
@@ -6548,434 +10909,2349 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
 }
 ````
 
-## File: lib/features/customer/orders/demo_order_cart_screen.dart
+## File: lib/features/customer/home/open_at_picker.dart
 ````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import '../../../core/models/stall_schedule.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/models/demo_order.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/demo_order_service.dart';
-import '../../../core/services/menu_service.dart';
-import '../../shared/booking_detail_screen.dart';
+import '../../../core/widgets/ios_grouped.dart';
 
-class DemoOrderCartScreen extends StatefulWidget {
-  const DemoOrderCartScreen({super.key, required this.vendor});
-  final VendorModel vendor;
-
-  @override
-  State<DemoOrderCartScreen> createState() => _DemoOrderCartScreenState();
+class OpeningTimeFilter {
+  const OpeningTimeFilter(this.start, this.label, {this.end});
+  final DateTime start;
+  final DateTime? end;
+  final String label;
 }
 
-class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
-  final _quantities = <String, int>{};
-  final _service = DemoOrderService();
-  final _menuService = MenuService();
-  late final Stream<List<MenuItemModel>> _menu;
-  bool _sending = false;
+Future<OpeningTimeFilter?> showOpeningTimePicker(BuildContext context) async {
+  final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (context) => SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+              child: SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 36,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text('When would you like to visit?',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Based on vendor schedules in Malaysia time (MYT). Actual opening may change.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 22),
+                AppGroupedCard(children: [
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.nightlight_outlined,
+                          color: AppColors.primary),
+                      title: const Text('After 10 PM tonight'),
+                      subtitle: const Text('10 PM to 6 AM'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'tonight')),
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.wb_sunny_outlined,
+                          color: AppColors.primaryLight),
+                      title: const Text('Tomorrow morning'),
+                      subtitle: const Text('6 AM to 12 PM'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'morning')),
+                  ListTile(
+                      leading: const AppIconTile(
+                          icon: Icons.calendar_month, color: AppColors.primary),
+                      title: const Text('Choose date and time'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, 'custom')),
+                ]),
+              ])),
+            ),
+          ));
+  if (choice == null || !context.mounted) return null;
+  final now = DateTime.now();
+  final local = malaysiaTime(now);
+  final today = DateTime(local.year, local.month, local.day);
+  final tomorrow = today.add(const Duration(days: 1));
+  if (choice == 'tonight') {
+    final ten = malaysiaInstant(today.year, today.month, today.day, 22, 0);
+    return OpeningTimeFilter(
+        ten.isBefore(now) ? now : ten, 'After 10 PM tonight',
+        end:
+            malaysiaInstant(tomorrow.year, tomorrow.month, tomorrow.day, 6, 0));
+  }
+  if (choice == 'morning') {
+    return OpeningTimeFilter(
+        malaysiaInstant(tomorrow.year, tomorrow.month, tomorrow.day, 6, 0),
+        'Tomorrow morning',
+        end: malaysiaInstant(
+            tomorrow.year, tomorrow.month, tomorrow.day, 12, 0));
+  }
+  final date = await showDatePicker(
+      context: context,
+      initialDate: today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)));
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: local.hour, minute: local.minute),
+      helpText: 'Visit time (MYT)');
+  if (time == null || !context.mounted) return null;
+  final instant =
+      malaysiaInstant(date.year, date.month, date.day, time.hour, time.minute);
+  if (instant.isBefore(DateTime.now().subtract(const Duration(minutes: 1)))) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a future date and time.')));
+    return null;
+  }
+  return OpeningTimeFilter(instant,
+      '${date.day}/${date.month}/${date.year} · ${formatStallTime(time.hour * 60 + time.minute)} MYT');
+}
+````
+
+## File: lib/features/shared/booking_payment_card.dart
+````dart
+import 'package:flutter/material.dart';
+
+import '../../core/models/demo_order.dart';
+
+String bookingPaymentLabel(DemoOrder booking) {
+  if (booking.paymentStatus == 'paid' && booking.paymentRefundedCents > 0) {
+    return 'Partially refunded';
+  }
+  return switch (booking.paymentStatus) {
+    'paid' => 'Paid',
+    'refund_pending' => 'Refund pending',
+    'refund_failed' => 'Refund needs attention',
+    'refunded' => 'Refunded',
+    'failed' => 'Payment failed',
+    'expired' => 'Payment window ended',
+    'cancelled' => 'Payment cancelled',
+    'unpaid' => booking.status == 'requested'
+        ? 'Available after acceptance'
+        : 'Awaiting payment',
+    _ => 'Awaiting payment',
+  };
+}
+
+class BookingPaymentCard extends StatelessWidget {
+  const BookingPaymentCard(
+      {super.key,
+      required this.booking,
+      required this.isVendor,
+      this.busy = false,
+      this.busyLabel = 'Processing…',
+      this.onPay,
+      this.onRefresh});
+
+  final DemoOrder booking;
+  final bool isVendor;
+  final bool busy;
+  final String busyLabel;
+  final VoidCallback? onPay;
+  final VoidCallback? onRefresh;
 
   @override
-  void initState() {
-    super.initState();
-    _menu = _menuService.getMenuItems(widget.vendor.vendorId);
+  Widget build(BuildContext context) {
+    final paid = booking.paymentStatus == 'paid';
+    final problem = {'failed', 'refund_failed'}.contains(booking.paymentStatus);
+    final color = paid
+        ? const Color(0xFF137547)
+        : problem
+            ? Theme.of(context).colorScheme.error
+            : const Color(0xFF9A5B13);
+    final remaining = booking.paymentExpiresAt?.difference(DateTime.now());
+    final seconds = remaining?.inSeconds.clamp(0, 600) ?? 0;
+    return Card(
+        child: Padding(
+            padding: const EdgeInsets.all(18),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.credit_card_outlined),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text('Payment',
+                        style: Theme.of(context).textTheme.titleMedium)),
+              ]),
+              const SizedBox(height: 8),
+              Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Icon(
+                    paid
+                        ? Icons.check_circle
+                        : problem
+                            ? Icons.error_outline
+                            : Icons.schedule,
+                    size: 19,
+                    color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Text(bookingPaymentLabel(booking),
+                        style: TextStyle(
+                            color: color, fontWeight: FontWeight.w600))),
+              ]),
+              const SizedBox(height: 10),
+              if (booking.status == 'requested')
+                const Text('Payment opens when the stall accepts this booking.')
+              else if (booking.awaitingPayment)
+                Text(seconds > 0
+                    ? isVendor
+                        ? 'Waiting for the customer to pay. Preparation unlocks after confirmation.'
+                        : 'Pay within ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}.'
+                    : 'The payment window has ended. Check payment to confirm the final status.'),
+              if (booking.paymentStatus == 'refund_pending')
+                const Text(
+                    'This booking was cancelled. The full refund to the original payment method is pending.')
+              else if (booking.paymentStatus == 'refund_failed')
+                const Text(
+                    'The refund did not complete. Contact support for help.'),
+              if (booking.paymentReference != null) ...[
+                const SizedBox(height: 10),
+                Text('Payment reference',
+                    style: Theme.of(context).textTheme.labelSmall),
+                SelectableText(booking.paymentReference!,
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+              if (booking.paymentRefundedCents > 0)
+                Text(
+                    'Refunded: RM ${(booking.paymentRefundedCents / 100).toStringAsFixed(2)}'),
+              if (!isVendor && booking.canPay) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                        onPressed: busy ? null : onPay,
+                        icon: const Icon(Icons.lock_outline, size: 18),
+                        label: Text(busy
+                            ? busyLabel
+                            : 'Pay RM ${(booking.totalCents / 100).toStringAsFixed(2)}'))),
+                const SizedBox(height: 8),
+                const Text('Complete your payment securely with Stripe.',
+                    style: TextStyle(fontSize: 12)),
+              ],
+              if (booking.paymentStatus != 'unpaid' &&
+                  booking.paymentStatus != 'refunded')
+                TextButton.icon(
+                    onPressed: busy ? null : onRefresh,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: Text(busy ? 'Checking…' : 'Check payment')),
+            ])));
   }
+}
+````
 
-  Future<void> _submit(List<MenuItemModel> items) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous || !user.emailVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Sign in with a verified customer account to book.')));
+## File: lib/features/shared/delete_account_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/constants/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import 'account_ui.dart';
+
+class DeleteAccountScreen extends StatefulWidget {
+  const DeleteAccountScreen({super.key});
+
+  @override
+  State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
+}
+
+class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
+  final _auth = AuthService();
+  final _confirmation = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  bool _hidePassword = true;
+  String? _error;
+
+  bool get _usesPassword =>
+      FirebaseAuth.instance.currentUser?.providerData
+          .any((provider) => provider.providerId == 'password') ??
+      false;
+
+  Future<void> _delete() async {
+    if (_busy) return;
+    if (_confirmation.text.trim().toUpperCase() != 'DELETE') {
+      setState(() => _error = 'Type DELETE to confirm.');
       return;
     }
-    final selected = <DemoOrderItem>[];
-    for (final item in items) {
-      final quantity = _quantities[item.itemId] ?? 0;
-      if (quantity > 0 && item.status != 'out_of_stock') {
-        selected.add(DemoOrderItem(
-            itemId: item.itemId,
-            name: item.name,
-            unitPriceCents: (item.price * 100).round(),
-            quantity: quantity));
+    if (_usesPassword && _password.text.isEmpty) {
+      setState(() => _error = 'Enter your current password.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await _auth.deleteAccount(
+      currentPassword: _usesPassword ? _password.text : null,
+    );
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() {
+        _busy = false;
+        _error = error;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _confirmation.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AccountLayout(
+        title: 'Delete Account',
+        busy: _busy,
+        children: [
+          Center(
+            child: Container(
+              width: 92,
+              height: 92,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFE9E7),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                CupertinoIcons.delete_solid,
+                color: AppColors.closedRed,
+                size: 42,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Delete your account?',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Your StallSeeker account and its data will be permanently removed.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.4,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(26),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('What will be removed',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 10),
+                  Text(
+                    'Your profile, followed stalls and dishes, notification history, and any vendor stall data.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.5,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'This cannot be undone.',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.closedRed,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+          const Padding(
+            padding: EdgeInsets.only(left: 16, bottom: 10),
+            child: Text(
+              'CONFIRM DELETION',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+          TextField(
+            controller: _confirmation,
+            enabled: !_busy,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction:
+                _usesPassword ? TextInputAction.next : TextInputAction.done,
+            onSubmitted: _usesPassword ? null : (_) => _delete(),
+            decoration: accountField('Type DELETE to confirm'),
+          ),
+          if (_usesPassword) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              enabled: !_busy,
+              obscureText: _hidePassword,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _delete(),
+              decoration: accountField(
+                'Current password',
+                suffix: IconButton(
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() => _hidePassword = !_hidePassword),
+                  icon: Icon(_hidePassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined),
+                ),
+              ),
+            ),
+          ],
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 9, 16, 0),
+            child: Text(
+              'Type DELETE exactly to confirm this permanent action.',
+              style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+            ),
+          ),
+          const SizedBox(height: 22),
+          AccountError(_error),
+          AccountButton(
+            label: 'Delete Account',
+            busy: _busy,
+            color: AppColors.closedRed,
+            onPressed: _delete,
+          ),
+        ],
+      );
+}
+````
+
+## File: lib/features/shared/edit_profile_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/constants/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/utils/vendor_phone.dart';
+import 'account_ui.dart';
+import 'profile_header.dart';
+
+class EditProfileScreen extends StatefulWidget {
+  const EditProfileScreen({
+    super.key,
+    required this.name,
+    required this.email,
+    this.phoneNumber,
+    this.editPhone = false,
+  });
+
+  final String name;
+  final String email;
+  final String? phoneNumber;
+  final bool editPhone;
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _form = GlobalKey<FormState>();
+  final _auth = AuthService();
+  late final TextEditingController _name =
+      TextEditingController(text: widget.name);
+  late final TextEditingController _phone =
+      TextEditingController(text: widget.phoneNumber ?? '');
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy || !_form.currentState!.validate()) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      setState(() => _error = 'Please sign in to edit your profile.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await _auth.updateFullName(
+      user.uid,
+      _name.text.trim(),
+      customerPhone: widget.editPhone ? _phone.text : null,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = error;
+    });
+    if (error == null) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: !_busy,
+        child: Scaffold(
+          backgroundColor: AppColors.background,
+          body: SafeArea(
+            child: Form(
+              key: _form,
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                children: [
+                  SizedBox(
+                    height: 116,
+                    child: Stack(alignment: Alignment.topCenter, children: [
+                      Positioned(
+                        top: 12,
+                        child: ProfileAvatar(
+                          name: widget.name,
+                          photoUrl: FirebaseAuth.instance.currentUser?.photoURL,
+                          size: 100,
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: ProfileTopAction(
+                          label: 'Cancel',
+                          onTap: _busy ? null : () => Navigator.pop(context),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: ProfileTopAction(
+                          label: _busy ? 'Saving…' : 'Done',
+                          onTap: _busy ? null : _save,
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 46),
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(26),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextFormField(
+                        controller: _name,
+                        enabled: !_busy,
+                        maxLength: 80,
+                        textCapitalization: TextCapitalization.words,
+                        autofillHints: const [AutofillHints.name],
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          hintText: 'Full name',
+                          counterText: '',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 19),
+                        ),
+                        style: const TextStyle(fontSize: 17),
+                        validator: (value) => (value ?? '').trim().isEmpty
+                            ? 'Enter your name.'
+                            : null,
+                        onFieldSubmitted: (_) => _save(),
+                      ),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      'This name appears on your StallSeeker account.',
+                      style:
+                          TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(26),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 15),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Email address',
+                              style: TextStyle(
+                                  fontSize: 13, color: AppColors.textMuted)),
+                          const SizedBox(height: 5),
+                          Text(widget.email,
+                              style: const TextStyle(fontSize: 17)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      'Your sign-in email cannot be changed here.',
+                      style:
+                          TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  if (widget.editPhone) ...[
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextFormField(
+                          controller: _phone,
+                          enabled: !_busy,
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [AutofillHints.telephoneNumber],
+                          decoration: const InputDecoration(
+                            labelText: 'Phone number (optional)',
+                            hintText: 'Example: 0123456789',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(vertical: 19),
+                          ),
+                          validator: (value) {
+                            final input = (value ?? '').trim();
+                            if (input.isEmpty) return null;
+                            return normalizeVendorPhone(input) == null
+                                ? 'Enter a valid Malaysian phone number.'
+                                : null;
+                          },
+                          onFieldSubmitted: (_) => _save(),
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Text(
+                        'Leave this blank to remove your phone number.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  AccountError(_error),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+````
+
+## File: lib/features/shared/pin_location_screen.dart
+````dart
+import '../../core/widgets/app_page_app_bar.dart';
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../core/constants/app_colors.dart';
+import 'manual_location_dialog.dart';
+
+class PinLocationScreen extends StatefulWidget {
+  const PinLocationScreen({super.key, required this.initialLocation});
+  final LatLng initialLocation;
+
+  @override
+  State<PinLocationScreen> createState() => _PinLocationScreenState();
+}
+
+class _PinLocationScreenState extends State<PinLocationScreen> {
+  GoogleMapController? _controller;
+  late LatLng _position = widget.initialLocation;
+  String? _address;
+  bool _saving = false;
+  bool _mapReady = false;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final location = await showManualLocationDialog(context,
+        initialLocation: _position, title: 'Find a place to pin');
+    if (!mounted || location == null) return;
+    setState(() {
+      _position = location.coordinates;
+      _address = location.label;
+    });
+    await _controller
+        ?.animateCamera(CameraUpdate.newLatLngZoom(location.coordinates, 17));
+  }
+
+  Future<void> _usePin() async {
+    setState(() => _saving = true);
+    final position = _position;
+    var label = _address;
+    if (label == null) {
+      try {
+        label = await describeLocation(position);
+      } catch (_) {
+        label = '${position.latitude.toStringAsFixed(5)}, '
+            '${position.longitude.toStringAsFixed(5)}';
       }
     }
-    if (selected.isEmpty) return;
-    setState(() => _sending = true);
-    try {
-      final bookingId = await _service.requestOrder(widget.vendor, selected);
-      if (!mounted) return;
-      Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-              builder: (_) => BookingDetailScreen(
-                  bookingId: bookingId,
-                  isVendor: false,
-                  openCheckoutOnStart: true)));
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                error is FirebaseFunctionsException && error.message != null
-                    ? error.message!
-                    : 'Could not save this booking. Please try again.')));
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
+    if (mounted) {
+      Navigator.pop(
+          context, LocationSelection(coordinates: position, label: label));
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Your order')),
-        body: StreamBuilder<List<MenuItemModel>>(
-          stream: _menu,
+        appBar: AppPageAppBar(title: const Text('Pin a location')),
+        body: Column(children: [
+          Padding(
+              padding: const EdgeInsets.all(16),
+              child: OutlinedButton.icon(
+                  onPressed: _saving ? null : _search,
+                  icon: const Icon(Icons.search),
+                  label: const Text('Search for a place'))),
+          Expanded(
+              child: Stack(alignment: Alignment.center, children: [
+            GoogleMap(
+              initialCameraPosition:
+                  CameraPosition(target: _position, zoom: 16),
+              onMapCreated: (controller) {
+                _controller = controller;
+                if (mounted) setState(() => _mapReady = true);
+              },
+              onCameraMove: (camera) {
+                if (_saving) return;
+                if ((_position.latitude - camera.target.latitude).abs() >
+                        .00001 ||
+                    (_position.longitude - camera.target.longitude).abs() >
+                        .00001) {
+                  _address = null;
+                }
+                _position = camera.target;
+              },
+              scrollGesturesEnabled: !_saving,
+              zoomGesturesEnabled: !_saving,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+            ),
+            const IgnorePointer(
+                child: Padding(
+                    padding: EdgeInsets.only(bottom: 48),
+                    child: Icon(Icons.location_pin,
+                        size: 48, color: AppColors.primary))),
+            const Positioned(
+                top: 12,
+                left: 20,
+                right: 20,
+                child: IgnorePointer(
+                    child: Card(
+                        child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text(
+                                'Move the map to place the pin at the exact location.',
+                                textAlign: TextAlign.center))))),
+          ])),
+          SafeArea(
+              top: false,
+              child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                          onPressed: _saving || !_mapReady ? null : _usePin,
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Text('Use this pin'))))),
+        ]),
+      );
+}
+````
+
+## File: lib/features/vendor/dashboard/vendor_dashboard_view.dart
+````dart
+import 'package:flutter/material.dart';
+
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/demo_order.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/utils/vendor_phone.dart';
+import '../../shared/booking_payment_card.dart';
+import 'vendor_demo_sales.dart';
+
+/// Presentation only; the screen owns subscriptions and business actions.
+class VendorDashboardView extends StatelessWidget {
+  const VendorDashboardView({
+    super.key,
+    required this.vendor,
+    required this.bookings,
+    required this.bookingsLoading,
+    required this.bookingsError,
+    required this.saving,
+    required this.locationSharing,
+    required this.locationError,
+    required this.busyBookings,
+    required this.onRefresh,
+    required this.onToggleOpen,
+    required this.onToggleSelfCollect,
+    required this.onResumeLocation,
+    required this.onPreview,
+    required this.onEditStall,
+    required this.onMenu,
+    required this.onStock,
+    required this.onBookings,
+    required this.onPaymentHistory,
+    required this.onOpenBooking,
+    required this.onAdvanceBooking,
+    this.now,
+    this.reviewsCard,
+  });
+
+  final VendorModel? vendor;
+  final List<DemoOrder> bookings;
+  final bool bookingsLoading;
+  final bool bookingsError;
+  final bool saving;
+  final bool locationSharing;
+  final String? locationError;
+  final Set<String> busyBookings;
+  final Future<void> Function() onRefresh;
+  final ValueChanged<bool> onToggleOpen;
+  final ValueChanged<bool> onToggleSelfCollect;
+  final VoidCallback onResumeLocation;
+  final VoidCallback onPreview;
+  final VoidCallback onEditStall;
+  final VoidCallback onMenu;
+  final VoidCallback onStock;
+  final VoidCallback onBookings;
+  final VoidCallback onPaymentHistory;
+  final ValueChanged<DemoOrder> onOpenBooking;
+  final ValueChanged<DemoOrder> onAdvanceBooking;
+  final DateTime? now;
+  final Widget? reviewsCard;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = bookings.where((booking) => booking.isActive).toList()
+      ..sort((a, b) {
+        final attention = _priority(a).compareTo(_priority(b));
+        if (attention != 0) return attention;
+        return (a.createdAt ?? DateTime(1970))
+            .compareTo(b.createdAt ?? DateTime(1970));
+      });
+    final attention = active.where(_needsAction).length;
+    final summary = DemoSalesSummary.fromOrders(bookings,
+        vendorId: vendor?.vendorId ?? '', now: now ?? DateTime.now());
+    final today = _malaysia(now ?? DateTime.now());
+    final todaysBookings = bookings.where((booking) {
+      if (booking.createdAt == null) return false;
+      final created = _malaysia(booking.createdAt!);
+      return created.year == today.year &&
+          created.month == today.month &&
+          created.day == today.day;
+    }).length;
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        key: const PageStorageKey('vendor-dashboard-scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+            sliver: SliverToBoxAdapter(
+                child: Center(
+                    child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1280),
+              child: LayoutBuilder(builder: (context, constraints) {
+                // Follow the window width, including split-screen, and allow
+                // extra room when the user enlarges their text.
+                final textScale =
+                    MediaQuery.textScalerOf(context).scale(14) / 14;
+                final wide = constraints.maxWidth >=
+                    860 + (textScale - 1).clamp(0, 2) * 240;
+                final bookingsSection =
+                    _bookingsSection(context, active, attention);
+                final quickActions = _quickActions(context, active, wide: wide);
+                final overview = _overview(context, summary, todaysBookings);
+                return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _header(context),
+                      const SizedBox(height: 20),
+                      _statusCard(context),
+                      if (vendor == null ||
+                          vendor!.stallName.trim().isEmpty ||
+                          normalizeVendorPhone(vendor!.phoneNumber) ==
+                              null) ...[
+                        const SizedBox(height: 12),
+                        _DashboardCard(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              const Text('Finish setting up your stall',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 4),
+                              const Text(
+                                  'Add your stall name and business phone number before opening.'),
+                              TextButton.icon(
+                                  onPressed: onEditStall,
+                                  icon:
+                                      const Icon(Icons.edit_outlined, size: 18),
+                                  label: const Text('Set up my stall')),
+                            ])),
+                      ],
+                      const SizedBox(height: 20),
+                      if (wide)
+                        Row(
+                            key: const Key('dashboard-two-columns'),
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 7, child: bookingsSection),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                  flex: 4,
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        quickActions,
+                                        const SizedBox(height: 20),
+                                        overview,
+                                        if (reviewsCard != null) ...[
+                                          const SizedBox(height: 20),
+                                          reviewsCard!,
+                                        ],
+                                      ])),
+                            ])
+                      else
+                        Column(
+                            key: const Key('dashboard-single-column'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              quickActions,
+                              const SizedBox(height: 20),
+                              bookingsSection,
+                              const SizedBox(height: 20),
+                              overview,
+                              if (reviewsCard != null) ...[
+                                const SizedBox(height: 20),
+                                reviewsCard!,
+                              ],
+                            ]),
+                    ]);
+              }),
+            ))),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _quickActions(BuildContext context, List<DemoOrder> active,
+      {required bool wide}) {
+    final menu = _QuickAction(
+        label: 'Menu', icon: Icons.restaurant_menu_rounded, onTap: onMenu);
+    final stock = _QuickAction(
+        label: 'Stock', icon: Icons.inventory_2_outlined, onTap: onStock);
+    final bookingsAction = _QuickAction(
+        label: 'Bookings',
+        icon: Icons.receipt_long_outlined,
+        count: bookingsError || bookingsLoading
+            ? 0
+            : active.where((b) => b.vendorNeedsAttention).length,
+        onTap: onBookings,
+        horizontal: wide);
+    return _DashboardCard(
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _heading(context, 'Quick actions'),
+      const SizedBox(height: 14),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: menu),
+        const SizedBox(width: 10),
+        Expanded(child: stock),
+        if (!wide) ...[
+          const SizedBox(width: 10),
+          Expanded(child: bookingsAction)
+        ],
+      ]),
+      if (wide) ...[const SizedBox(height: 10), bookingsAction],
+    ]));
+  }
+
+  Widget _bookingsSection(
+          BuildContext context, List<DemoOrder> active, int attention) =>
+      _DashboardCard(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                _heading(context, 'Active bookings'),
+                if (!bookingsLoading && !bookingsError && attention > 0) ...[
+                  const SizedBox(height: 8),
+                  _StatusBadge(
+                      label: attention == 1
+                          ? '1 needs action'
+                          : '$attention need action',
+                      color: AppColors.primary),
+                ],
+              ])),
+          TextButton(onPressed: onBookings, child: const Text('View all')),
+        ]),
+        const SizedBox(height: 14),
+        if (bookingsLoading)
+          const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Column(children: [
+                LinearProgressIndicator(),
+                SizedBox(height: 12),
+                Text('Loading bookings…'),
+              ]))
+        else if (bookingsError)
+          Column(children: [
+            const Icon(Icons.wifi_off_outlined, color: AppColors.textMuted),
+            const SizedBox(height: 8),
+            const Text('Could not load bookings.', textAlign: TextAlign.center),
+            TextButton(onPressed: onRefresh, child: const Text('Retry')),
+          ])
+        else if (active.isEmpty)
+          const Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Column(children: [
+                Icon(Icons.receipt_long_outlined,
+                    size: 36, color: AppColors.primary),
+                SizedBox(height: 12),
+                Text('No active bookings',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                SizedBox(height: 6),
+                Text('New bookings will appear here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textMuted)),
+              ]))
+        else ...[
+          for (final booking in active.take(3))
+            Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _bookingCard(context, booking)),
+          if (active.length > 3)
+            TextButton(
+                onPressed: onBookings,
+                child: Text('View ${active.length - 3} more active bookings')),
+        ],
+      ]));
+
+  static DateTime _malaysia(DateTime time) =>
+      time.toUtc().add(const Duration(hours: 8));
+
+  static bool _needsAction(DemoOrder booking) =>
+      booking.effectiveStatus == 'requested' ||
+      booking.canPrepare ||
+      booking.vendorNeedsAttention;
+
+  static int _priority(DemoOrder booking) => _needsAction(booking)
+      ? 0
+      : booking.effectiveStatus == 'ready'
+          ? 1
+          : 2;
+
+  Widget _heading(BuildContext context, String title) => Text(title,
+      style: Theme.of(context)
+          .textTheme
+          .titleLarge
+          ?.copyWith(fontWeight: FontWeight.w700));
+
+  Widget _header(BuildContext context) {
+    final identity = Row(children: [
+      Tooltip(
+        message: 'Change stall photo',
+        child: Semantics(
+          label: 'Change stall photo',
+          button: true,
+          child: InkWell(
+            onTap: onEditStall,
+            customBorder: const CircleBorder(),
+            child: Stack(children: [
+              ClipOval(
+                  child: SizedBox(
+                width: 54,
+                height: 54,
+                child: vendor?.imageUrl.isNotEmpty == true
+                    ? Image.network(vendor!.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _stallPlaceholder())
+                    : _stallPlaceholder(),
+              )),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                      color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.camera_alt_outlined,
+                      size: 12, color: Colors.white),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('StallSeeker',
+              style: TextStyle(
+                  color: AppColors.primary, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 3),
+          Text(
+            vendor?.stallName.trim().isNotEmpty == true
+                ? vendor!.stallName
+                : 'Your stall',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ]),
+      ),
+    ]);
+    final actions = Wrap(spacing: 10, runSpacing: 10, children: [
+      _headerAction('Preview', Icons.visibility_outlined,
+          vendor == null ? null : onPreview),
+      _headerAction('Edit stall', Icons.edit_outlined, onEditStall),
+    ]);
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 700 ||
+          MediaQuery.textScalerOf(context).scale(14) > 19) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          identity,
+          const SizedBox(height: 16),
+          actions,
+        ]);
+      }
+      return Row(children: [
+        Expanded(child: identity),
+        const SizedBox(width: 24),
+        actions
+      ]);
+    });
+  }
+
+  Widget _headerAction(String label, IconData icon, VoidCallback? onPressed) =>
+      OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 19),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary),
+          minimumSize: const Size(48, 46),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+
+  Widget _stallPlaceholder() => Container(
+      color: AppColors.mint,
+      child: const Icon(Icons.storefront_rounded,
+          size: 30, color: AppColors.primary));
+
+  Widget _statusCard(BuildContext context) {
+    final closedTemporarily = vendor?.isTemporarilyClosed ?? false;
+    final open = vendor?.isOpenNow ?? false;
+    final statusColor = closedTemporarily
+        ? const Color(0xFF946000)
+        : open
+            ? AppColors.openGreen
+            : AppColors.textMuted;
+    final locationLabel = !open
+        ? 'Location sharing off'
+        : locationError ??
+            (locationSharing
+                ? 'Live location active'
+                : 'Location sharing paused');
+    final openControl = Row(children: [
+      Icon(Icons.circle, color: statusColor, size: 13),
+      const SizedBox(width: 10),
+      Expanded(
+          child: Text(
+              closedTemporarily
+                  ? 'Temporarily closed'
+                  : open
+                      ? 'Stall open'
+                      : 'Stall closed',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700))),
+      const SizedBox(width: 6),
+      Semantics(
+          label: 'Open stall',
+          child: Switch.adaptive(
+              activeTrackColor: AppColors.openGreen,
+              value: open,
+              onChanged: saving || closedTemporarily ? null : onToggleOpen)),
+    ]);
+    final location =
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(
+          open && locationError != null
+              ? Icons.location_off_outlined
+              : Icons.location_on_outlined,
+          size: 24,
+          color: AppColors.primary),
+      const SizedBox(width: 10),
+      Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(locationLabel,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(
+            !open
+                ? 'Open your stall to share its location'
+                : locationSharing && locationError == null
+                    ? 'Customers can find your stall'
+                    : 'Check your location to stay visible',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+        if (open && (!locationSharing || locationError != null))
+          TextButton.icon(
+              onPressed: saving ? null : onResumeLocation,
+              icon: const Icon(Icons.my_location, size: 18),
+              label:
+                  Text(locationSharing ? 'Retry location' : 'Resume sharing')),
+      ])),
+    ]);
+    final collectControl = Row(children: [
+      const Icon(Icons.shopping_bag_outlined,
+          size: 24, color: AppColors.primary),
+      const SizedBox(width: 10),
+      const Expanded(
+          child: Text('Self-collect bookings',
+              style: TextStyle(fontWeight: FontWeight.w600))),
+      const SizedBox(width: 6),
+      Semantics(
+          label: 'Self-collect bookings',
+          child: Switch.adaptive(
+              activeTrackColor: AppColors.openGreen,
+              value: vendor?.selfCollectEnabled ?? false,
+              onChanged: saving ? null : onToggleSelfCollect)),
+    ]);
+    return _DashboardCard(
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      LayoutBuilder(builder: (context, constraints) {
+        if (constraints.maxWidth >= 820 &&
+            MediaQuery.textScalerOf(context).scale(14) <= 19) {
+          return IntrinsicHeight(
+              child: Row(children: [
+            Expanded(child: openControl),
+            const VerticalDivider(width: 32),
+            Expanded(child: location),
+            const VerticalDivider(width: 32),
+            Expanded(child: collectControl),
+          ]));
+        }
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              openControl,
+              const SizedBox(height: 10),
+              location,
+              const Divider(height: 28),
+              collectControl,
+            ]);
+      }),
+      if (closedTemporarily)
+        Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+                onPressed: onEditStall,
+                child: const Text('Manage temporary closure'))),
+      if (saving) ...[
+        const SizedBox(height: 8),
+        const LinearProgressIndicator()
+      ],
+    ]));
+  }
+
+  Widget _bookingCard(BuildContext context, DemoOrder booking) {
+    final status = booking.effectiveStatus;
+    final review = status == 'requested';
+    final canAdvance = booking.canPrepare || status == 'preparing';
+    final busy = busyBookings.contains(booking.id);
+    final color = status == 'ready'
+        ? AppColors.openGreen
+        : status == 'preparing'
+            ? const Color(0xFF946000)
+            : AppColors.primary;
+    final label = review
+        ? 'Review booking'
+        : booking.canPrepare
+            ? 'Start preparing'
+            : status == 'preparing'
+                ? 'Mark ready'
+                : 'View booking';
+    final action = busy
+        ? null
+        : () => canAdvance ? onAdvanceBooking(booking) : onOpenBooking(booking);
+    final time =
+        booking.createdAt == null ? null : _malaysia(booking.createdAt!);
+    final timeLabel = time == null
+        ? null
+        : MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(time),
+            alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context));
+    final button = review || booking.canPrepare
+        ? FilledButton(
+            onPressed: action,
+            style: _bookingButtonStyle(),
+            child: Text(busy ? 'Updating…' : label))
+        : OutlinedButton(
+            onPressed: action,
+            style: _bookingButtonStyle(),
+            child: Text(busy ? 'Updating…' : label));
+    final details =
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Wrap(
+          spacing: 10,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(booking.customerName,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            _StatusBadge(
+                label: review ? 'New' : bookingStatusLabel(booking),
+                color: color),
+          ]),
+      const SizedBox(height: 8),
+      Text(
+          booking.items
+              .map((item) => '${item.quantity} × ${item.name}')
+              .join(', '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis),
+      if (timeLabel != null) ...[
+        const SizedBox(height: 6),
+        Text('Booked ${time!.day}/${time.month} at $timeLabel · MYT',
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ],
+      if (booking.hasTestPayment) ...[
+        const SizedBox(height: 4),
+        Text(bookingPaymentLabel(booking),
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ],
+    ]);
+    final amount = Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}',
+        style: Theme.of(context)
+            .textTheme
+            .titleMedium
+            ?.copyWith(fontWeight: FontWeight.w700));
+    final avatar = CircleAvatar(
+        radius: 22,
+        backgroundColor: color.withValues(alpha: .12),
+        foregroundColor: color,
+        child: Text(
+            booking.customerName.trim().isEmpty
+                ? '?'
+                : booking.customerName.trim().characters.first.toUpperCase(),
+            style: const TextStyle(fontWeight: FontWeight.w700)));
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(16)),
+      child: LayoutBuilder(builder: (context, constraints) {
+        if (constraints.maxWidth >= 500 &&
+            MediaQuery.textScalerOf(context).scale(14) <= 19) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            avatar,
+            const SizedBox(width: 12),
+            Expanded(child: details),
+            const SizedBox(width: 14),
+            SizedBox(
+                width: 166,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(alignment: Alignment.centerRight, child: amount),
+                      const SizedBox(height: 12),
+                      button,
+                    ])),
+          ]);
+        }
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                avatar,
+                const SizedBox(width: 10),
+                Expanded(child: details)
+              ]),
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerRight, child: amount),
+              const SizedBox(height: 10),
+              button,
+            ]);
+      }),
+    );
+  }
+
+  ButtonStyle _bookingButtonStyle() => TextButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)));
+
+  Widget _overview(
+      BuildContext context, DemoSalesSummary summary, int todaysBookings) {
+    return _DashboardCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _heading(context, 'Today’s overview'),
+        const SizedBox(height: 4),
+        const Text('Malaysia time',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        const SizedBox(height: 20),
+        if (bookingsLoading)
+          const LinearProgressIndicator()
+        else if (bookingsError)
+          const Text('Today’s overview is unavailable. Retry loading bookings.')
+        else
+          LayoutBuilder(builder: (context, constraints) {
+            final sales = _metric(context, 'Sales',
+                'RM ${(summary.todayCents / 100).toStringAsFixed(2)}');
+            final count = _metric(context, 'Bookings', '$todaysBookings');
+            if (constraints.maxWidth < 260 ||
+                MediaQuery.textScalerOf(context).scale(14) > 19) {
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [sales, const SizedBox(height: 16), count]);
+            }
+            return IntrinsicHeight(
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(flex: 3, child: sales),
+                const VerticalDivider(width: 28),
+                Expanded(flex: 2, child: count),
+              ]),
+            );
+          }),
+        const SizedBox(height: 8),
+        const Divider(height: 20),
+        TextButton.icon(
+            onPressed: onPaymentHistory,
+            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            label: const Text('Payment history')),
+      ]),
+    );
+  }
+
+  Widget _metric(BuildContext context, String title, String value) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Text(value,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+        ],
+      );
+}
+
+class _DashboardCard extends StatelessWidget {
+  const _DashboardCard({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppColors.border.withValues(alpha: .65)),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x05000000), blurRadius: 14, offset: Offset(0, 4)),
+          ],
+        ),
+        child: child,
+      );
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction(
+      {required this.label,
+      required this.icon,
+      required this.onTap,
+      this.count = 0,
+      this.horizontal = false});
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final int count;
+  final bool horizontal;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidget = Badge(
+        isLabelVisible: count > 0,
+        label: Text(count > 99 ? '99+' : '$count'),
+        backgroundColor: AppColors.primary,
+        textColor: Colors.white,
+        child: Icon(icon, color: AppColors.primary, size: 27));
+    final text = Text(label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.w600));
+    return Material(
+      color: AppColors.background,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: horizontal ? 14 : 6, vertical: 18),
+            child: horizontal
+                ? Row(children: [
+                    iconWidget,
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: Align(
+                            alignment: Alignment.centerLeft, child: text)),
+                    const Icon(Icons.chevron_right,
+                        size: 20, color: AppColors.primary)
+                  ])
+                : Column(
+                    children: [iconWidget, const SizedBox(height: 12), text]),
+          )),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+            color: color.withValues(alpha: .09),
+            borderRadius: BorderRadius.circular(20)),
+        child: Text(label,
+            style: TextStyle(
+                color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+      );
+}
+````
+
+## File: lib/features/vendor/dashboard/vendor_demo_sales.dart
+````dart
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import '../../../core/models/demo_order.dart';
+import '../../../core/services/demo_order_service.dart';
+import '../../shared/booking_detail_screen.dart';
+import '../../shared/booking_payment_card.dart';
+
+class DemoSalesSummary {
+  const DemoSalesSummary(
+      {required this.todayCents,
+      required this.totalCents,
+      required this.paidOrders});
+  final int todayCents;
+  final int totalCents;
+  final int paidOrders;
+
+  factory DemoSalesSummary.fromOrders(List<DemoOrder> orders,
+      {required String vendorId, required DateTime now}) {
+    DateTime malaysia(DateTime value) =>
+        value.toUtc().add(const Duration(hours: 8));
+    final today = malaysia(now);
+    var daily = 0;
+    var total = 0;
+    var count = 0;
+    for (final order in orders) {
+      if (order.vendorId != vendorId ||
+          order.demoSalesCents <= 0 ||
+          order.paymentPaidAt == null) {
+        continue;
+      }
+      total += order.demoSalesCents;
+      count++;
+      final paid = malaysia(order.paymentPaidAt!);
+      if (paid.year == today.year &&
+          paid.month == today.month &&
+          paid.day == today.day) {
+        daily += order.demoSalesCents;
+      }
+    }
+    return DemoSalesSummary(
+        todayCents: daily, totalCents: total, paidOrders: count);
+  }
+}
+
+class VendorDemoSales extends StatefulWidget {
+  const VendorDemoSales({super.key});
+  @override
+  State<VendorDemoSales> createState() => _VendorDemoSalesState();
+}
+
+class _VendorDemoSalesState extends State<VendorDemoSales> {
+  late final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  late final _orders = DemoOrderService().watchVendorOrders(_uid);
+
+  @override
+  Widget build(BuildContext context) {
+    if (_uid.isEmpty) return const SizedBox.shrink();
+    return Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: StreamBuilder<List<DemoOrder>>(
+            stream: _orders,
+            builder: (context, snapshot) {
+              final summary = DemoSalesSummary.fromOrders(snapshot.data ?? [],
+                  vendorId: _uid, now: DateTime.now());
+              return DemoSalesCard(
+                  summary: summary,
+                  loading: !snapshot.hasData,
+                  hasError: snapshot.hasError,
+                  onHistory: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const VendorPaymentHistoryScreen())));
+            }));
+  }
+}
+
+class DemoSalesCard extends StatelessWidget {
+  const DemoSalesCard(
+      {super.key,
+      required this.summary,
+      required this.onHistory,
+      this.loading = false,
+      this.hasError = false});
+  final DemoSalesSummary summary;
+  final VoidCallback onHistory;
+  final bool loading;
+  final bool hasError;
+
+  @override
+  Widget build(BuildContext context) => Card(
+      child: Padding(
+          padding: const EdgeInsets.all(18),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.payments_outlined),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: Text('Sales',
+                      style: Theme.of(context).textTheme.titleLarge)),
+            ]),
+            const SizedBox(height: 12),
+            if (hasError)
+              const Text('Sales could not load. Check your connection.')
+            else if (loading)
+              const LinearProgressIndicator()
+            else ...[
+              const Text('Today · Malaysia time'),
+              const SizedBox(height: 4),
+              Text('RM ${(summary.todayCents / 100).toStringAsFixed(2)}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineLarge
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                  '${summary.paidOrders} paid orders · RM ${(summary.totalCents / 100).toStringAsFixed(2)} total'),
+            ],
+            const SizedBox(height: 12),
+            TextButton.icon(
+                onPressed: onHistory,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('View payment history')),
+          ])));
+}
+
+class VendorPaymentHistoryScreen extends StatefulWidget {
+  const VendorPaymentHistoryScreen({super.key});
+  @override
+  State<VendorPaymentHistoryScreen> createState() =>
+      _VendorPaymentHistoryScreenState();
+}
+
+class _VendorPaymentHistoryScreenState
+    extends State<VendorPaymentHistoryScreen> {
+  late final _orders = DemoOrderService()
+      .watchVendorOrders(FirebaseAuth.instance.currentUser?.uid ?? '');
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: AppPageAppBar(title: const Text('Payment history')),
+      body: StreamBuilder<List<DemoOrder>>(
+          stream: _orders,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
-              return const Center(child: Text('Could not load the menu.'));
+              return const Center(
+                  child: Text('Payments could not load. Please retry.'));
             }
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            return BookingCartView(
-              stallName: widget.vendor.stallName,
-              items: snapshot.data!,
-              quantities: _quantities,
-              sending: _sending,
-              onQuantityChanged: (item, quantity) => setState(() {
-                _quantities[item.itemId] = quantity;
-              }),
-              onSubmit: () => _submit(snapshot.data!),
-            );
-          },
-        ),
+            final orders = snapshot.data!
+                .where((order) =>
+                    order.hasTestPayment && order.paymentStatus != 'unpaid')
+                .toList();
+            return ListView(padding: const EdgeInsets.all(16), children: [
+              if (orders.isEmpty)
+                const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                        'No payments yet. Paid bookings will appear here.')),
+              for (final order in orders)
+                Card(
+                    child: ListTile(
+                        leading: const Icon(Icons.receipt_long_outlined),
+                        title: Text(order.customerName),
+                        subtitle: Text(bookingPaymentLabel(order)),
+                        trailing: Text(
+                            'RM ${(order.totalCents / 100).toStringAsFixed(2)}'),
+                        onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => BookingDetailScreen(
+                                    bookingId: order.id, isVendor: true))))),
+            ]);
+          }));
+}
+````
+
+## File: lib/features/vendor/profile/stall_schedule_editor.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../../core/models/stall_schedule.dart';
+
+class StallScheduleEditor extends StatelessWidget {
+  const StallScheduleEditor(
+      {super.key,
+      required this.hours,
+      required this.closures,
+      required this.onChanged,
+      this.showHours = true,
+      this.showClosures = true,
+      this.showSectionTitles = true});
+
+  final Map<int, List<StallHoursInterval>> hours;
+  final List<TemporaryClosure> closures;
+  final bool showHours;
+  final bool showClosures;
+  final bool showSectionTitles;
+  final void Function(
+      Map<int, List<StallHoursInterval>>, List<TemporaryClosure>) onChanged;
+
+  static const _days = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
+
+  Map<int, List<StallHoursInterval>> _copyHours() => {
+        for (var day = 1; day <= 7; day++) day: [...?hours[day]],
+      };
+
+  Future<void> _pickTime(BuildContext context, int day, int index,
+      {required bool opening}) async {
+    final interval = hours[day]![index];
+    final current = opening ? interval.openMinute : interval.closeMinute;
+    final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60));
+    if (picked == null || !context.mounted) return;
+    final minutes = picked.hour * 60 + picked.minute;
+    if (minutes == (opening ? interval.closeMinute : interval.openMinute)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Opening and closing times must be different.')));
+      return;
+    }
+    final next = _copyHours();
+    next[day]![index] = StallHoursInterval(
+      opening ? minutes : interval.openMinute,
+      opening ? interval.closeMinute : minutes,
+    );
+    onChanged(next, closures);
+  }
+
+  Future<DateTime?> _pickDateTime(
+      BuildContext context, DateTime initial) async {
+    final date = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+        lastDate: DateTime.now().add(const Duration(days: 730)));
+    if (date == null || !context.mounted) return null;
+    final time = await showTimePicker(
+        context: context, initialTime: TimeOfDay.fromDateTime(initial));
+    if (time == null) return null;
+    // The stall operates in Malaysia time, independently of device timezone.
+    return DateTime.utc(
+        date.year, date.month, date.day, time.hour - 8, time.minute);
+  }
+
+  Future<void> _addClosure(BuildContext context) async {
+    if (closures.length >= 20) return;
+    final nowMy = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final start = await _pickDateTime(context, nowMy);
+    if (start == null || !context.mounted) return;
+    final end = await _pickDateTime(
+        context, start.toUtc().add(const Duration(hours: 18)));
+    if (end == null || !context.mounted) return;
+    if (!end.isAfter(start)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Closure end must be after its start.')));
+      return;
+    }
+    onChanged(
+        hours,
+        [...closures, TemporaryClosure(start, end)]
+          ..sort((a, b) => a.start.compareTo(b.start)));
+  }
+
+  String _formatClosure(DateTime value) {
+    final my = value.toUtc().add(const Duration(hours: 8));
+    return '${my.day}/${my.month}/${my.year} ${formatStallTime(my.hour * 60 + my.minute)}';
+  }
+
+  Widget _timeInterval(BuildContext context, int day, int index) {
+    final interval = hours[day]![index];
+    final opens = OutlinedButton(
+        style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+        onPressed: () => _pickTime(context, day, index, opening: true),
+        child: Text('Opens ${formatStallTime(interval.openMinute)}',
+            textAlign: TextAlign.center));
+    final closes = OutlinedButton(
+        style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
+        onPressed: () => _pickTime(context, day, index, opening: false),
+        child: Text('Closes ${formatStallTime(interval.closeMinute)}',
+            textAlign: TextAlign.center));
+    final remove = IconButton(
+        tooltip: 'Remove time',
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        icon: const Icon(Icons.close),
+        onPressed: () {
+          final next = _copyHours();
+          next[day]!.removeAt(index);
+          onChanged(next, closures);
+        });
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: LayoutBuilder(builder: (context, constraints) {
+          if (constraints.maxWidth < 400 ||
+              MediaQuery.textScalerOf(context).scale(14) > 19) {
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  opens,
+                  const SizedBox(height: 8),
+                  closes,
+                  Align(alignment: Alignment.centerRight, child: remove),
+                ]);
+          }
+          return Row(children: [
+            Expanded(child: opens),
+            const SizedBox(width: 8),
+            Expanded(child: closes),
+            remove
+          ]);
+        }));
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showHours) ...[
+            if (showSectionTitles) ...[
+              Text('Weekly opening hours',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 5),
+            ],
+            const Text(
+                'Planned hours · Malaysia time. Manage your live Open / Closed status from the dashboard.'),
+            const SizedBox(height: 12),
+            for (var day = 1; day <= 7; day++) ...[
+              SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_days[day - 1]),
+                  subtitle:
+                      Text((hours[day] ?? []).isEmpty ? 'Closed' : 'Scheduled'),
+                  value: (hours[day] ?? []).isNotEmpty,
+                  onChanged: (enabled) {
+                    final next = _copyHours();
+                    next[day] = enabled
+                        ? [const StallHoursInterval(9 * 60, 17 * 60)]
+                        : [];
+                    onChanged(next, closures);
+                  }),
+              for (var index = 0; index < (hours[day] ?? []).length; index++)
+                _timeInterval(context, day, index),
+              if ((hours[day] ?? []).isNotEmpty && hours[day]!.length < 3)
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48)),
+                        onPressed: () {
+                          final next = _copyHours();
+                          next[day]!
+                              .add(const StallHoursInterval(18 * 60, 22 * 60));
+                          onChanged(next, closures);
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add time'))),
+              if (day < 7) const Divider(height: 16),
+            ],
+          ],
+          if (showHours && showClosures) const SizedBox(height: 20),
+          if (showClosures) ...[
+            if (showSectionTitles) ...[
+              Text('Temporary closures',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 5),
+            ],
+            const Text(
+                'Plan breaks or days off. Your stall closes during these dates. Reopen it from the dashboard afterward.'),
+            const SizedBox(height: 12),
+            if (closures.isEmpty)
+              const Text('No temporary closures scheduled.'),
+            for (var index = 0; index < closures.length; index++)
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('${_formatClosure(closures[index].start)} –'),
+                  subtitle: Text(_formatClosure(closures[index].end)),
+                  trailing: IconButton(
+                      tooltip: 'Remove closure',
+                      constraints:
+                          const BoxConstraints(minWidth: 48, minHeight: 48),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () {
+                        final next = [...closures]..removeAt(index);
+                        onChanged(hours, next);
+                      })),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+                style:
+                    OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed:
+                    closures.length >= 20 ? null : () => _addClosure(context),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Add closure')),
+          ],
+        ],
       );
 }
+````
 
-class BookingCartView extends StatelessWidget {
-  const BookingCartView({
-    super.key,
-    required this.stallName,
-    required this.items,
-    required this.quantities,
-    required this.sending,
-    required this.onQuantityChanged,
-    required this.onSubmit,
+## File: lib/core/models/menu_item_model.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class MenuItemModel {
+  final String itemId;
+  final String name;
+  final double price;
+  final String
+      status; // 'available' (Green), 'low_stock' (Yellow), 'out_of_stock' (Red)
+  final String imageUrl;
+  final String section;
+  final DateTime? statusUpdatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final String description;
+  final String portionSize;
+  final List<String> ingredients;
+
+  MenuItemModel({
+    required this.itemId,
+    required this.name,
+    required this.price,
+    this.status = 'available',
+    this.imageUrl = '',
+    this.section = 'Main menu',
+    this.statusUpdatedAt,
+    this.createdAt,
+    this.updatedAt,
+    this.description = '',
+    this.portionSize = '',
+    this.ingredients = const [],
   });
 
-  final String stallName;
-  final List<MenuItemModel> items;
-  final Map<String, int> quantities;
-  final bool sending;
-  final void Function(MenuItemModel, int) onQuantityChanged;
-  final VoidCallback onSubmit;
+  Map<String, dynamic> toMap() {
+    return {
+      'itemId': itemId,
+      'name': name,
+      'price': price,
+      'status': status,
+      'imageUrl': imageUrl,
+      'section': section,
+      'description': description,
+      'portionSize': portionSize,
+      'ingredients': ingredients,
+      if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
+      'statusUpdatedAt': statusUpdatedAt == null
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(statusUpdatedAt!),
+    };
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final total = items.fold<int>(
-      0,
-      (sum, item) =>
-          sum +
-          (item.status == 'out_of_stock' ? 0 : (quantities[item.itemId] ?? 0)) *
-              (item.price * 100).round(),
+  factory MenuItemModel.fromMap(Map<String, dynamic> map, String id) {
+    return MenuItemModel(
+      itemId: id,
+      name: map['name'] ?? '',
+      price: (map['price'] ?? 0.0).toDouble(),
+      status: map['status'] ?? 'available',
+      imageUrl: map['imageUrl'] ?? '',
+      section: (map['section'] as String?)?.trim().isNotEmpty == true
+          ? map['section'] as String
+          : 'Main menu',
+      statusUpdatedAt: (map['statusUpdatedAt'] as Timestamp?)?.toDate(),
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
+      description: map['description'] as String? ?? '',
+      portionSize: map['portionSize'] as String? ?? '',
+      ingredients: map['ingredients'] is List
+          ? (map['ingredients'] as List).whereType<String>().toList()
+          : const [],
     );
-    final itemCount = items.fold<int>(
-      0,
-      (sum, item) =>
-          sum +
-          (item.status == 'out_of_stock' ? 0 : (quantities[item.itemId] ?? 0)),
-    );
-    final canContinue = total >= 200 && !sending;
-
-    return Column(children: [
-      Expanded(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('SELF-COLLECT',
-                        style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2)),
-                    const SizedBox(height: 6),
-                    Text(stallName,
-                        style: const TextStyle(
-                            color: AppColors.textDark,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            height: 1.15)),
-                    const SizedBox(height: 8),
-                    const Text('Choose your food for pickup.',
-                        style: TextStyle(
-                            color: AppColors.textMuted, fontSize: 14)),
-                    const SizedBox(height: 22),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.mint.withValues(alpha: .65),
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.check_circle_outline_rounded,
-                              size: 21, color: AppColors.openGreen),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Pay to confirm',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textDark)),
-                                SizedBox(height: 3),
-                                Text(
-                                    'The stall gets your booking after payment.',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textMuted)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Padding(
-                      padding: EdgeInsets.only(left: 2),
-                      child: Text('Stripe test payment · No real charge',
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textMuted)),
-                    ),
-                    const SizedBox(height: 30),
-                    Row(children: [
-                      const Text('Menu',
-                          style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textDark)),
-                      const Spacer(),
-                      Text(
-                          '${items.length} ${items.length == 1 ? 'item' : 'items'}',
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.textMuted)),
-                    ]),
-                    const SizedBox(height: 12),
-                    if (items.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child:
-                            Center(child: Text('No dishes on the menu yet.')),
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.cardColor,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < items.length; i++) ...[
-                              if (i > 0)
-                                const Divider(
-                                    height: 1, indent: 16, endIndent: 16),
-                              _MenuItemRow(
-                                item: items[i],
-                                quantity: items[i].status == 'out_of_stock'
-                                    ? 0
-                                    : (quantities[items[i].itemId] ?? 0),
-                                onChanged: (quantity) =>
-                                    onQuantityChanged(items[i], quantity),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          color: AppColors.cardColor,
-          border: Border(top: BorderSide(color: AppColors.border)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(children: [
-                      Expanded(
-                        child: Text(
-                            itemCount == 0
-                                ? 'Order total'
-                                : '$itemCount ${itemCount == 1 ? 'item' : 'items'} · Total',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 14, color: AppColors.textMuted)),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('RM ${(total / 100).toStringAsFixed(2)}',
-                          style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textDark)),
-                    ]),
-                    if (itemCount > 0 && total < 200) ...[
-                      const SizedBox(height: 5),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('Minimum order RM2.00',
-                            style: TextStyle(
-                                fontSize: 12, color: AppColors.primary)),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: canContinue ? onSubmit : null,
-                        child: sending
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      itemCount == 0
-                                          ? 'Choose an item'
-                                          : 'Continue to payment',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (itemCount > 0) ...[
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.arrow_forward_rounded,
-                                        size: 18),
-                                  ],
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ]);
   }
 }
+````
 
-class _MenuItemRow extends StatelessWidget {
-  const _MenuItemRow({
-    required this.item,
-    required this.quantity,
-    required this.onChanged,
-  });
+## File: lib/core/services/storage_service.dart
+````dart
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
-  final MenuItemModel item;
-  final int quantity;
-  final ValueChanged<int> onChanged;
+class StorageService {
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
+
+  // Opens the gallery picker. Returns null if the vendor backed out
+  // without choosing anything.
+  Future<File?> pickImage() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 80,
+    );
+    if (picked == null) {
+      return null;
+    }
+    return File(picked.path);
+  }
+
+  // Uploads a stall's cover photo. Always uses the same file name per
+  // vendor, so re-uploading overwrites the old photo instead of leaving
+  // unused files in Storage.
+  Future<String> uploadStallImage(String vendorId, File imageFile) async {
+    final ref = _storage.ref().child('stall_images/$vendorId.jpg');
+    final upload = await ref.putFile(imageFile);
+    final url = Uri.parse(await ref.getDownloadURL());
+    // Reusing the storage object must still refresh Image.network caches.
+    return url.replace(queryParameters: {
+      ...url.queryParameters,
+      'v': upload.metadata?.generation ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+    }).toString();
+  }
+
+  // Uploads a photo for one menu item. Named by itemId so each dish has
+  // its own file, and re-uploading a photo for the same dish overwrites it.
+  Future<String> uploadMenuItemImage(
+    String vendorId,
+    String itemId,
+    File imageFile,
+  ) async {
+    final ref = _storage.ref().child('menu_images/$vendorId/$itemId.jpg');
+    await ref.putFile(imageFile);
+    return await ref.getDownloadURL();
+  }
+
+  Future<List<File>> pickReviewImages(int remaining) async {
+    final picked =
+        await _picker.pickMultiImage(maxWidth: 1080, imageQuality: 75);
+    return picked
+        .take(remaining.clamp(0, 5))
+        .map((image) => File(image.path))
+        .toList();
+  }
+
+  Future<String> uploadReviewImage(String vendorId, String customerId,
+      String imageId, File imageFile) async {
+    final ref = _storage
+        .ref()
+        .child('review_images/$vendorId/$customerId/$imageId.jpg');
+    await ref.putFile(imageFile);
+    return ref.getDownloadURL();
+  }
+
+  Future<void> deleteReviewImageUrl(
+      String vendorId, String customerId, String url) async {
+    final ref = _storage.refFromURL(url);
+    if (!ref.fullPath.startsWith('review_images/$vendorId/$customerId/')) {
+      throw ArgumentError('Review photo does not belong to this customer.');
+    }
+    await ref.delete();
+  }
+}
+````
+
+## File: lib/features/customer/home/price_range_picker.dart
+````dart
+import '../../../core/widgets/app_sheet_header.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../core/constants/app_colors.dart';
+import 'discovery_search_filters.dart';
+
+Future<MenuPriceRange?> showPriceRangePicker(
+  BuildContext context, {
+  MenuPriceRange? initialRange,
+}) =>
+    showModalBottomSheet<MenuPriceRange>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (_) => _PriceRangePicker(initialRange: initialRange),
+    );
+
+class _PriceRangePicker extends StatefulWidget {
+  const _PriceRangePicker({this.initialRange});
+
+  final MenuPriceRange? initialRange;
 
   @override
-  Widget build(BuildContext context) {
-    final available = item.status != 'out_of_stock';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
-      child: Row(children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(item.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: available
-                          ? AppColors.textDark
-                          : AppColors.textMuted)),
-              const SizedBox(height: 5),
-              Text(
-                  available
-                      ? 'RM ${item.price.toStringAsFixed(2)}'
-                      : 'Out of stock',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: available ? FontWeight.w500 : FontWeight.w400,
-                      color:
-                          available ? AppColors.primary : AppColors.textMuted)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            IconButton(
-              tooltip: 'Remove ${item.name}',
-              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              padding: EdgeInsets.zero,
-              iconSize: 20,
-              onPressed: quantity > 0 ? () => onChanged(quantity - 1) : null,
-              icon: const Icon(Icons.remove_rounded),
-            ),
-            SizedBox(
-              width: 24,
-              child: Text('$quantity',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
-            ),
-            IconButton(
-              tooltip: 'Add ${item.name}',
-              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              padding: EdgeInsets.zero,
-              iconSize: 20,
-              onPressed: available && quantity < 20
-                  ? () => onChanged(quantity + 1)
-                  : null,
-              icon: const Icon(Icons.add_rounded),
-            ),
-          ]),
-        ),
-      ]),
+  State<_PriceRangePicker> createState() => _PriceRangePickerState();
+}
+
+class _PriceRangePickerState extends State<_PriceRangePicker> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _minimum;
+  late final TextEditingController _maximum;
+
+  @override
+  void initState() {
+    super.initState();
+    _minimum = TextEditingController(
+        text: widget.initialRange?.minimum?.toStringAsFixed(2) ?? '');
+    _maximum = TextEditingController(
+        text: widget.initialRange?.maximum?.toStringAsFixed(2) ?? '');
+  }
+
+  @override
+  void dispose() {
+    _minimum.dispose();
+    _maximum.dispose();
+    super.dispose();
+  }
+
+  String? _validateAmount(String? text) {
+    if (text == null || text.trim().isEmpty) return null;
+    final amount = double.tryParse(text);
+    if (amount == null || !amount.isFinite || amount < 0) {
+      return 'Enter a valid price';
+    }
+    return null;
+  }
+
+  void _apply() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      MenuPriceRange(
+        minimum: double.tryParse(_minimum.text),
+        maximum: double.tryParse(_maximum.text),
+      ),
     );
   }
+
+  Widget _amountField(TextEditingController controller,
+          {required bool isMax}) =>
+      TextFormField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textInputAction: isMax ? TextInputAction.done : TextInputAction.next,
+        inputFormatters: [
+          TextInputFormatter.withFunction((oldValue, newValue) =>
+              RegExp(r'^\d*(\.\d{0,2})?$').hasMatch(newValue.text)
+                  ? newValue
+                  : oldValue),
+        ],
+        decoration: InputDecoration(
+          labelText: isMax ? 'Maximum' : 'Minimum',
+          hintText: 'Any',
+          prefixText: 'RM ',
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        validator: (value) {
+          final error = _validateAmount(value);
+          if (error != null || !isMax) return error;
+          final min = double.tryParse(_minimum.text);
+          final max = double.tryParse(value ?? '');
+          if (min != null && max != null && max < min) {
+            return 'Must be at least the minimum';
+          }
+          return null;
+        },
+        onFieldSubmitted: isMax ? (_) => _apply() : null,
+      );
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 12, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AppSheetHeader(
+                      title: Text('Dish price range'),
+                      padding: EdgeInsets.zero),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Find stalls with a dish in your budget. Leave a price blank for any amount.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: _amountField(_minimum, isMax: false)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _amountField(_maximum, isMax: true)),
+                  ]),
+                  const SizedBox(height: 24),
+                  Row(children: [
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pop(context, const MenuPriceRange()),
+                      child: const Text('Reset'),
+                    ),
+                    const Spacer(),
+                    Flexible(
+                        child: FilledButton(
+                      onPressed: _apply,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Apply price range'),
+                    )),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 ````
 
@@ -7041,7 +13317,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Version 1.0.3 · Prototype',
+                'Version 1.0.3',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -7095,8 +13371,7 @@ class AboutScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         const Text(
-          'StallSeeker is a Final Year Project prototype. Its features '
-          'and listings are being tested and may change during development.',
+          'Find your next favourite stall with StallSeeker.',
           style: TextStyle(
             fontSize: 13,
             height: 1.5,
@@ -7109,592 +13384,9 @@ class AboutScreen extends StatelessWidget {
 }
 ````
 
-## File: lib/features/shared/booking_detail_screen.dart
-````dart
-import 'dart:async';
-
-import 'package:flutter/material.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import '../../core/constants/app_colors.dart';
-import '../../core/models/demo_order.dart';
-import '../../core/services/demo_order_service.dart';
-import 'booking_payment_card.dart';
-
-enum _PaymentTransition { openingCheckout, checkingPayment }
-
-class BookingSummaryCard extends StatelessWidget {
-  const BookingSummaryCard(
-      {super.key,
-      required this.booking,
-      required this.isVendor,
-      required this.onTap,
-      this.compact = false});
-
-  final DemoOrder booking;
-  final bool isVendor;
-  final VoidCallback onTap;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final unseen =
-        isVendor ? booking.vendorUnseenRequest : booking.customerUnseenReady;
-    final color = booking.status == 'ready'
-        ? const Color(0xFF137547)
-        : booking.status == 'requested'
-            ? const Color(0xFFB65A16)
-            : Theme.of(context).colorScheme.primary;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              if (unseen) ...[
-                const CircleAvatar(
-                    radius: 4, backgroundColor: Color(0xFFE84E36)),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                  child: Text(
-                      isVendor ? booking.customerName : booking.stallName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16))),
-              Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}'),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, size: 20),
-            ]),
-            const SizedBox(height: 8),
-            Text(bookingStatusLabel(booking),
-                style: TextStyle(color: color, fontWeight: FontWeight.w700)),
-            if (booking.hasTestPayment) ...[
-              const SizedBox(height: 4),
-              Text(bookingPaymentLabel(booking),
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-            if (!compact) ...[
-              const SizedBox(height: 4),
-              Text(
-                  booking.items
-                      .map((item) => '${item.quantity}× ${item.name}')
-                      .join(', '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-            if (booking.createdAt != null) ...[
-              const SizedBox(height: 4),
-              Text(_dateTime(booking.createdAt!),
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-String _dateTime(DateTime date) => '${date.day}/${date.month}/${date.year} '
-    '${date.hour.toString().padLeft(2, '0')}:'
-    '${date.minute.toString().padLeft(2, '0')}';
-
-class BookingDetailScreen extends StatefulWidget {
-  const BookingDetailScreen(
-      {super.key,
-      required this.bookingId,
-      required this.isVendor,
-      this.openCheckoutOnStart = false});
-  final String bookingId;
-  final bool isVendor;
-  final bool openCheckoutOnStart;
-
-  @override
-  State<BookingDetailScreen> createState() => _BookingDetailScreenState();
-}
-
-class _BookingDetailScreenState extends State<BookingDetailScreen>
-    with WidgetsBindingObserver {
-  final _service = DemoOrderService();
-  late final Stream<DemoOrder?> _booking =
-      _service.watchBooking(widget.bookingId);
-  bool _busy = false;
-  bool _viewing = false;
-  bool _initialPaymentCheck = false;
-  bool _hasTestPayment = false;
-  bool _checkoutLaunched = false;
-  bool _refreshOnResume = false;
-  bool _refreshWithTransition = false;
-  _PaymentTransition? _paymentTransition;
-  Timer? _clock;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    if (widget.openCheckoutOnStart && !widget.isVendor) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          unawaited(
-              _runPaymentTransition(_pay, _PaymentTransition.openingCheckout));
-        }
-      });
-    }
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _hasTestPayment) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _clock?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _hasTestPayment) {
-      final showTransition = _checkoutLaunched && !widget.isVendor;
-      _checkoutLaunched = false;
-      if (_busy) {
-        _refreshOnResume = true;
-        _refreshWithTransition |= showTransition;
-      } else {
-        unawaited(showTransition
-            ? _checkPayment()
-            : _act(() => _service.refreshPayment(widget.bookingId)));
-      }
-    }
-  }
-
-  Future<void> _checkPayment() => _runPaymentTransition(
-        () => _service.refreshPayment(widget.bookingId),
-        _PaymentTransition.checkingPayment,
-      );
-
-  Future<void> _runPaymentTransition(
-      Future<void> Function() action, _PaymentTransition transition) async {
-    if (!mounted || _busy) return;
-    setState(() => _paymentTransition = transition);
-    try {
-      await _act(action);
-    } finally {
-      if (mounted) setState(() => _paymentTransition = null);
-    }
-  }
-
-  Future<void> _pay() async {
-    final uri = await _service.createTestCheckout(widget.bookingId);
-    await _launchCheckout(uri);
-  }
-
-  Future<void> _launchCheckout(Uri uri) async {
-    bool opened;
-    _checkoutLaunched = true;
-    try {
-      opened = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-    } catch (_) {
-      opened = false;
-    }
-    if (!opened) _checkoutLaunched = false;
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Could not open Stripe checkout.'),
-          action: SnackBarAction(
-              label: 'Try again',
-              onPressed: () {
-                unawaited(_runPaymentTransition(() => _launchCheckout(uri),
-                    _PaymentTransition.openingCheckout));
-              })));
-    }
-  }
-
-  void _viewIfNeeded(DemoOrder booking) {
-    final unseen = widget.isVendor
-        ? booking.vendorUnseenRequest
-        : booking.customerUnseenReady;
-    if (!unseen || _viewing) return;
-    _viewing = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        await _service.markViewed(widget.bookingId);
-      } catch (_) {
-        // The booking remains unread and can be retried when reopened.
-      } finally {
-        _viewing = false;
-      }
-    });
-  }
-
-  Future<void> _act(Future<void> Function() action) async {
-    setState(() => _busy = true);
-    try {
-      await action();
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                error is FirebaseFunctionsException && error.message != null
-                    ? error.message!
-                    : 'Could not update this booking. Please try again.')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-        if (_refreshOnResume) {
-          final showTransition = _refreshWithTransition;
-          _refreshOnResume = false;
-          _refreshWithTransition = false;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              unawaited(showTransition
-                  ? _checkPayment()
-                  : _act(() => _service.refreshPayment(widget.bookingId)));
-            }
-          });
-        }
-      }
-    }
-  }
-
-  Widget _paymentTransitionView() {
-    final opening = _paymentTransition == _PaymentTransition.openingCheckout;
-    return ColoredBox(
-      color: AppColors.background,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Semantics(
-            liveRegion: true,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_outline_rounded,
-                    size: 38, color: AppColors.primary),
-                const SizedBox(height: 24),
-                const CircularProgressIndicator(color: AppColors.primary),
-                const SizedBox(height: 24),
-                Text(
-                  opening
-                      ? 'Opening secure checkout'
-                      : 'Checking payment status',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  opening
-                      ? 'Please wait while we open Stripe.'
-                      : 'Confirming your payment with Stripe.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Test mode · No real charge',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _action(String label, Future<void> Function() action,
-      {bool primary = true}) {
-    return primary
-        ? FilledButton(
-            onPressed: _busy ? null : () => _act(action), child: Text(label))
-        : OutlinedButton(
-            onPressed: _busy ? null : () => _act(action), child: Text(label));
-  }
-
-  Future<void> _confirmCancellation(DemoOrder booking) async {
-    final paid = booking.paymentStatus == 'paid';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Cancel this booking?'),
-        content: Text(paid
-            ? 'The full test payment will be refunded to the original payment method. Refund status may take time to update.'
-            : 'The booking will be cancelled. Any open test checkout will close.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Keep booking'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(paid ? 'Cancel and refund' : 'Cancel booking'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) await _service.cancel(booking.id);
-  }
-
-  List<Widget> _actions(DemoOrder booking) {
-    final status = booking.effectiveStatus;
-    if (!widget.isVendor) {
-      return booking.canCustomerCancel
-          ? [
-              _action(
-                  booking.paymentStatus == 'paid'
-                      ? 'Cancel and refund'
-                      : 'Cancel booking',
-                  () => _confirmCancellation(booking),
-                  primary: false)
-            ]
-          : [];
-    }
-    return switch (status) {
-      'requested' => [
-          _action('Accept', () => _service.respond(booking.id, accept: true)),
-          _action('Reject', () => _service.respond(booking.id, accept: false),
-              primary: false),
-        ],
-      'confirmed' => [
-          if (booking.canPrepare)
-            _action(
-                'Start preparing', () => _service.advance(booking.id, status)),
-          _action(
-              booking.paymentStatus == 'paid'
-                  ? 'Cancel and refund'
-                  : 'Cancel booking',
-              () => _confirmCancellation(booking),
-              primary: false),
-        ],
-      'preparing' => [
-          _action('Mark ready', () => _service.advance(booking.id, status)),
-          _action(
-              booking.paymentStatus == 'paid'
-                  ? 'Cancel and refund'
-                  : 'Cancel booking',
-              () => _confirmCancellation(booking),
-              primary: false),
-        ],
-      'ready' => [
-          _action('Mark collected', () => _service.advance(booking.id, status)),
-          _action(
-              booking.paymentStatus == 'paid'
-                  ? 'Cancel and refund'
-                  : 'Cancel booking',
-              () => _confirmCancellation(booking),
-              primary: false),
-        ],
-      _ => [],
-    };
-  }
-
-  Widget _progress(DemoOrder booking) {
-    final steps = [
-      if (booking.checkoutFirst)
-        'checkout_started'
-      else ...[
-        'requested',
-        'confirmed',
-      ],
-      if (booking.hasTestPayment) 'payment_confirmed',
-      'preparing',
-      'ready',
-      'collected'
-    ];
-    var position = steps.indexOf(booking.effectiveStatus);
-    if (booking.checkoutFirst && booking.status == 'confirmed') {
-      position = steps.indexOf(booking.paymentStatus == 'paid'
-          ? 'payment_confirmed'
-          : 'checkout_started');
-    } else if (booking.hasTestPayment &&
-        booking.status == 'confirmed' &&
-        booking.paymentStatus == 'paid') {
-      position = steps.indexOf('payment_confirmed');
-    }
-    return Column(children: [
-      for (var i = 0; i < steps.length; i++)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(children: [
-            Icon(i <= position ? Icons.check_circle : Icons.circle_outlined,
-                size: 20,
-                color: i <= position ? const Color(0xFF137547) : Colors.grey),
-            const SizedBox(width: 10),
-            Expanded(
-                child: Text(
-                    steps[i] == 'payment_confirmed'
-                        ? 'Test payment confirmed'
-                        : steps[i] == 'checkout_started'
-                            ? 'Checkout started'
-                            : demoOrderStatusLabel(steps[i]),
-                    style: TextStyle(
-                        fontWeight: i == position ? FontWeight.bold : null))),
-          ]),
-        ),
-    ]);
-  }
-
-  @override
-  Widget build(BuildContext context) => Stack(
-        children: [
-          Scaffold(
-            appBar: AppBar(title: const Text('Booking details')),
-            body: StreamBuilder<DemoOrder?>(
-              stream: _booking,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return const Center(
-                      child: Text(
-                          'Could not load this booking. Check your connection.'));
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final booking = snapshot.data;
-                if (booking == null) {
-                  return const Center(child: Text('Booking not found.'));
-                }
-                _viewIfNeeded(booking);
-                _hasTestPayment = booking.hasTestPayment;
-                if (!_initialPaymentCheck &&
-                    booking.hasTestPayment &&
-                    booking.paymentStatus != 'unpaid') {
-                  _initialPaymentCheck = true;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted && !_busy) {
-                      unawaited(
-                          _act(() => _service.refreshPayment(booking.id)));
-                    }
-                  });
-                }
-                return ListView(padding: const EdgeInsets.all(18), children: [
-                  Text(
-                      widget.isVendor
-                          ? booking.customerName
-                          : booking.stallName,
-                      style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 6),
-                  if (booking.createdAt != null)
-                    Text(
-                        '${booking.checkoutFirst ? 'Started' : 'Requested'} ${_dateTime(booking.createdAt!)}'),
-                  const SizedBox(height: 18),
-                  Card(
-                      child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Progress',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium),
-                                const SizedBox(height: 10),
-                                if (booking.isActive ||
-                                    booking.status == 'collected')
-                                  _progress(booking)
-                                else
-                                  Text(
-                                      demoOrderStatusLabel(
-                                          booking.effectiveStatus),
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold)),
-                                if (booking.effectiveStatus == 'requested' &&
-                                    booking.expiresAt != null)
-                                  Text(
-                                      'Vendor reply due by ${_dateTime(booking.expiresAt!)}'),
-                              ]))),
-                  const SizedBox(height: 12),
-                  Card(
-                      child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Items',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium),
-                                const SizedBox(height: 8),
-                                for (final item in booking.items)
-                                  Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 3),
-                                      child: Row(children: [
-                                        Expanded(
-                                            child: Text(
-                                                '${item.quantity}× ${item.name}')),
-                                        Text(
-                                            'RM ${(item.subtotalCents / 100).toStringAsFixed(2)}'),
-                                      ])),
-                                const Divider(),
-                                Row(children: [
-                                  const Expanded(child: Text('Total')),
-                                  Text(
-                                      'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
-                                ]),
-                              ]))),
-                  if (booking.hasTestPayment) ...[
-                    const SizedBox(height: 12),
-                    BookingPaymentCard(
-                        booking: booking,
-                        isVendor: widget.isVendor,
-                        busy: _busy,
-                        busyLabel: switch (_paymentTransition) {
-                          _PaymentTransition.openingCheckout =>
-                            'Opening checkout…',
-                          _PaymentTransition.checkingPayment =>
-                            'Checking payment…',
-                          null => 'Processing…',
-                        },
-                        onPay: () => _runPaymentTransition(
-                            _pay, _PaymentTransition.openingCheckout),
-                        onRefresh: () => _checkPayment()),
-                  ],
-                  if (booking.pickupLatitude != null &&
-                      booking.pickupLongitude != null)
-                    TextButton.icon(
-                      onPressed: () => launchUrl(Uri.parse(
-                          'https://www.google.com/maps/search/?api=1&query=${booking.pickupLatitude},${booking.pickupLongitude}')),
-                      icon: const Icon(Icons.place_outlined),
-                      label: const Text('Self-collect location'),
-                    ),
-                  const SizedBox(height: 10),
-                  Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
-                  const SizedBox(height: 8),
-                  if (!booking.hasTestPayment)
-                    const Text(
-                        'This earlier booking uses payment arranged directly with the stall.'),
-                ]);
-              },
-            ),
-          ),
-          if (_paymentTransition != null)
-            Positioned.fill(
-              child: AbsorbPointer(
-                child: Material(
-                  color: AppColors.background,
-                  child: SafeArea(child: _paymentTransitionView()),
-                ),
-              ),
-            ),
-        ],
-      );
-}
-````
-
 ## File: lib/features/shared/demo_orders_screen.dart
 ````dart
+import '../../core/widgets/app_page_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
@@ -7749,7 +13441,7 @@ class _DemoOrdersScreenState extends State<DemoOrdersScreen> {
   Widget build(BuildContext context) => DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: AppBar(
+          appBar: AppPageAppBar(
             title: Text(widget.isVendor ? 'Stall bookings' : 'My bookings'),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(50),
@@ -7798,414 +13490,6 @@ class _DemoOrdersScreenState extends State<DemoOrdersScreen> {
           ),
         ),
       );
-}
-````
-
-## File: lib/features/shared/personal_information_screen.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-
-import '../../core/constants/app_colors.dart';
-import '../../core/services/auth_service.dart';
-import 'edit_profile_screen.dart';
-import 'profile_header.dart';
-
-class PersonalInformationScreen extends StatefulWidget {
-  const PersonalInformationScreen({
-    super.key,
-    required this.name,
-    required this.email,
-    required this.isVendor,
-  });
-
-  final String name;
-  final String email;
-  final bool isVendor;
-
-  @override
-  State<PersonalInformationScreen> createState() =>
-      _PersonalInformationScreenState();
-}
-
-class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
-  late String _name = widget.name;
-
-  Future<void> _edit() async {
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditProfileScreen(name: _name, email: widget.email),
-      ),
-    );
-    if (changed != true || !mounted) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final data = await AuthService().getUserData(uid);
-    if (mounted) {
-      setState(() => _name = data?.fullName ??
-          FirebaseAuth.instance.currentUser?.displayName ??
-          _name);
-    }
-  }
-
-  Widget _detail(String label, String value, {bool accent = false}) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style:
-                    const TextStyle(fontSize: 14, color: AppColors.textDark)),
-            const SizedBox(height: 3),
-            SelectableText(
-              value.isEmpty ? 'Not available' : value,
-              style: TextStyle(
-                fontSize: 17,
-                color: accent ? AppColors.primary : AppColors.textDark,
-              ),
-            ),
-          ],
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final providers =
-        user?.providerData.map((p) => p.providerId).toSet() ?? <String>{};
-    final methods = providers
-        .map((p) => p == 'google.com'
-            ? 'Google'
-            : p == 'password'
-                ? 'Email and password'
-                : p)
-        .join(', ');
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          children: [
-            SizedBox(
-              height: 116,
-              child: Stack(
-                alignment: Alignment.topCenter,
-                children: [
-                  Positioned(
-                    top: 12,
-                    child: ProfileAvatar(
-                        name: _name, photoUrl: user?.photoURL, size: 100),
-                  ),
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    child: ProfileTopAction(
-                      label: 'Back',
-                      icon: CupertinoIcons.back,
-                      onTap: () => Navigator.pop(context),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: ProfileTopAction(label: 'Edit', onTap: _edit),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _name,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 28,
-                height: 1.1,
-                letterSpacing: -.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              widget.isVendor ? 'Vendor account' : 'Customer account',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 46),
-            Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(26),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _detail('name', _name),
-                  const Divider(indent: 16, endIndent: 16, height: .5),
-                  _detail('email', widget.email, accent: true),
-                  const Divider(indent: 16, endIndent: 16, height: .5),
-                  _detail(
-                      'account type', widget.isVendor ? 'Vendor' : 'Customer'),
-                  const Divider(indent: 16, endIndent: 16, height: .5),
-                  _detail('sign-in method', methods),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-````
-
-## File: lib/core/models/user_model.dart
-````dart
-class UserModel { // represent 1 registered user
-  final String uid;
-  final String email;
-  final String fullName;
-  final String role; // 'customer' or 'vendor'
-  final DateTime createdAt;
-  final double? customerLatitude; // ni yang save custtomer location
-  final double? customerLongitude; // ni jugak
-  final String? customerLocationLabel; // dan ini
-  final bool customerLocationIsManual;  //ini kalau manual / xletak apa2 (nu;ll)
-
-  UserModel({
-    required this.uid,
-    required this.email,
-    required this.fullName,
-    required this.role,
-    required this.createdAt,
-    this.customerLatitude,
-    this.customerLongitude,
-    this.customerLocationLabel,
-    this.customerLocationIsManual = false,
-  });
-
-  bool get hasCustomerLocation => // check cust location valid or tak
-      customerLatitude != null &&
-      customerLongitude != null &&
-      customerLatitude!.isFinite &&
-      customerLongitude!.isFinite &&
-      customerLatitude! >= -90 &&
-      customerLatitude! <= 90 &&
-      customerLongitude! >= -180 &&
-      customerLongitude! <= 180;
-
-  // Convert Firestore Document to UserModel Object
-  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
-    final customerLocation = map['customerLocation'];
-    return UserModel(
-      uid: docId,
-      email: map['email'] ?? '',
-      fullName: map['fullName'] ?? '',
-      role: map['role'] ?? 'customer',
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as dynamic).toDate()
-          : DateTime.now(),
-      customerLatitude: customerLocation is Map
-          ? (customerLocation['latitude'] as num?)?.toDouble()
-          : null,
-      customerLongitude: customerLocation is Map
-          ? (customerLocation['longitude'] as num?)?.toDouble()
-          : null,
-      customerLocationLabel:
-          customerLocation is Map ? customerLocation['label'] as String? : null,
-      customerLocationIsManual: customerLocation is Map
-          ? customerLocation['isManual'] == true
-          : false,
-    );
-  }
-
-  // Convert UserModel Object to Map for Firestore storage
-  Map<String, dynamic> toMap() {
-    return <String, dynamic>{
-      'uid': uid,
-      'email': email,
-      'fullName': fullName,
-      'role': role,
-      'createdAt': createdAt,
-      if (hasCustomerLocation)
-        'customerLocation': {
-          'latitude': customerLatitude,
-          'longitude': customerLongitude,
-          'label': customerLocationLabel ?? 'Selected location',
-          'isManual': customerLocationIsManual,
-        },
-    };
-  }
-}
-````
-
-## File: lib/features/shared/account_ui.dart
-````dart
-import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-
-/// Shared spacing, fields and actions for account pages.
-class AccountLayout extends StatelessWidget {
-  const AccountLayout(
-      {super.key,
-      required this.title,
-      required this.children,
-      this.busy = false,
-      this.background = AppColors.background});
-  final String title;
-  final List<Widget> children;
-  final bool busy;
-  final Color background;
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !busy,
-        child: Scaffold(
-          backgroundColor: background,
-          appBar: AppBar(
-              title: Text(title),
-              centerTitle: true,
-              backgroundColor: background,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              titleTextStyle: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                  letterSpacing: 0),
-              leading: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Material(
-                  color: Colors.white,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: 'Back',
-                    icon:
-                        const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-                    onPressed: busy ? null : () => Navigator.maybePop(context),
-                  ),
-                ),
-              )),
-          body: SafeArea(
-              top: false,
-              child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          children: children)))),
-        ),
-      );
-}
-
-class AccountIntro extends StatelessWidget {
-  const AccountIntro(
-      {super.key, required this.icon, required this.title, required this.body});
-  final IconData icon;
-  final String title;
-  final String body;
-  @override
-  Widget build(BuildContext context) => Column(children: [
-        Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(
-                color: AppColors.mint, shape: BoxShape.circle),
-            child: Icon(icon, color: AppColors.primary, size: 30)),
-        const SizedBox(height: 24),
-        Text(title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -.3)),
-        const SizedBox(height: 10),
-        Text(body,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 15, height: 1.5, color: Color(0xFF707078))),
-        const SizedBox(height: 32),
-      ]);
-}
-
-InputDecoration accountField(String label, {Widget? suffix, String? helper}) =>
-    InputDecoration(
-      labelText: label,
-      helperText: helper,
-      helperMaxLines: 3,
-      errorMaxLines: 3,
-      suffixIcon: suffix,
-      filled: true,
-      fillColor: Colors.white,
-      labelStyle: const TextStyle(color: Color(0xFF707078), fontSize: 14),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(26),
-          borderSide: const BorderSide(color: AppColors.primary)),
-      errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(26),
-          borderSide: const BorderSide(color: Color(0xFFB3261E))),
-      focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(26),
-          borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.5)),
-    );
-
-class AccountButton extends StatelessWidget {
-  const AccountButton(
-      {super.key,
-      required this.label,
-      this.onPressed,
-      this.busy = false,
-      this.color = AppColors.primary});
-  final String label;
-  final VoidCallback? onPressed;
-  final bool busy;
-  final Color color;
-  @override
-  Widget build(BuildContext context) => SizedBox(
-      width: double.infinity,
-      child: FilledButton(
-          onPressed: busy ? null : onPressed,
-          style: FilledButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              minimumSize: const Size(48, 54),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28))),
-          child: busy
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600))));
-}
-
-class AccountError extends StatelessWidget {
-  const AccountError(this.message, {super.key});
-  final String? message;
-  @override
-  Widget build(BuildContext context) => message == null
-      ? const SizedBox.shrink()
-      : Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Semantics(
-              liveRegion: true,
-              child: Text(message!,
-                  style:
-                      const TextStyle(color: Color(0xFFB3261E), height: 1.4))));
 }
 ````
 
@@ -8455,99 +13739,246 @@ class _SplashScreenState extends State<SplashScreen> {
 }
 ````
 
-## File: lib/features/shared/legal_screen.dart
+## File: lib/core/models/user_model.dart
 ````dart
-import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import 'info_page.dart';
+class UserModel { // represent 1 registered user
+  final String uid;
+  final String email;
+  final String fullName;
+  final String? phoneNumber;
+  final String role; // 'customer' or 'vendor'
+  final DateTime createdAt;
+  final double? customerLatitude; // ni yang save custtomer location
+  final double? customerLongitude; // ni jugak
+  final String? customerLocationLabel; // dan ini
+  final bool customerLocationIsManual;  //ini kalau manual / xletak apa2 (nu;ll)
 
-enum LegalPage { privacy, terms }
+  UserModel({
+    required this.uid,
+    required this.email,
+    required this.fullName,
+    this.phoneNumber,
+    required this.role,
+    required this.createdAt,
+    this.customerLatitude,
+    this.customerLongitude,
+    this.customerLocationLabel,
+    this.customerLocationIsManual = false,
+  });
 
-class LegalScreen extends StatelessWidget {
-  const LegalScreen({super.key, required this.page});
-  final LegalPage page;
+  bool get hasCustomerLocation => // check cust location valid or tak
+      customerLatitude != null &&
+      customerLongitude != null &&
+      customerLatitude!.isFinite &&
+      customerLongitude!.isFinite &&
+      customerLatitude! >= -90 &&
+      customerLatitude! <= 90 &&
+      customerLongitude! >= -180 &&
+      customerLongitude! <= 180;
 
-  @override
-  Widget build(BuildContext context) {
-    final privacy = page == LegalPage.privacy;
-    final sections = privacy ? _privacySections : _termSections;
-
-    return InfoPage(
-      title: privacy ? 'Privacy Policy' : 'Terms of Use',
-      children: [
-        const Text(
-          'Last updated: 20 October 2026',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.textMuted,
-          ),
-        ),
-        const SizedBox(height: 24),
-        for (final section in sections)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  section.key,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  section.value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.65,
-                    color: Color(0xFF52525A),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
+  // Convert Firestore Document to UserModel Object
+  factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
+    final customerLocation = map['customerLocation'];
+    return UserModel(
+      uid: docId,
+      email: map['email'] ?? '',
+      fullName: map['fullName'] ?? '',
+      phoneNumber: map['phoneNumber'] as String?,
+      role: map['role'] ?? 'customer',
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as dynamic).toDate()
+          : DateTime.now(),
+      customerLatitude: customerLocation is Map
+          ? (customerLocation['latitude'] as num?)?.toDouble()
+          : null,
+      customerLongitude: customerLocation is Map
+          ? (customerLocation['longitude'] as num?)?.toDouble()
+          : null,
+      customerLocationLabel:
+          customerLocation is Map ? customerLocation['label'] as String? : null,
+      customerLocationIsManual: customerLocation is Map
+          ? customerLocation['isManual'] == true
+          : false,
     );
   }
 
-  static const _privacySections = <MapEntry<String, String>>[
-    MapEntry('Information we collect',
-        'We store your name, email address, account type, followed stalls, search history, notification history, self-collect bookings and device notification token. Live bookings are shared between the customer and vendor through Firebase. Older same-phone demo bookings remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. New bookings use Stripe sandbox checkout. We store test payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
-    MapEntry('How we use it',
-        'We use this information to run your account, show nearby stalls and dishes, provide search suggestions, save favourites, send stall updates and keep the service secure.'),
-    MapEntry('Location',
-        'Customer location is used to show nearby stalls. Vendor location may be shown to customers when the stall is active. StallSeeker does not need location when these features are not being used.'),
-    MapEntry('Sharing and storage',
-        'Account and app data are stored using Firebase services. We do not sell personal information. Data may be processed by service providers needed to operate the app.'),
-    MapEntry('Your choices',
-        'You can turn off alerts in Notification settings, remove phone permissions in device settings, or delete your StallSeeker account from the Profile page.'),
-    MapEntry('Data deletion',
-        'Deleting your account removes your account and related StallSeeker data. Some security or legal records may be kept only when required by law.'),
-    MapEntry('Contact',
-        'For privacy questions, contact the StallSeeker team at support@stallseeker.my.'),
-  ];
+  // Convert UserModel Object to Map for Firestore storage
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'uid': uid,
+      'email': email,
+      'fullName': fullName,
+      if (phoneNumber != null && phoneNumber!.isNotEmpty)
+        'phoneNumber': phoneNumber,
+      'role': role,
+      'createdAt': createdAt,
+      if (hasCustomerLocation)
+        'customerLocation': {
+          'latitude': customerLatitude,
+          'longitude': customerLongitude,
+          'label': customerLocationLabel ?? 'Selected location',
+          'isManual': customerLocationIsManual,
+        },
+    };
+  }
+}
+````
 
-  static const _termSections = <MapEntry<String, String>>[
-    MapEntry('Service purpose',
-        'StallSeeker helps customers find food stalls and helps vendors share their status, menu and location.'),
-    MapEntry('Account responsibility',
-        'Use correct information, protect your password and do not use another person’s account. You are responsible for activity under your account.'),
-    MapEntry('Vendor information',
-        'Vendors are responsible for keeping their location, opening status, menu, prices and stock information accurate.'),
-    MapEntry('Prototype payments',
-        'Payments and refunds use Stripe Test Mode. Use test payment details only. No real money is charged, deposited or paid out to vendors. Demo sales are simulated amounts. Payment must be confirmed before preparation; cancelled paid bookings request a simulated refund, whose status is shown in the booking.'),
-    MapEntry('Acceptable use',
-        'Do not misuse the service, post harmful or false content, interfere with the app, scrape private data or break applicable laws.'),
-    MapEntry('Availability',
-        'Stall locations, stock and opening status can change. StallSeeker cannot guarantee that every listing or live update is always correct or available.'),
-    MapEntry('Account action',
-        'We may limit or remove accounts that abuse the service or put other users at risk. You may delete your account from the Profile page.'),
-    MapEntry('Changes and contact',
-        'These terms may change as the service develops. For questions, contact support@stallseeker.my.'),
-  ];
+## File: lib/features/shared/account_ui.dart
+````dart
+import '../../core/widgets/app_page_app_bar.dart';
+import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+
+/// Shared spacing, fields and actions for account pages.
+class AccountLayout extends StatelessWidget {
+  const AccountLayout(
+      {super.key,
+      required this.title,
+      required this.children,
+      this.busy = false,
+      this.background = AppColors.background});
+  final String title;
+  final List<Widget> children;
+  final bool busy;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: !busy,
+        child: Scaffold(
+          backgroundColor: background,
+          appBar: AppPageAppBar(
+            title: Text(title),
+            centerTitle: true,
+            backgroundColor: background,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            titleTextStyle: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+                letterSpacing: 0),
+            showBackButton: true,
+            backEnabled: !busy,
+          ),
+          body: SafeArea(
+              top: false,
+              child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          children: children)))),
+        ),
+      );
+}
+
+class AccountIntro extends StatelessWidget {
+  const AccountIntro(
+      {super.key, required this.icon, required this.title, required this.body});
+  final IconData icon;
+  final String title;
+  final String body;
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Container(
+            width: 64,
+            height: 64,
+            decoration: const BoxDecoration(
+                color: AppColors.mint, shape: BoxShape.circle),
+            child: Icon(icon, color: AppColors.primary, size: 30)),
+        const SizedBox(height: 24),
+        Text(title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -.3)),
+        const SizedBox(height: 10),
+        Text(body,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 15, height: 1.5, color: Color(0xFF707078))),
+        const SizedBox(height: 32),
+      ]);
+}
+
+InputDecoration accountField(String label, {Widget? suffix, String? helper}) =>
+    InputDecoration(
+      labelText: label,
+      helperText: helper,
+      helperMaxLines: 3,
+      errorMaxLines: 3,
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: Colors.white,
+      labelStyle: const TextStyle(color: Color(0xFF707078), fontSize: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: const BorderSide(color: AppColors.primary)),
+      errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: const BorderSide(color: Color(0xFFB3261E))),
+      focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: const BorderSide(color: Color(0xFFB3261E), width: 1.5)),
+    );
+
+class AccountButton extends StatelessWidget {
+  const AccountButton(
+      {super.key,
+      required this.label,
+      this.onPressed,
+      this.busy = false,
+      this.color = AppColors.primary});
+  final String label;
+  final VoidCallback? onPressed;
+  final bool busy;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+          onPressed: busy ? null : onPressed,
+          style: FilledButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              minimumSize: const Size(48, 54),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28))),
+          child: busy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Text(label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600))));
+}
+
+class AccountError extends StatelessWidget {
+  const AccountError(this.message, {super.key});
+  final String? message;
+  @override
+  Widget build(BuildContext context) => message == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Semantics(
+              liveRegion: true,
+              child: Text(message!,
+                  style:
+                      const TextStyle(color: Color(0xFFB3261E), height: 1.4))));
 }
 ````
 
@@ -9097,6 +14528,187 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
 }
 ````
 
+## File: lib/features/shared/personal_information_screen.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/constants/app_colors.dart';
+import '../../core/services/auth_service.dart';
+import 'edit_profile_screen.dart';
+import 'profile_header.dart';
+
+class PersonalInformationScreen extends StatefulWidget {
+  const PersonalInformationScreen({
+    super.key,
+    required this.name,
+    required this.email,
+    required this.isVendor,
+    this.phoneNumber,
+  });
+
+  final String name;
+  final String email;
+  final bool isVendor;
+  final String? phoneNumber;
+
+  @override
+  State<PersonalInformationScreen> createState() =>
+      _PersonalInformationScreenState();
+}
+
+class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
+  late String _name = widget.name;
+  late String? _phoneNumber = widget.phoneNumber;
+
+  Future<void> _edit() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(
+          name: _name,
+          email: widget.email,
+          phoneNumber: _phoneNumber,
+          editPhone: !widget.isVendor,
+        ),
+      ),
+    );
+    if (changed != true || !mounted) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final data = await AuthService().getUserData(uid);
+    if (mounted) {
+      setState(() {
+        _name = data?.fullName ??
+            FirebaseAuth.instance.currentUser?.displayName ??
+            _name;
+        if (data != null) {
+          _phoneNumber = data.phoneNumber;
+        }
+      });
+    }
+  }
+
+  Widget _detail(String label, String value, {bool accent = false}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 14, color: AppColors.textDark)),
+            const SizedBox(height: 3),
+            SelectableText(
+              value.isEmpty ? 'Not available' : value,
+              style: TextStyle(
+                fontSize: 17,
+                color: accent ? AppColors.primary : AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final providers =
+        user?.providerData.map((p) => p.providerId).toSet() ?? <String>{};
+    final methods = providers
+        .map((p) => p == 'google.com'
+            ? 'Google'
+            : p == 'password'
+                ? 'Email and password'
+                : p)
+        .join(', ');
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            SizedBox(
+              height: 116,
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  Positioned(
+                    top: 12,
+                    child: ProfileAvatar(
+                        name: _name, photoUrl: user?.photoURL, size: 100),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    child: ProfileTopAction(
+                      label: 'Back',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: ProfileTopAction(label: 'Edit', onTap: _edit),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 28,
+                height: 1.1,
+                letterSpacing: -.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.isVendor ? 'Vendor account' : 'Customer account',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 46),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _detail('name', _name),
+                  const Divider(indent: 16, endIndent: 16, height: .5),
+                  _detail('email', widget.email, accent: true),
+                  if (!widget.isVendor) ...[
+                    const Divider(indent: 16, endIndent: 16, height: .5),
+                    _detail(
+                      'phone number',
+                      _phoneNumber?.trim().isNotEmpty == true
+                          ? _phoneNumber!
+                          : 'Not added',
+                    ),
+                  ],
+                  const Divider(indent: 16, endIndent: 16, height: .5),
+                  _detail(
+                      'account type', widget.isVendor ? 'Vendor' : 'Customer'),
+                  const Divider(indent: 16, endIndent: 16, height: .5),
+                  _detail('sign-in method', methods),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+````
+
 ## File: lib/features/shared/saved_locations_sheet.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -9406,107 +15018,6 @@ class _SavedLocationsSheetState extends State<_SavedLocationsSheet> {
               ],
             ])),
       ]);
-}
-````
-
-## File: lib/core/services/menu_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/menu_item_model.dart';
-
-class MenuService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-// customer tengok menu vendor
-  Stream<List<MenuItemModel>> getMenuItems(String vendorId) {
-    return _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => MenuItemModel.fromMap(doc.data(), doc.id))
-            .toList());
-  }
-
-// create id baru bila add menu baru
-  String newMenuItemId(String vendorId) {
-    return _db.collection('vendors').doc(vendorId).collection('menu').doc().id;
-  }
-
-// validate dan save menu
-  Future<void> addMenuItem(
-    String vendorId,
-    String name,
-    double price, {
-    String? itemId,
-    String? imageUrl,
-    String section = 'Main menu',
-  }) async {
-    if (name.trim().isEmpty || !price.isFinite || price <= 0) { throw ArgumentError('Invalid dish'); }
-    final docRef = itemId != null
-        ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
-        : _db.collection('vendors').doc(vendorId).collection('menu').doc();
-
-    final newItem = MenuItemModel(
-      itemId: docRef.id,
-      name: name,
-      price: price,
-      status: 'available',
-      imageUrl: imageUrl ?? '',
-      section: section,
-    );
-
-    await docRef.set(newItem.toMap()).timeout(const Duration(seconds: 15));
-  }
-
-// update menu item (name, price, image)
-  Future<void> updateMenuItem(
-    String vendorId,
-    String itemId,
-    String name,
-    double price, {
-    String? imageUrl,
-    String section = 'Main menu',
-  }) async {
-    if (name.trim().isEmpty || !price.isFinite || price <= 0) { throw ArgumentError('Invalid dish'); }
-    final data = <String, dynamic>{
-      'name': name,
-      'price': price,
-      'section': section,
-    };
-    if (imageUrl != null) {
-      data['imageUrl'] = imageUrl;
-    }
-
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .update(data).timeout(const Duration(seconds: 15));
-  }
-// change menu aiavlaibility
-  Future<void> updateItemStatus(
-      String vendorId, String itemId, String newStatus) async {
-    if (!{'available', 'low_stock', 'out_of_stock'}.contains(newStatus)) { throw ArgumentError('Invalid status'); }
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .update({'status': newStatus, 'statusUpdatedAt': FieldValue.serverTimestamp()}).timeout(const Duration(seconds: 15));
-  }
-
-  // Delete item
-  Future<void> deleteMenuItem(String vendorId, String itemId) async {
-    await _db
-        .collection('vendors')
-        .doc(vendorId)
-        .collection('menu')
-        .doc(itemId)
-        .delete().timeout(const Duration(seconds: 15));
-  }
 }
 ````
 
@@ -9944,109 +15455,6 @@ class NotificationService {
 }
 ````
 
-## File: lib/core/services/vendor_service.dart
-````dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import '../models/vendor_model.dart';
-
-class VendorService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  CollectionReference get _vendorsRef => _firestore.collection('vendors');
-
-// read store id
-  Future<VendorModel?> getVendorProfile(String vendorId) async {
-    try {
-      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
-      if (doc.exists && doc.data() != null) {
-        return VendorModel.fromMap(
-          doc.data() as Map<String, dynamic>,
-          doc.id,
-        );
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error fetching vendor profile: $e');
-      return null;
-    }
-  }
-
-// update stall infroamtion
-  Future<void> saveVendorProfile(VendorModel vendor) async {
-    try {
-      await _vendorsRef.doc(vendor.vendorId).set(
-            vendor.toProfileMap(),
-            SetOptions(merge: true),
-          );
-    } catch (e) {
-      debugPrint('Error saving vendor profile: $e');
-      rethrow;
-    }
-  }
-
-// open/closed
-  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
-    try {
-      await _vendorsRef.doc(vendorId).set({
-        'vendorId': vendorId,
-        'isOpen': isOpen,
-        if (!isOpen) 'locationSharingActive': false,
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error toggling stall status: $e');
-      rethrow;
-    }
-  }
-
-// update location
-  Future<void> updateVendorLocation(
-    String vendorId,
-    double latitude,
-    double longitude,
-    {bool sharingActive = true}
-  ) async {
-    try {
-      await _vendorsRef.doc(vendorId).set({
-        'vendorId': vendorId,
-        'latitude': latitude,
-        'longitude': longitude,
-        'locationUpdatedAt': FieldValue.serverTimestamp(),
-        'locationSharingActive': sharingActive,
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error updating vendor location: $e');
-      rethrow;
-    }
-  }
-
-  Stream<VendorModel?> watchVendorProfile(String vendorId) {
-    return _vendorsRef.doc(vendorId).snapshots().map((doc) =>
-        doc.exists && doc.data() != null
-            ? VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)
-            : null);
-  }
-
-  Future<void> setSelfCollectEnabled(String vendorId, bool enabled) =>
-      _vendorsRef.doc(vendorId).update({'selfCollectEnabled': enabled});
-
-  Stream<List<VendorModel>> getOpenVendors() {
-    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
-        (snapshot) => snapshot.docs
-            .map((doc) =>
-                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-            .toList());
-  }
-
-  Stream<List<VendorModel>> getAllVendors() {
-    return _vendorsRef.snapshots().map((snapshot) => snapshot.docs
-        .map((doc) =>
-            VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-        .toList());
-  }
-}
-````
-
 ## File: lib/features/customer/notifications/customer_notifications_screen.dart
 ````dart
 import 'dart:math' as math;
@@ -10436,6 +15844,1088 @@ class _CustomerNotificationsScreenState
 }
 ````
 
+## File: lib/features/customer/orders/demo_order_cart_screen.dart
+````dart
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/models/demo_order.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/services/demo_order_service.dart';
+import '../../../core/services/menu_service.dart';
+import '../../shared/booking_detail_screen.dart';
+
+class DemoOrderCartScreen extends StatefulWidget {
+  const DemoOrderCartScreen({super.key, required this.vendor});
+  final VendorModel vendor;
+
+  @override
+  State<DemoOrderCartScreen> createState() => _DemoOrderCartScreenState();
+}
+
+class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
+  final _quantities = <String, int>{};
+  final _specialInstructions = TextEditingController();
+  final _service = DemoOrderService();
+  final _menuService = MenuService();
+  late final Stream<List<MenuItemModel>> _menu;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _menu = _menuService.getMenuItems(widget.vendor.vendorId);
+  }
+
+  @override
+  void dispose() {
+    _specialInstructions.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(List<MenuItemModel> items) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous || !user.emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Sign in with a verified customer account to book.')));
+      return;
+    }
+    final selected = <DemoOrderItem>[];
+    for (final item in items) {
+      final quantity = _quantities[item.itemId] ?? 0;
+      if (quantity > 0 && item.status != 'out_of_stock') {
+        selected.add(DemoOrderItem(
+            itemId: item.itemId,
+            name: item.name,
+            unitPriceCents: (item.price * 100).round(),
+            quantity: quantity));
+      }
+    }
+    if (selected.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      final bookingId = await _service.requestOrder(widget.vendor, selected,
+          specialInstructions: _specialInstructions.text);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (_) => BookingDetailScreen(
+                  bookingId: bookingId,
+                  isVendor: false,
+                  openCheckoutOnStart: true)));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                error is FirebaseFunctionsException && error.message != null
+                    ? error.message!
+                    : 'Could not save this booking. Please try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppPageAppBar(title: const Text('Your order')),
+        body: StreamBuilder<List<MenuItemModel>>(
+          stream: _menu,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Center(child: Text('Could not load the menu.'));
+            }
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return BookingCartView(
+              stallName: widget.vendor.stallName,
+              items: snapshot.data!,
+              quantities: _quantities,
+              sending: _sending,
+              specialInstructionsController: _specialInstructions,
+              onQuantityChanged: (item, quantity) => setState(() {
+                _quantities[item.itemId] = quantity;
+              }),
+              onSubmit: () => _submit(snapshot.data!),
+            );
+          },
+        ),
+      );
+}
+
+class BookingCartView extends StatelessWidget {
+  const BookingCartView({
+    super.key,
+    required this.stallName,
+    required this.items,
+    required this.quantities,
+    required this.sending,
+    required this.onQuantityChanged,
+    required this.onSubmit,
+    this.specialInstructionsController,
+  });
+
+  final String stallName;
+  final List<MenuItemModel> items;
+  final Map<String, int> quantities;
+  final bool sending;
+  final void Function(MenuItemModel, int) onQuantityChanged;
+  final VoidCallback onSubmit;
+  final TextEditingController? specialInstructionsController;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = items.fold<int>(
+      0,
+      (sum, item) =>
+          sum +
+          (item.status == 'out_of_stock' ? 0 : (quantities[item.itemId] ?? 0)) *
+              (item.price * 100).round(),
+    );
+    final itemCount = items.fold<int>(
+      0,
+      (sum, item) =>
+          sum +
+          (item.status == 'out_of_stock' ? 0 : (quantities[item.itemId] ?? 0)),
+    );
+    final canContinue = total >= 200 && !sending;
+
+    return Column(children: [
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('SELF-COLLECT',
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2)),
+                    const SizedBox(height: 6),
+                    Text(stallName,
+                        style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            height: 1.15)),
+                    const SizedBox(height: 8),
+                    const Text('Choose your food for pickup.',
+                        style: TextStyle(
+                            color: AppColors.textMuted, fontSize: 14)),
+                    const SizedBox(height: 22),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.mint.withValues(alpha: .65),
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.check_circle_outline_rounded,
+                              size: 21, color: AppColors.openGreen),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Pay to confirm',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textDark)),
+                                SizedBox(height: 3),
+                                Text(
+                                    'The stall gets your booking after payment.',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Padding(
+                      padding: EdgeInsets.only(left: 2),
+                      child: Text('Secure payment with Stripe',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textMuted)),
+                    ),
+                    const SizedBox(height: 30),
+                    Row(children: [
+                      const Text('Menu',
+                          style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark)),
+                      const Spacer(),
+                      Text(
+                          '${items.length} ${items.length == 1 ? 'item' : 'items'}',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textMuted)),
+                    ]),
+                    const SizedBox(height: 12),
+                    if (items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child:
+                            Center(child: Text('No dishes on the menu yet.')),
+                      )
+                    else
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.cardColor,
+                          borderRadius: BorderRadius.circular(26),
+                        ),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < items.length; i++) ...[
+                              if (i > 0)
+                                const Divider(
+                                    height: 1, indent: 16, endIndent: 16),
+                              _MenuItemRow(
+                                item: items[i],
+                                quantity: items[i].status == 'out_of_stock'
+                                    ? 0
+                                    : (quantities[items[i].itemId] ?? 0),
+                                onChanged: (quantity) =>
+                                    onQuantityChanged(items[i], quantity),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    if (items.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: specialInstructionsController,
+                        enabled: !sending,
+                        minLines: 2,
+                        maxLines: 4,
+                        maxLength: 500,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          labelText: 'Special instructions (optional)',
+                          hintText: 'E.g. Less spicy, please',
+                          helperText:
+                              'Requests are subject to vendor acceptance.',
+                          helperMaxLines: 2,
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: AppColors.cardColor,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(
+                            itemCount == 0
+                                ? 'Order total'
+                                : '$itemCount ${itemCount == 1 ? 'item' : 'items'} · Total',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14, color: AppColors.textMuted)),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('RM ${(total / 100).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark)),
+                    ]),
+                    if (itemCount > 0 && total < 200) ...[
+                      const SizedBox(height: 5),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Minimum order RM2.00',
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.primary)),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: canContinue ? onSubmit : null,
+                        child: sending
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      itemCount == 0
+                                          ? 'Choose an item'
+                                          : 'Continue to payment',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (itemCount > 0) ...[
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.arrow_forward_rounded,
+                                        size: 18),
+                                  ],
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
+class _MenuItemRow extends StatelessWidget {
+  const _MenuItemRow({
+    required this.item,
+    required this.quantity,
+    required this.onChanged,
+  });
+
+  final MenuItemModel item;
+  final int quantity;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = item.status != 'out_of_stock';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
+      child: Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: available
+                          ? AppColors.textDark
+                          : AppColors.textMuted)),
+              const SizedBox(height: 5),
+              Text(
+                  available
+                      ? 'RM ${item.price.toStringAsFixed(2)}'
+                      : 'Out of stock',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: available ? FontWeight.w500 : FontWeight.w400,
+                      color:
+                          available ? AppColors.primary : AppColors.textMuted)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              tooltip: 'Remove ${item.name}',
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              padding: EdgeInsets.zero,
+              iconSize: 20,
+              onPressed: quantity > 0 ? () => onChanged(quantity - 1) : null,
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            SizedBox(
+              width: 24,
+              child: Text('$quantity',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+              tooltip: 'Add ${item.name}',
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              padding: EdgeInsets.zero,
+              iconSize: 20,
+              onPressed: available && quantity < 20
+                  ? () => onChanged(quantity + 1)
+                  : null,
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+````
+
+## File: lib/features/shared/booking_detail_screen.dart
+````dart
+import '../../core/widgets/app_page_app_bar.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/constants/app_colors.dart';
+import '../../core/models/demo_order.dart';
+import '../../core/services/demo_order_service.dart';
+import 'booking_payment_card.dart';
+
+enum _PaymentTransition { openingCheckout, checkingPayment }
+
+class BookingSummaryCard extends StatelessWidget {
+  const BookingSummaryCard(
+      {super.key,
+      required this.booking,
+      required this.isVendor,
+      required this.onTap,
+      this.compact = false});
+
+  final DemoOrder booking;
+  final bool isVendor;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final unseen =
+        isVendor ? booking.vendorUnseenRequest : booking.customerUnseenReady;
+    final color = booking.status == 'ready'
+        ? const Color(0xFF137547)
+        : booking.status == 'requested'
+            ? const Color(0xFFB65A16)
+            : Theme.of(context).colorScheme.primary;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              if (unseen) ...[
+                const CircleAvatar(
+                    radius: 4, backgroundColor: Color(0xFFE84E36)),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                  child: Text(
+                      isVendor ? booking.customerName : booking.stallName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16))),
+              Text('RM ${(booking.totalCents / 100).toStringAsFixed(2)}'),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 20),
+            ]),
+            const SizedBox(height: 8),
+            Text(bookingStatusLabel(booking),
+                style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+            if (booking.hasTestPayment) ...[
+              const SizedBox(height: 4),
+              Text(bookingPaymentLabel(booking),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (!compact) ...[
+              const SizedBox(height: 4),
+              Text(
+                  booking.items
+                      .map((item) => '${item.quantity}× ${item.name}')
+                      .join(', '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+            ],
+            if (booking.createdAt != null) ...[
+              const SizedBox(height: 4),
+              Text(_dateTime(booking.createdAt!),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (booking.specialInstructions.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Special instructions: ${booking.specialInstructions}',
+                  maxLines: compact ? 1 : 2, overflow: TextOverflow.ellipsis),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+String _dateTime(DateTime date) => '${date.day}/${date.month}/${date.year} '
+    '${date.hour.toString().padLeft(2, '0')}:'
+    '${date.minute.toString().padLeft(2, '0')}';
+
+class BookingDetailScreen extends StatefulWidget {
+  const BookingDetailScreen(
+      {super.key,
+      required this.bookingId,
+      required this.isVendor,
+      this.openCheckoutOnStart = false});
+  final String bookingId;
+  final bool isVendor;
+  final bool openCheckoutOnStart;
+
+  @override
+  State<BookingDetailScreen> createState() => _BookingDetailScreenState();
+}
+
+class _BookingDetailScreenState extends State<BookingDetailScreen>
+    with WidgetsBindingObserver {
+  final _service = DemoOrderService();
+  late final Stream<DemoOrder?> _booking =
+      _service.watchBooking(widget.bookingId);
+  bool _busy = false;
+  bool _viewing = false;
+  bool _initialPaymentCheck = false;
+  bool _hasTestPayment = false;
+  bool _checkoutLaunched = false;
+  bool _refreshOnResume = false;
+  bool _refreshWithTransition = false;
+  _PaymentTransition? _paymentTransition;
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.openCheckoutOnStart && !widget.isVendor) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(
+              _runPaymentTransition(_pay, _PaymentTransition.openingCheckout));
+        }
+      });
+    }
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _hasTestPayment) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _hasTestPayment) {
+      final showTransition = _checkoutLaunched && !widget.isVendor;
+      _checkoutLaunched = false;
+      if (_busy) {
+        _refreshOnResume = true;
+        _refreshWithTransition |= showTransition;
+      } else {
+        unawaited(showTransition
+            ? _checkPayment()
+            : _act(() => _service.refreshPayment(widget.bookingId)));
+      }
+    }
+  }
+
+  Future<void> _checkPayment() => _runPaymentTransition(
+        () => _service.refreshPayment(widget.bookingId),
+        _PaymentTransition.checkingPayment,
+      );
+
+  Future<void> _runPaymentTransition(
+      Future<void> Function() action, _PaymentTransition transition) async {
+    if (!mounted || _busy) return;
+    setState(() => _paymentTransition = transition);
+    try {
+      await _act(action);
+    } finally {
+      if (mounted) setState(() => _paymentTransition = null);
+    }
+  }
+
+  Future<void> _pay() async {
+    final uri = await _service.createTestCheckout(widget.bookingId);
+    await _launchCheckout(uri);
+  }
+
+  Future<void> _launchCheckout(Uri uri) async {
+    bool opened;
+    _checkoutLaunched = true;
+    try {
+      opened = await launchUrl(uri,
+          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened) _checkoutLaunched = false;
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Could not open Stripe checkout.'),
+          action: SnackBarAction(
+              label: 'Try again',
+              onPressed: () {
+                unawaited(_runPaymentTransition(() => _launchCheckout(uri),
+                    _PaymentTransition.openingCheckout));
+              })));
+    }
+  }
+
+  void _viewIfNeeded(DemoOrder booking) {
+    final unseen = widget.isVendor
+        ? booking.vendorUnseenRequest
+        : booking.customerUnseenReady;
+    if (!unseen || _viewing) return;
+    _viewing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _service.markViewed(widget.bookingId);
+      } catch (_) {
+        // The booking remains unread and can be retried when reopened.
+      } finally {
+        _viewing = false;
+      }
+    });
+  }
+
+  Future<void> _act(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                error is FirebaseFunctionsException && error.message != null
+                    ? error.message!
+                    : 'Could not update this booking. Please try again.')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+        if (_refreshOnResume) {
+          final showTransition = _refreshWithTransition;
+          _refreshOnResume = false;
+          _refreshWithTransition = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              unawaited(showTransition
+                  ? _checkPayment()
+                  : _act(() => _service.refreshPayment(widget.bookingId)));
+            }
+          });
+        }
+      }
+    }
+  }
+
+  Widget _paymentTransitionView() {
+    final opening = _paymentTransition == _PaymentTransition.openingCheckout;
+    return ColoredBox(
+      color: AppColors.background,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Semantics(
+            liveRegion: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline_rounded,
+                    size: 38, color: AppColors.primary),
+                const SizedBox(height: 24),
+                const CircularProgressIndicator(color: AppColors.primary),
+                const SizedBox(height: 24),
+                Text(
+                  opening
+                      ? 'Opening secure checkout'
+                      : 'Checking payment status',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  opening
+                      ? 'Please wait while we open Stripe.'
+                      : 'Confirming your payment with Stripe.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Secure payment with Stripe',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _action(String label, Future<void> Function() action,
+      {bool primary = true}) {
+    return primary
+        ? FilledButton(
+            onPressed: _busy ? null : () => _act(action), child: Text(label))
+        : OutlinedButton(
+            onPressed: _busy ? null : () => _act(action), child: Text(label));
+  }
+
+  Future<void> _confirmCancellation(DemoOrder booking) async {
+    final paid = booking.paymentStatus == 'paid';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this booking?'),
+        content: Text(paid
+            ? 'The full payment will be refunded to the original payment method. Refund status may take time to update.'
+            : 'The booking will be cancelled. Any open checkout will close.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep booking'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(paid ? 'Cancel and refund' : 'Cancel booking'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _service.cancel(booking.id);
+  }
+
+  List<Widget> _actions(DemoOrder booking) {
+    final status = booking.effectiveStatus;
+    if (!widget.isVendor) {
+      return booking.canCustomerCancel
+          ? [
+              _action(
+                  booking.paymentStatus == 'paid'
+                      ? 'Cancel and refund'
+                      : 'Cancel booking',
+                  () => _confirmCancellation(booking),
+                  primary: false)
+            ]
+          : [];
+    }
+    return switch (status) {
+      'requested' => [
+          _action('Accept', () => _service.respond(booking.id, accept: true)),
+          _action('Reject', () => _service.respond(booking.id, accept: false),
+              primary: false),
+        ],
+      'confirmed' => [
+          if (booking.canPrepare)
+            _action(
+                'Start preparing', () => _service.advance(booking.id, status)),
+          _action(
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
+              primary: false),
+        ],
+      'preparing' => [
+          _action('Mark ready', () => _service.advance(booking.id, status)),
+          _action(
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
+              primary: false),
+        ],
+      'ready' => [
+          _action('Mark collected', () => _service.advance(booking.id, status)),
+          _action(
+              booking.paymentStatus == 'paid'
+                  ? 'Cancel and refund'
+                  : 'Cancel booking',
+              () => _confirmCancellation(booking),
+              primary: false),
+        ],
+      _ => [],
+    };
+  }
+
+  Widget _progress(DemoOrder booking) {
+    final steps = [
+      if (booking.checkoutFirst)
+        'checkout_started'
+      else ...[
+        'requested',
+        'confirmed',
+      ],
+      if (booking.hasTestPayment) 'payment_confirmed',
+      'preparing',
+      'ready',
+      'collected'
+    ];
+    var position = steps.indexOf(booking.effectiveStatus);
+    if (booking.checkoutFirst && booking.status == 'confirmed') {
+      position = steps.indexOf(booking.paymentStatus == 'paid'
+          ? 'payment_confirmed'
+          : 'checkout_started');
+    } else if (booking.hasTestPayment &&
+        booking.status == 'confirmed' &&
+        booking.paymentStatus == 'paid') {
+      position = steps.indexOf('payment_confirmed');
+    }
+    return Column(children: [
+      for (var i = 0; i < steps.length; i++)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            Icon(i <= position ? Icons.check_circle : Icons.circle_outlined,
+                size: 20,
+                color: i <= position ? const Color(0xFF137547) : Colors.grey),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(
+                    steps[i] == 'payment_confirmed'
+                        ? 'Payment confirmed'
+                        : steps[i] == 'checkout_started'
+                            ? 'Checkout started'
+                            : demoOrderStatusLabel(steps[i]),
+                    style: TextStyle(
+                        fontWeight: i == position ? FontWeight.bold : null))),
+          ]),
+        ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          Scaffold(
+            appBar: AppPageAppBar(title: const Text('Booking details')),
+            body: StreamBuilder<DemoOrder?>(
+              stream: _booking,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(
+                      child: Text(
+                          'Could not load this booking. Check your connection.'));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final booking = snapshot.data;
+                if (booking == null) {
+                  return const Center(child: Text('Booking not found.'));
+                }
+                _viewIfNeeded(booking);
+                _hasTestPayment = booking.hasTestPayment;
+                if (!_initialPaymentCheck &&
+                    booking.hasTestPayment &&
+                    booking.paymentStatus != 'unpaid') {
+                  _initialPaymentCheck = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && !_busy) {
+                      unawaited(
+                          _act(() => _service.refreshPayment(booking.id)));
+                    }
+                  });
+                }
+                return ListView(padding: const EdgeInsets.all(18), children: [
+                  Text(
+                      widget.isVendor
+                          ? booking.customerName
+                          : booking.stallName,
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 6),
+                  if (booking.createdAt != null)
+                    Text(
+                        '${booking.checkoutFirst ? 'Started' : 'Requested'} ${_dateTime(booking.createdAt!)}'),
+                  const SizedBox(height: 18),
+                  Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Progress',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                const SizedBox(height: 10),
+                                if (booking.isActive ||
+                                    booking.status == 'collected')
+                                  _progress(booking)
+                                else
+                                  Text(
+                                      demoOrderStatusLabel(
+                                          booking.effectiveStatus),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                if (booking.effectiveStatus == 'requested' &&
+                                    booking.expiresAt != null)
+                                  Text(
+                                      'Vendor reply due by ${_dateTime(booking.expiresAt!)}'),
+                              ]))),
+                  const SizedBox(height: 12),
+                  Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Items',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium),
+                                const SizedBox(height: 8),
+                                for (final item in booking.items)
+                                  Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 3),
+                                      child: Row(children: [
+                                        Expanded(
+                                            child: Text(
+                                                '${item.quantity}× ${item.name}')),
+                                        Text(
+                                            'RM ${(item.subtotalCents / 100).toStringAsFixed(2)}'),
+                                      ])),
+                                const Divider(),
+                                Row(children: [
+                                  const Expanded(child: Text('Total')),
+                                  Text(
+                                      'RM ${(booking.totalCents / 100).toStringAsFixed(2)}')
+                                ]),
+                              ]))),
+                  if (booking.specialInstructions.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    BookingSpecialInstructionsCard(
+                        instructions: booking.specialInstructions),
+                  ],
+                  if (booking.hasTestPayment) ...[
+                    const SizedBox(height: 12),
+                    BookingPaymentCard(
+                        booking: booking,
+                        isVendor: widget.isVendor,
+                        busy: _busy,
+                        busyLabel: switch (_paymentTransition) {
+                          _PaymentTransition.openingCheckout =>
+                            'Opening checkout…',
+                          _PaymentTransition.checkingPayment =>
+                            'Checking payment…',
+                          null => 'Processing…',
+                        },
+                        onPay: () => _runPaymentTransition(
+                            _pay, _PaymentTransition.openingCheckout),
+                        onRefresh: () => _checkPayment()),
+                  ],
+                  if (booking.pickupLatitude != null &&
+                      booking.pickupLongitude != null)
+                    TextButton.icon(
+                      onPressed: () => launchUrl(Uri.parse(
+                          'https://www.google.com/maps/search/?api=1&query=${booking.pickupLatitude},${booking.pickupLongitude}')),
+                      icon: const Icon(Icons.place_outlined),
+                      label: const Text('Self-collect location'),
+                    ),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
+                  const SizedBox(height: 8),
+                  if (!booking.hasTestPayment)
+                    const Text(
+                        'This earlier booking uses payment arranged directly with the stall.'),
+                ]);
+              },
+            ),
+          ),
+          if (_paymentTransition != null)
+            Positioned.fill(
+              child: AbsorbPointer(
+                child: Material(
+                  color: AppColors.background,
+                  child: SafeArea(child: _paymentTransitionView()),
+                ),
+              ),
+            ),
+        ],
+      );
+}
+
+class BookingSpecialInstructionsCard extends StatelessWidget {
+  const BookingSpecialInstructionsCard({super.key, required this.instructions});
+
+  final String instructions;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Special instructions',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(instructions),
+              const SizedBox(height: 8),
+              Text('Requests are subject to vendor acceptance.',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
+      );
+}
+````
+
 ## File: lib/core/constants/app_colors.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -10472,6 +16962,460 @@ class AppColors {
 }
 ````
 
+## File: lib/core/services/menu_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/menu_item_model.dart';
+
+class MenuService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+// customer tengok menu vendor
+  Stream<List<MenuItemModel>> getMenuItems(String vendorId) {
+    return _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => MenuItemModel.fromMap(doc.data(), doc.id))
+            .toList());
+  }
+
+// create id baru bila add menu baru
+  String newMenuItemId(String vendorId) {
+    return _db.collection('vendors').doc(vendorId).collection('menu').doc().id;
+  }
+
+// validate dan save menu
+  Future<void> addMenuItem(
+    String vendorId,
+    String name,
+    double price, {
+    String? itemId,
+    String? imageUrl,
+    String section = 'Main menu',
+    String description = '',
+    String portionSize = '',
+    List<String> ingredients = const [],
+  }) async {
+    if (name.trim().isEmpty || !price.isFinite || price <= 0) {
+      throw ArgumentError('Invalid dish');
+    }
+    final docRef = itemId != null
+        ? _db.collection('vendors').doc(vendorId).collection('menu').doc(itemId)
+        : _db.collection('vendors').doc(vendorId).collection('menu').doc();
+
+    final newItem = MenuItemModel(
+      itemId: docRef.id,
+      name: name,
+      price: price,
+      status: 'available',
+      imageUrl: imageUrl ?? '',
+      section: section.trim(),
+      description: description.trim(),
+      portionSize: portionSize.trim(),
+      ingredients: ingredients
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList(),
+    );
+
+    await _db.runTransaction((transaction) async {
+      final existing = await transaction.get(docRef);
+      transaction.set(docRef, {
+        ...newItem.toMap(),
+        'createdAt':
+            existing.data()?['createdAt'] ?? FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }).timeout(const Duration(seconds: 15));
+  }
+
+// update menu item (name, price, image)
+  Future<void> updateMenuItem(
+    String vendorId,
+    String itemId,
+    String name,
+    double price, {
+    String? imageUrl,
+    String section = 'Main menu',
+    String description = '',
+    String portionSize = '',
+    List<String> ingredients = const [],
+  }) async {
+    if (name.trim().isEmpty || !price.isFinite || price <= 0) {
+      throw ArgumentError('Invalid dish');
+    }
+    final data = <String, dynamic>{
+      'name': name,
+      'price': price,
+      'section': section.trim(),
+      'description': description.trim(),
+      'portionSize': portionSize.trim(),
+      'ingredients': ingredients
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (imageUrl != null) {
+      data['imageUrl'] = imageUrl;
+    }
+
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update(data)
+        .timeout(const Duration(seconds: 15));
+  }
+
+// change menu aiavlaibility
+  Future<void> updateItemStatus(
+      String vendorId, String itemId, String newStatus) async {
+    if (!{'available', 'low_stock', 'out_of_stock'}.contains(newStatus)) {
+      throw ArgumentError('Invalid status');
+    }
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .update({
+      'status': newStatus,
+      'statusUpdatedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp()
+    }).timeout(const Duration(seconds: 15));
+  }
+
+  // Delete item
+  Future<void> deleteMenuItem(String vendorId, String itemId) async {
+    await _db
+        .collection('vendors')
+        .doc(vendorId)
+        .collection('menu')
+        .doc(itemId)
+        .delete()
+        .timeout(const Duration(seconds: 15));
+  }
+}
+````
+
+## File: lib/core/services/vendor_service.dart
+````dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../models/vendor_model.dart';
+
+class VendorService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  CollectionReference get _vendorsRef => _firestore.collection('vendors');
+
+// read store id
+  Future<VendorModel?> getVendorProfile(String vendorId) async {
+    try {
+      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
+      if (doc.exists && doc.data() != null) {
+        return VendorModel.fromMap(
+          doc.data() as Map<String, dynamic>,
+          doc.id,
+        );
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching vendor profile: $e');
+      return null;
+    }
+  }
+
+// update stall infroamtion
+  Future<void> saveVendorProfile(VendorModel vendor) async {
+    try {
+      final ref = _vendorsRef.doc(vendor.vendorId);
+      await _firestore.runTransaction((transaction) async {
+        final existing = await transaction.get(ref);
+        final data = existing.data() as Map<String, dynamic>?;
+        final firstProfile = !existing.exists ||
+            (data?['stallName'] as String? ?? '').trim().isEmpty;
+        transaction.set(
+            ref,
+            {
+              ...vendor.toProfileMap(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              if (firstProfile && data?['createdAt'] == null)
+                'createdAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true));
+      });
+    } catch (e) {
+      debugPrint('Error saving vendor profile: $e');
+      rethrow;
+    }
+  }
+
+// open/closed
+  Future<void> toggleStallStatus(String vendorId, bool isOpen) async {
+    try {
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
+        'isOpen': isOpen,
+        if (!isOpen) 'locationSharingActive': false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error toggling stall status: $e');
+      rethrow;
+    }
+  }
+
+// update location
+  Future<void> updateVendorLocation(
+      String vendorId, double latitude, double longitude,
+      {bool sharingActive = true}) async {
+    try {
+      await _vendorsRef.doc(vendorId).set({
+        'vendorId': vendorId,
+        'latitude': latitude,
+        'longitude': longitude,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+        'locationSharingActive': sharingActive,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating vendor location: $e');
+      rethrow;
+    }
+  }
+
+  Stream<VendorModel?> watchVendorProfile(String vendorId) {
+    return _vendorsRef.doc(vendorId).snapshots().map((doc) =>
+        doc.exists && doc.data() != null
+            ? VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id)
+            : null);
+  }
+
+  Future<void> setSelfCollectEnabled(String vendorId, bool enabled) =>
+      _vendorsRef.doc(vendorId).update({'selfCollectEnabled': enabled});
+
+  Stream<List<VendorModel>> getOpenVendors() {
+    return _vendorsRef.where('isOpen', isEqualTo: true).snapshots().map(
+        (snapshot) => snapshot.docs
+            .map((doc) =>
+                VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList());
+  }
+
+  Stream<List<VendorModel>> getAllVendors() {
+    return _vendorsRef.snapshots().map((snapshot) => snapshot.docs
+        .map((doc) =>
+            VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+        .toList());
+  }
+}
+````
+
+## File: lib/features/shared/legal_screen.dart
+````dart
+import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
+import 'info_page.dart';
+
+enum LegalPage { privacy, terms }
+
+class LegalScreen extends StatelessWidget {
+  const LegalScreen({super.key, required this.page});
+  final LegalPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final privacy = page == LegalPage.privacy;
+    final sections = privacy ? _privacySections : _termSections;
+
+    return InfoPage(
+      title: privacy ? 'Privacy Policy' : 'Terms of Use',
+      children: [
+        const Text(
+          'Last updated: 20 October 2026',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 24),
+        for (final section in sections)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  section.key,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  section.value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.65,
+                    color: Color(0xFF52525A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  static const _privacySections = <MapEntry<String, String>>[
+    MapEntry('Information we collect',
+        'We store your name, email address, account type, followed stalls, search history, saved searches, notification history, self-collect bookings and device notification token. Bookings are shared between the customer and vendor through Firebase. Older bookings stored locally remain on that device only. Guest search history stays on the guest’s device until it is merged into a customer account after sign-in. Vendors may share their stall details and live location while using the service. Bookings use Stripe checkout. We store payment references, amounts and payment status; card details are entered on Stripe and are not stored by StallSeeker.'),
+    MapEntry('How we use it',
+        'We use this information to run your account, show nearby stalls and dishes, provide search suggestions, save favourites, send stall updates and keep the service secure.'),
+    MapEntry('Location',
+        'Customer location is used to show nearby stalls. Vendor location may be shown to customers when the stall is active. StallSeeker does not need location when these features are not being used.'),
+    MapEntry('Sharing and storage',
+        'Account and app data are stored using Firebase services. We do not sell personal information. Data may be processed by service providers needed to operate the app.'),
+    MapEntry('Your choices',
+        'You can turn off alerts in Notification settings, remove phone permissions in device settings, or delete your StallSeeker account from the Profile page.'),
+    MapEntry('Data deletion',
+        'Deleting your account removes your account and related StallSeeker data. Some security or legal records may be kept only when required by law.'),
+    MapEntry('Contact',
+        'For privacy questions, contact the StallSeeker team at support@stallseeker.my.'),
+  ];
+
+  static const _termSections = <MapEntry<String, String>>[
+    MapEntry('Service purpose',
+        'StallSeeker helps customers find food stalls and helps vendors share their status, menu and location.'),
+    MapEntry('Account responsibility',
+        'Use correct information, protect your password and do not use another person’s account. You are responsible for activity under your account.'),
+    MapEntry('Vendor information',
+        'Vendors are responsible for keeping their location, opening status, menu, prices and stock information accurate.'),
+    MapEntry('Payments and refunds',
+        'Payments and refunds are processed through Stripe. Payment must be confirmed before preparation. Cancelled paid bookings request a refund to the original payment method; refund status is shown in the booking.'),
+    MapEntry('Acceptable use',
+        'Do not misuse the service, post harmful or false content, interfere with the app, scrape private data or break applicable laws.'),
+    MapEntry('Availability',
+        'Stall locations, stock and opening status can change. StallSeeker cannot guarantee that every listing or live update is always correct or available.'),
+    MapEntry('Account action',
+        'We may limit or remove accounts that abuse the service or put other users at risk. You may delete your account from the Profile page.'),
+    MapEntry('Changes and contact',
+        'These terms may change as the service develops. For questions, contact support@stallseeker.my.'),
+  ];
+}
+````
+
+## File: lib/features/shared/logout_helper.dart
+````dart
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/constants/app_colors.dart';
+import '../../core/services/auth_service.dart';
+
+Future<void> confirmAndLogout(
+  BuildContext context,
+  AuthService authService,
+) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final signedOut = await showCupertinoModalPopup<bool>(
+    context: context,
+    useRootNavigator: true,
+    barrierDismissible: false,
+    barrierColor: Colors.black45,
+    builder: (_) => _LogoutSheet(authService: authService),
+  );
+  if (signedOut == true && navigator.mounted) {
+    navigator.popUntil((route) => route.isFirst);
+  }
+}
+
+class _LogoutSheet extends StatefulWidget {
+  const _LogoutSheet({required this.authService});
+
+  final AuthService authService;
+
+  @override
+  State<_LogoutSheet> createState() => _LogoutSheetState();
+}
+
+class _LogoutSheetState extends State<_LogoutSheet> {
+  bool _busy = false;
+  String? _error;
+  late final bool _guest =
+      FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
+
+  Future<void> _logout() async {
+    if (_busy) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.authService.signOut();
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not finish logging out. Please try again.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: !_busy,
+        child: CupertinoTheme(
+          data: const CupertinoThemeData(primaryColor: AppColors.primary),
+          child: CupertinoActionSheet(
+            title: Text(_guest ? 'Leave Guest Mode?' : 'Log Out?'),
+            message: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_guest
+                    ? 'You can continue browsing or sign in at any time.'
+                    : 'Are you sure you want to log out of StallSeeker?'),
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(_error!,
+                      style: const TextStyle(color: CupertinoColors.systemRed)),
+                ],
+              ],
+            ),
+            actions: [
+              CupertinoActionSheetAction(
+                isDestructiveAction: true,
+                onPressed: _busy ? () {} : _logout,
+                child: _busy
+                    ? const CupertinoActivityIndicator()
+                    : Text(_guest ? 'Leave Guest Mode' : 'Log Out'),
+              ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              onPressed: _busy ? () {} : () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+          ),
+        ),
+      );
+}
+````
+
 ## File: lib/core/models/vendor_model.dart
 ````dart
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10483,6 +17427,15 @@ class VendorModel {
   final String stallName;
   final String description;
   final String category;
+  final List<String> categories;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  List<String> get allCategories => categories.isNotEmpty
+      ? categories
+      : (category.trim().isEmpty ? const [] : [category]);
+  String get categoryLabel => allCategories.join(' · ');
+  bool hasCategory(String value) => allCategories.contains(value);
   final String openingHours;
   final bool isOpen;
   final double latitude;
@@ -10537,6 +17490,9 @@ class VendorModel {
     required this.description,
     required this.category,
     required this.openingHours,
+    this.categories = const [],
+    this.createdAt,
+    this.updatedAt,
     this.isOpen = false,
     this.latitude = 0.0,
     this.longitude = 0.0,
@@ -10554,7 +17510,8 @@ class VendorModel {
         'vendorId': vendorId,
         'stallName': stallName,
         'description': description,
-        'category': category,
+        'category': allCategories.isEmpty ? '' : allCategories.first,
+        'categories': allCategories,
         'openingHours': openingHours,
         'imageUrl': imageUrl,
         'phoneNumber': phoneNumber,
@@ -10568,7 +17525,8 @@ class VendorModel {
       'vendorId': vendorId,
       'stallName': stallName,
       'description': description,
-      'category': category,
+      'category': allCategories.isEmpty ? '' : allCategories.first,
+      'categories': allCategories,
       'openingHours': openingHours,
       'isOpen': isOpen,
       'latitude': latitude,
@@ -10588,6 +17546,16 @@ class VendorModel {
       stallName: map['stallName'] ?? '',
       description: map['description'] ?? '',
       category: map['category'] ?? '',
+      categories: map['categories'] is List
+          ? (map['categories'] as List)
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList()
+          : const [],
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
       openingHours: map['openingHours'] ?? '',
       isOpen: map['isOpen'] ?? false,
       latitude: (map['latitude'] ?? 0.0).toDouble(),
@@ -10612,6 +17580,7 @@ class VendorModel {
     String? stallName,
     String? description,
     String? category,
+    List<String>? categories,
     String? openingHours,
     bool? isOpen,
     double? latitude,
@@ -10627,6 +17596,10 @@ class VendorModel {
       stallName: stallName ?? this.stallName,
       description: description ?? this.description,
       category: category ?? this.category,
+      categories:
+          categories ?? (category == null ? this.categories : [category]),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
       openingHours: openingHours ?? this.openingHours,
       isOpen: isOpen ?? this.isOpen,
       latitude: latitude ?? this.latitude,
@@ -10645,6 +17618,7 @@ class VendorModel {
 
 ## File: lib/features/auth/screens/welcome_screen.dart
 ````dart
+import '../../../core/widgets/app_back_button.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
@@ -10751,14 +17725,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         if (!_loginOpen)
                           Positioned(
                               top: 12,
-                              right: 18,
-                              child: IconButton(
-                                  tooltip: 'Continue as guest',
-                                  onPressed: _busy ? null : _guest,
-                                  style: IconButton.styleFrom(
-                                      backgroundColor: const Color(0xFFEAEAEC)),
-                                  icon: const Icon(Icons.close_rounded,
-                                      color: Color(0xFF73737A)))),
+                              left: 18,
+                              child: AppBackButton(
+                                  label: 'Continue as guest',
+                                  enabled: !_busy,
+                                  onPressed: _guest)),
                         Center(
                             child: Transform.translate(
                                 offset: const Offset(0, -20),
@@ -10824,109 +17795,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             ],
                           ]))))),
         ]),
-      );
-}
-````
-
-## File: lib/features/shared/logout_helper.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-
-import '../../core/constants/app_colors.dart';
-import '../../core/services/auth_service.dart';
-
-Future<void> confirmAndLogout(
-  BuildContext context,
-  AuthService authService,
-) async {
-  final navigator = Navigator.of(context, rootNavigator: true);
-  final signedOut = await showCupertinoModalPopup<bool>(
-    context: context,
-    useRootNavigator: true,
-    barrierDismissible: false,
-    barrierColor: Colors.black45,
-    builder: (_) => _LogoutSheet(authService: authService),
-  );
-  if (signedOut == true && navigator.mounted) {
-    navigator.popUntil((route) => route.isFirst);
-  }
-}
-
-class _LogoutSheet extends StatefulWidget {
-  const _LogoutSheet({required this.authService});
-
-  final AuthService authService;
-
-  @override
-  State<_LogoutSheet> createState() => _LogoutSheetState();
-}
-
-class _LogoutSheetState extends State<_LogoutSheet> {
-  bool _busy = false;
-  String? _error;
-  late final bool _guest =
-      FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
-
-  Future<void> _logout() async {
-    if (_busy) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.authService.signOut();
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = 'Could not finish logging out. Please try again.';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !_busy,
-        child: CupertinoTheme(
-          data: const CupertinoThemeData(primaryColor: AppColors.primary),
-          child: CupertinoActionSheet(
-            title: Text(_guest ? 'Leave Guest Mode?' : 'Log Out?'),
-            message: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_guest
-                    ? 'You can continue browsing or sign in at any time.'
-                    : 'Are you sure you want to log out of StallSeeker?'),
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(_error!,
-                      style: const TextStyle(color: CupertinoColors.systemRed)),
-                ],
-              ],
-            ),
-            actions: [
-              CupertinoActionSheetAction(
-                isDestructiveAction: true,
-                onPressed: _busy ? () {} : _logout,
-                child: _busy
-                    ? const CupertinoActivityIndicator()
-                    : Text(_guest ? 'Leave Guest Mode' : 'Log Out'),
-              ),
-            ],
-            cancelButton: CupertinoActionSheetAction(
-              onPressed: _busy ? () {} : () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-          ),
-        ),
       );
 }
 ````
@@ -11103,316 +17971,6 @@ class _FaqScreenState extends State<FaqScreen> {
 }
 ````
 
-## File: lib/features/vendor/profile/edit_stall_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/stall_categories.dart';
-import '../../../core/models/stall_schedule.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../../core/services/storage_service.dart';
-import '../../../core/utils/vendor_phone.dart';
-import 'stall_schedule_editor.dart';
-import '../../../core/widgets/app_dropdown.dart';
-
-class EditStallScreen extends StatefulWidget {
-  const EditStallScreen({super.key});
-
-  @override
-  State<EditStallScreen> createState() => _EditStallScreenState();
-}
-
-class _EditStallScreenState extends State<EditStallScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _vendorService = VendorService();
-  final _storageService = StorageService();
-  final _auth = FirebaseAuth.instance;
-
-  final _stallNameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _openingHoursController = TextEditingController();
-  final _phoneController = TextEditingController();
-
-  String _selectedCategory = 'Beverages';
-  final List<String> _categories = stallCategories;
-
-  bool _isLoading = true;
-  bool _isSaving = false;
-  bool _isOpen = false;
-  Map<int, List<StallHoursInterval>> _weeklyHours = {};
-  List<TemporaryClosure> _temporaryClosures = [];
-
-  // Existing photo URL loaded from Firestore, and a newly picked local
-  // file (not yet uploaded) if the vendor chose a new photo this session.
-  String _existingImageUrl = '';
-  File? _pickedImage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadExistingVendorData();
-  }
-
-  // Fetch vendor info from Firestore to pre-fill the form
-  Future<void> _loadExistingVendorData() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
-      if (vendor != null) {
-        _stallNameController.text = vendor.stallName;
-        _descriptionController.text = vendor.description;
-        _openingHoursController.text = vendor.openingHours;
-        _weeklyHours = vendor.weeklyHours;
-        _temporaryClosures = vendor.temporaryClosures;
-        _phoneController.text = vendor.phoneNumber;
-        _isOpen = vendor.isOpen;
-        _existingImageUrl = vendor.imageUrl;
-        if (_categories.contains(vendor.category)) {
-          _selectedCategory = vendor.category;
-        }
-      }
-    }
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final file = await _storageService.pickImage();
-    if (file != null) {
-      setState(() {
-        _pickedImage = file;
-      });
-    }
-  }
-
-  // Save updated stall profile to Firestore
-  Future<void> _saveStallProfile() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    final user = _auth.currentUser;
-    if (user == null) {
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      // Only upload if the vendor picked a new photo this session.
-      // Otherwise keep whatever URL was already saved.
-      String imageUrl = _existingImageUrl;
-      if (_pickedImage != null) {
-        imageUrl =
-            await _storageService.uploadStallImage(user.uid, _pickedImage!);
-      }
-
-      final vendor = VendorModel(
-        vendorId: user.uid,
-        stallName: _stallNameController.text.trim(),
-        description: _descriptionController.text.trim(),
-        category: _selectedCategory,
-        openingHours: _openingHoursController.text.trim(),
-        isOpen: _isOpen,
-        imageUrl: imageUrl,
-        phoneNumber: normalizeVendorPhone(_phoneController.text) ?? '',
-        weeklyHours: _weeklyHours,
-        temporaryClosures: _temporaryClosures,
-      );
-
-      await _vendorService.saveVendorProfile(vendor);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stall profile saved successfully!')),
-        );
-        Navigator.pop(context); // Return to Dashboard
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save profile: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _stallNameController.dispose();
-    _descriptionController.dispose();
-    _openingHoursController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildImagePicker() {
-    Widget imageContent;
-    if (_pickedImage != null) {
-      imageContent = Image.file(_pickedImage!, fit: BoxFit.cover);
-    } else if (_existingImageUrl.isNotEmpty) {
-      imageContent = Image.network(
-        _existingImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.storefront, size: 48, color: Colors.grey),
-      );
-    } else {
-      imageContent = const Icon(Icons.storefront, size: 48, color: Colors.grey);
-    }
-
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          Container(
-            width: double.infinity,
-            height: 160,
-            decoration: BoxDecoration(
-              color: AppColors.mint,
-              borderRadius: BorderRadius.circular(26),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: imageContent,
-          ),
-          Container(
-            margin: const EdgeInsets.all(8),
-            padding: const EdgeInsets.all(6),
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leadingWidth: 88,
-        leading: TextButton(
-          onPressed: _isSaving ? null : () => Navigator.maybePop(context),
-          child: const Text('Cancel'),
-        ),
-        title: const Text('Edit stall'),
-        actions: [
-          TextButton(
-            onPressed: _isSaving ? null : _saveStallProfile,
-            child: Text(_isSaving ? 'Saving…' : 'Done'),
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  children: [
-                    // Stall Photo
-                    _buildImagePicker(),
-                    const SizedBox(height: 16),
-
-                    // Stall Name
-                    TextFormField(
-                      controller: _stallNameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Stall Name',
-                        hintText: 'e.g. Uncle John Drink Stall',
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter stall name'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Category Dropdown
-                    AppDropdown<String>(
-                      label: 'Food category',
-                      value: _selectedCategory,
-                      hint: 'Choose a category',
-                      options: {
-                        for (final category in _categories) category: category,
-                      },
-                      onChanged: (value) => setState(() {
-                        _selectedCategory = value;
-                      }),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Description
-                    TextFormField(
-                      controller: _descriptionController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        hintText: 'Describe your food/drinks offered...',
-                      ),
-                      validator: (val) => val == null || val.isEmpty
-                          ? 'Enter description'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    if (_openingHoursController.text.isNotEmpty &&
-                        _weeklyHours.isEmpty)
-                      Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                              'Previous hours: ${_openingHoursController.text}. Set your weekly hours below.')),
-                    StallScheduleEditor(
-                        hours: _weeklyHours,
-                        closures: _temporaryClosures,
-                        onChanged: (hours, closures) => setState(() {
-                              _weeklyHours = hours;
-                              _temporaryClosures = closures;
-                            })),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Business phone number',
-                        hintText: 'e.g. 012-345 6789',
-                      ),
-                      validator: (value) =>
-                          normalizeVendorPhone(value ?? '') == null
-                              ? 'Enter a valid Malaysian phone number.'
-                              : null,
-                    ),
-                    const SizedBox(height: 24),
-
-                    if (_isSaving) const LinearProgressIndicator(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-}
-````
-
 ## File: lib/core/theme/app_theme.dart
 ````dart
 import 'package:flutter/material.dart';
@@ -11534,272 +18092,6 @@ class AppTheme {
       ),
     );
   }
-}
-````
-
-## File: lib/features/auth/screens/register_screen.dart
-````dart
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/utils/vendor_phone.dart';
-import 'login_screen.dart';
-
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _auth = AuthService();
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  final _confirm = TextEditingController();
-  final _phone = TextEditingController();
-  String _role = 'customer';
-  bool _busy = false;
-  bool _hidePassword = true;
-
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _busy = true);
-    final error = await _auth.signUp(
-        email: _email.text.trim(),
-        password: _password.text,
-        fullName: _name.text.trim(),
-        role: _role,
-        vendorPhone: _role == 'vendor' ? _phone.text : null);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (error == null) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(error), backgroundColor: const Color(0xFFB3261E)));
-    }
-  }
-
-  Future<void> _guest() async {
-    if (_busy) return;
-    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
-      Navigator.maybePop(context);
-      return;
-    }
-    setState(() => _busy = true);
-    final error = await _auth.signInAsGuest();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (error == null) {
-      Navigator.maybePop(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(error), backgroundColor: const Color(0xFFB3261E)));
-    }
-  }
-
-  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
-        labelText: label,
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(26),
-            borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(26),
-            borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(26),
-            borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
-        errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(26),
-            borderSide: const BorderSide(color: Color(0xFFB3261E))),
-      );
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _password.dispose();
-    _confirm.dispose();
-    _phone.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-          child: Center(
-              child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Form(
-                key: _formKey,
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                              tooltip: 'Continue as guest',
-                              onPressed: _busy ? null : _guest,
-                              style: IconButton.styleFrom(
-                                  backgroundColor: const Color(0xFFF0F0F2)),
-                              icon: const Icon(Icons.close_rounded,
-                                  color: Color(0xFF6E6E73)))),
-                      const SizedBox(height: 18),
-                      const Icon(Icons.storefront_rounded,
-                          size: 46, color: AppColors.primary),
-                      const SizedBox(height: 14),
-                      const Text('Create your account',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 27,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -.4)),
-                      const SizedBox(height: 7),
-                      const Text(
-                          'Save favourite stalls and receive live updates.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 15,
-                              height: 1.4,
-                              color: Color(0xFF707078))),
-                      const SizedBox(height: 28),
-                      TextFormField(
-                          controller: _name,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Full name'),
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Enter your name.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Email address'),
-                          validator: (v) => v == null || !v.trim().contains('@')
-                              ? 'Enter a valid email address.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _password,
-                          obscureText: _hidePassword,
-                          textInputAction: TextInputAction.next,
-                          decoration: _field('Password',
-                              suffix: IconButton(
-                                  onPressed: () => setState(
-                                      () => _hidePassword = !_hidePassword),
-                                  icon: Icon(_hidePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined))),
-                          validator: (v) => v == null || v.length < 6
-                              ? 'Use at least 6 characters.'
-                              : null),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          controller: _confirm,
-                          obscureText: _hidePassword,
-                          textInputAction: TextInputAction.done,
-                          decoration: _field('Confirm password'),
-                          validator: (v) => v != _password.text
-                              ? 'Passwords do not match.'
-                              : null),
-                      const SizedBox(height: 18),
-                      const Text('Account type',
-                          style: TextStyle(
-                              fontSize: 13, color: Color(0xFF707078))),
-                      const SizedBox(height: 8),
-                      SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(
-                                value: 'customer',
-                                icon: Icon(Icons.person_outline),
-                                label: Text('Customer')),
-                            ButtonSegment(
-                                value: 'vendor',
-                                icon: Icon(Icons.storefront_outlined),
-                                label: Text('Vendor')),
-                          ],
-                          selected: {
-                            _role
-                          },
-                          onSelectionChanged: _busy
-                              ? null
-                              : (v) => setState(() => _role = v.first),
-                          style: ButtonStyle(
-                              shape: WidgetStatePropertyAll(
-                                  RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(16))))),
-                      if (_role == 'vendor') ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                            controller: _phone,
-                            keyboardType: TextInputType.phone,
-                            textInputAction: TextInputAction.done,
-                            decoration: _field('Business phone number'),
-                            validator: (value) =>
-                                normalizeVendorPhone(value ?? '') == null
-                                    ? 'Enter a valid Malaysian phone number.'
-                                    : null),
-                        const Padding(
-                            padding: EdgeInsets.only(top: 6),
-                            child: Text(
-                                'Customers can see and call this number from your stall listing.',
-                                style: TextStyle(
-                                    fontSize: 12, color: Color(0xFF707078)))),
-                      ],
-                      const SizedBox(height: 24),
-                      SizedBox(
-                          height: 56,
-                          child: FilledButton(
-                              onPressed: _busy ? null : _register,
-                              style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(28))),
-                              child: _busy
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 2))
-                                  : const Text('Create account',
-                                      style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600)))),
-                      const SizedBox(height: 18),
-                      Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text('Already have an account? ',
-                                style: TextStyle(color: Color(0xFF707078))),
-                            TextButton(
-                                onPressed: _busy
-                                    ? null
-                                    : () => Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const LoginScreen())),
-                                child: const Text('Sign in',
-                                    style: TextStyle(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w600))),
-                          ]),
-                    ]))),
-      ))));
 }
 ````
 
@@ -12092,7 +18384,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                 fontSize: 17, fontWeight: FontWeight.w400, letterSpacing: 0)),
         subtitle: Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(vendor.category,
+            child: Text(vendor.categoryLabel,
                 style: const TextStyle(
                     fontSize: 14, color: Color(0xFF8E8E93), letterSpacing: 0))),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -12156,7 +18448,7 @@ class ProfilePage extends StatelessWidget {
     required this.onAbout,
     required this.onLogout,
     required this.onSignIn,
-    required this.onNotificationSettings,
+    this.onNotificationSettings,
     required this.onPrivacyPolicy,
     required this.onTerms,
     required this.onDeleteAccount,
@@ -12187,7 +18479,7 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onAbout;
   final VoidCallback onLogout;
   final VoidCallback onSignIn;
-  final VoidCallback onNotificationSettings;
+  final VoidCallback? onNotificationSettings;
   final VoidCallback onPrivacyPolicy;
   final VoidCallback onTerms;
   final VoidCallback onDeleteAccount;
@@ -12472,8 +18764,12 @@ class ProfilePage extends StatelessWidget {
                   if (!isGuest) ...[
                     const SizedBox(height: 24),
                     _group([
-                      _row(CupertinoIcons.bell_fill, const Color(0xFFFF5555),
-                          'Notifications and Sounds', onNotificationSettings),
+                      if (!isVendor && onNotificationSettings != null)
+                        _row(
+                            CupertinoIcons.bell_fill,
+                            const Color(0xFFFF5555),
+                            'Notifications and Sounds',
+                            onNotificationSettings!),
                       _row(CupertinoIcons.lock_fill, const Color(0xFF949499),
                           'Privacy Policy', onPrivacyPolicy),
                       _row(CupertinoIcons.doc_text_fill,
@@ -12517,440 +18813,6 @@ class ProfilePage extends StatelessWidget {
 }
 ````
 
-## File: lib/features/vendor/menu/vendor_menu_screen.dart
-````dart
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/services/menu_service.dart';
-import '../../../core/services/storage_service.dart';
-import '../../../core/widgets/app_dropdown.dart';
-
-class VendorMenuScreen extends StatefulWidget {
-  const VendorMenuScreen({super.key});
-  @override
-  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
-}
-
-class _VendorMenuScreenState extends State<VendorMenuScreen> {
-  final _menu = MenuService();
-  final _storage = StorageService();
-  final _busyItems = <String>{};
-  late Stream<List<MenuItemModel>> _items;
-  final _uid = FirebaseAuth.instance.currentUser?.uid;
-  static const _statuses = {
-    'available': ('Available', Colors.green),
-    'low_stock': ('Low stock', Colors.orange),
-    'out_of_stock': ('Sold out', Colors.red),
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _reload();
-  }
-
-  void _reload() {
-    _items = _uid == null
-        ? Stream.value(<MenuItemModel>[])
-        : _menu.getMenuItems(_uid);
-  }
-
-  void _error(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  Future<void> _status(MenuItemModel item, String status) async {
-    if (_uid == null ||
-        _busyItems.contains(item.itemId) ||
-        item.status == status) {
-      return;
-    }
-    setState(() => _busyItems.add(item.itemId));
-    try {
-      await _menu.updateItemStatus(_uid, item.itemId, status);
-    } catch (_) {
-      _error('Could not update stock. Please retry.');
-    } finally {
-      if (mounted) {
-        setState(() => _busyItems.remove(item.itemId));
-      }
-    }
-  }
-
-  Future<void> _delete(MenuItemModel item) async {
-    if (_uid == null || _busyItems.contains(item.itemId)) {
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-              title: const Text('Delete dish?'),
-              content: Text(
-                  'Delete ${item.name} from your menu? This cannot be undone.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel')),
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Delete')),
-              ],
-            ));
-    if (confirmed != true || !mounted) {
-      return;
-    }
-    setState(() => _busyItems.add(item.itemId));
-    try {
-      await _menu.deleteMenuItem(_uid, item.itemId);
-    } catch (_) {
-      _error('Could not delete this dish. Please retry.');
-    } finally {
-      if (mounted) {
-        setState(() => _busyItems.remove(item.itemId));
-      }
-    }
-  }
-
-  Future<void> _edit([MenuItemModel? item]) async {
-    if (_uid == null) {
-      return;
-    }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
-      builder: (_) =>
-          _MenuEditor(uid: _uid, item: item, menu: _menu, storage: _storage),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Menu & stock')),
-        floatingActionButton: _uid == null
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: _edit,
-                icon: const Icon(Icons.add),
-                label: const Text('Add dish')),
-        body: StreamBuilder<List<MenuItemModel>>(
-            stream: _items,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('Could not load your menu.'),
-                  TextButton(
-                      onPressed: () => setState(_reload),
-                      child: const Text('Retry')),
-                ]));
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final items = snapshot.data ?? [];
-              if (items.isEmpty) {
-                return const Center(
-                    child: Text(
-                        'Your menu is empty.\nTap Add dish to get started.',
-                        textAlign: TextAlign.center));
-              }
-              return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    final busy = _busyItems.contains(item.itemId);
-                    return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: SizedBox(
-                                          width: 56,
-                                          height: 56,
-                                          child: item.imageUrl.isEmpty
-                                              ? const Icon(Icons.restaurant,
-                                                  size: 32)
-                                              : Image.network(item.imageUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) =>
-                                                      const Icon(
-                                                          Icons.restaurant,
-                                                          size: 32)))),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                        Text(item.name,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium),
-                                        Text(
-                                            'RM ${item.price.toStringAsFixed(2)}'),
-                                        Text(item.section,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall),
-                                      ])),
-                                  AppDropdown<String>(
-                                    iconOnly: true,
-                                    icon: Icons.more_vert,
-                                    hint: 'Dish options',
-                                    options: const {
-                                      'edit': 'Edit dish',
-                                      'delete': 'Delete dish',
-                                    },
-                                    onChanged: busy
-                                        ? null
-                                        : (value) {
-                                            if (value == 'edit') {
-                                              _edit(item);
-                                            } else {
-                                              _delete(item);
-                                            }
-                                          },
-                                  ),
-                                ]),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                    spacing: 8,
-                                    runSpacing: 4,
-                                    children: _statuses.entries
-                                        .map((entry) => ChoiceChip(
-                                              label: Text(entry.value.$1),
-                                              avatar: Icon(Icons.circle,
-                                                  size: 12,
-                                                  color: entry.value.$2),
-                                              selected:
-                                                  item.status == entry.key,
-                                              onSelected: busy
-                                                  ? null
-                                                  : (_) =>
-                                                      _status(item, entry.key),
-                                            ))
-                                        .toList()),
-                                if (busy) const LinearProgressIndicator(),
-                              ]),
-                        ));
-                  });
-            }),
-      );
-}
-
-class _MenuEditor extends StatefulWidget {
-  const _MenuEditor(
-      {required this.uid,
-      required this.item,
-      required this.menu,
-      required this.storage});
-  final String uid;
-  final MenuItemModel? item;
-  final MenuService menu;
-  final StorageService storage;
-  @override
-  State<_MenuEditor> createState() => _MenuEditorState();
-}
-
-class _MenuEditorState extends State<_MenuEditor> {
-  final _form = GlobalKey<FormState>();
-  late final TextEditingController _name;
-  late final TextEditingController _price;
-  late final TextEditingController _section;
-  late final String _itemId;
-  File? _image;
-  bool _saving = false;
-  String? _error;
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.item?.name ?? '');
-    _price = TextEditingController(
-        text: widget.item?.price.toStringAsFixed(2) ?? '');
-    _section = TextEditingController(text: widget.item?.section ?? 'Main menu');
-    // Reuse the same ID on retries so an uncertain network result cannot duplicate a dish.
-    _itemId = widget.item?.itemId ?? widget.menu.newMenuItemId(widget.uid);
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _price.dispose();
-    _section.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pick() async {
-    try {
-      final image = await widget.storage.pickImage();
-      if (mounted && image != null) {
-        setState(() => _image = image);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Could not open your photos. Please retry.');
-      }
-    }
-  }
-
-  Future<void> _save() async {
-    if (_saving || !_form.currentState!.validate()) {
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      String? imageUrl;
-      if (_image != null) {
-        imageUrl = await widget.storage
-            .uploadMenuItemImage(widget.uid, _itemId, _image!);
-      }
-      if (widget.item == null) {
-        await widget.menu.addMenuItem(
-            widget.uid, _name.text.trim(), double.parse(_price.text.trim()),
-            itemId: _itemId, imageUrl: imageUrl, section: _section.text.trim());
-      } else {
-        await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(),
-            double.parse(_price.text.trim()),
-            imageUrl: imageUrl, section: _section.text.trim());
-      }
-      if (mounted) {
-        setState(() => _saving = false);
-        Navigator.pop(context);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _error =
-              'Could not save this dish. Your changes are still here. Please retry.';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !_saving,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-              24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-          child: Form(
-              key: _form,
-              child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      TextButton(
-                        onPressed:
-                            _saving ? null : () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      Expanded(
-                        child: Text(
-                          widget.item == null ? 'Add dish' : 'Edit dish',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _saving ? null : _save,
-                        child: Text(_saving ? 'Saving…' : 'Done'),
-                      ),
-                    ]),
-                    const SizedBox(height: 16),
-                    if (_image != null)
-                      ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(_image!,
-                              height: 140, fit: BoxFit.cover))
-                    else if (widget.item?.imageUrl.isNotEmpty == true)
-                      Image.network(widget.item!.imageUrl,
-                          height: 140,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.restaurant)),
-                    TextButton.icon(
-                        onPressed: _saving ? null : _pick,
-                        icon: const Icon(Icons.add_a_photo_outlined),
-                        label: const Text('Choose photo')),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _name,
-                        enabled: !_saving,
-                        maxLength: 80,
-                        decoration:
-                            const InputDecoration(labelText: 'Dish name'),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? 'Enter a dish name.'
-                                : null),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _section,
-                        enabled: !_saving,
-                        maxLength: 40,
-                        decoration: const InputDecoration(
-                            labelText: 'Menu section',
-                            hintText: 'e.g. Drinks, Mains, Desserts'),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? 'Enter a menu section.'
-                                : null),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _price,
-                        enabled: !_saving,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: const InputDecoration(
-                            labelText: 'Price', prefixText: 'RM '),
-                        validator: (value) {
-                          final text = value?.trim() ?? '';
-                          final price = double.tryParse(text);
-                          if (price == null ||
-                              !price.isFinite ||
-                              price <= 0 ||
-                              !RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(text)) {
-                            return 'Enter a positive price with up to 2 decimal places.';
-                          }
-                          return null;
-                        }),
-                    if (_error != null)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(_error!,
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error))),
-                    if (_saving) const LinearProgressIndicator(),
-                  ])),
-        ),
-      );
-}
-````
-
 ## File: lib/features/vendor/profile/vendor_profile_screen.dart
 ````dart
 import 'edit_stall_screen.dart';
@@ -12958,7 +18820,6 @@ import '../../shared/profile_page.dart';
 import '../../shared/edit_profile_screen.dart';
 import '../../shared/personal_information_screen.dart';
 import '../../shared/change_password_screen.dart';
-import '../../shared/notification_settings_screen.dart';
 import '../../shared/legal_screen.dart';
 import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
@@ -13168,10 +19029,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
       onAbout: () => Navigator.push(
           context, MaterialPageRoute(builder: (_) => const AboutScreen())),
-      onNotificationSettings: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => const NotificationSettingsScreen())),
       onPrivacyPolicy: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -13218,46 +19075,21 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
       FirebaseAuth.instance.currentUser?.uid ?? '',
       isVendor: true);
 
-  static const _titles = ['Vendor Dashboard', 'Settings'];
-
-  // Key to call dashboard refresh method
-  final _dashboardKey = GlobalKey<VendorDashboardScreenState>();
-
-  void _refreshDashboard() {
-    _dashboardKey.currentState?.fetchVendorDetails();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
       backgroundColor:
           _selectedIndex == 1 ? ProfilePage.background : AppColors.background,
-      appBar: _selectedIndex == 1
-          ? null
-          : AppBar(
-              title: Text(
-                _titles[_selectedIndex],
-              ),
-              centerTitle: true,
-              elevation: 0,
-              systemOverlayStyle: SystemUiOverlayStyle.dark,
-              actions: [
-                // Refresh button only on Dashboard
-                if (_selectedIndex == 0)
-                  IconButton(
-                    icon: const Icon(Icons.refresh, color: AppColors.textDark),
-                    tooltip: 'Refresh',
-                    onPressed: _refreshDashboard,
-                  ),
-              ],
-            ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          VendorDashboardScreen(key: _dashboardKey),
-          const VendorProfileScreen(),
-        ],
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            const SafeArea(bottom: false, child: VendorDashboardScreen()),
+            const VendorProfileScreen(),
+          ],
+        ),
       ),
       bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,
@@ -13291,1205 +19123,6 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
                     : CupertinoIcons.square_grid_2x2,
                 color: selected ? AppColors.textDark : AppColors.textMuted),
           ));
-}
-````
-
-## File: lib/features/customer/vendor_details/vendor_details_screen.dart
-````dart
-import 'dart:async';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/models/menu_item_model.dart';
-import '../../../core/models/stall_review.dart';
-import '../../../core/models/dish_follow_model.dart';
-import '../../../core/services/menu_service.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/stall_review_service.dart';
-import '../../../core/services/storage_service.dart';
-import '../../../core/services/follow_service.dart';
-import '../../../core/services/dish_follow_service.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../auth/screens/login_screen.dart';
-import '../orders/demo_order_cart_screen.dart';
-
-class VendorDetailsScreen extends StatefulWidget {
-  final VendorModel vendor;
-  final String? initialDishId;
-
-  const VendorDetailsScreen(
-      {super.key, required this.vendor, this.initialDishId});
-
-  @override
-  State<VendorDetailsScreen> createState() => _VendorDetailsScreenState();
-}
-
-class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
-  final _menuService = MenuService();
-  final _followService = FollowService();
-  final _dishFollows = DishFollowService();
-  final _vendorService = VendorService();
-  final _reviews = StallReviewService();
-
-  // Local copy of the vendor, refreshable independently of the
-  // instance passed in -- the one passed in is a snapshot from
-  // whenever the customer tapped the marker/card, and doesn't update
-  // on its own if the vendor changes their status while this screen
-  // is open.
-  late VendorModel _vendor;
-  bool _isRefreshing = false;
-  String? _vendorError;
-  bool _vendorDeleted = false;
-  bool _isFollowSaving = false;
-  StreamSubscription<VendorModel?>? _vendorSub;
-  Timer? _freshnessTimer;
-  late Stream<List<MenuItemModel>> _menuStream;
-  late Stream<List<StallReview>> _reviewStream;
-  final _dishSearch = TextEditingController();
-  String _dishQuery = '';
-  String? _focusedDishId;
-  final _followedDishIds = <String>{};
-  final _savingDishes = <String>{};
-  StreamSubscription<List<DishFollowModel>>? _dishFollowSub;
-  StreamSubscription<User?>? _dishAuthSub;
-  bool _dishFollowLoading = true;
-  bool _dishFollowError = false;
-  bool _customerAccount = false;
-
-  // Local follow state, kept in sync with Firestore via a listener but
-  // updated OPTIMISTICALLY (immediately, before the write completes)
-  // when the user taps the heart -- this is what makes the icon flip
-  // instantly instead of waiting on a round-trip.
-  bool _isFollowing = false;
-  StreamSubscription<bool>? _followSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _vendor = widget.vendor;
-    _focusedDishId = widget.initialDishId;
-    _menuStream = _menuService.getMenuItems(_vendor.vendorId);
-    _reviewStream = _reviews.watchReviews(_vendor.vendorId);
-    _vendorSub = _vendorService.watchVendorProfile(_vendor.vendorId).listen(
-      (vendor) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _vendorDeleted = vendor == null;
-          if (vendor != null) {
-            _vendor = vendor;
-          }
-          _vendorError = null;
-        });
-      },
-      onError: (Object error) {
-        if (mounted) {
-          setState(() => _vendorError =
-              'Could not update this stall. Showing last known details.');
-        }
-      },
-    );
-    _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
-
-    final user = FirebaseAuth.instance.currentUser;
-    final customerId = user?.uid;
-    if (customerId != null && user?.isAnonymous == false) {
-      _followSub = _followService
-          .isFollowing(customerId, _vendor.vendorId)
-          .listen((value) {
-        if (mounted) {
-          setState(() => _isFollowing = value);
-        }
-      });
-    }
-    _dishAuthSub = FirebaseAuth.instance.userChanges().listen((_) {
-      unawaited(_listenDishFollows());
-    });
-  }
-
-  @override
-  void dispose() {
-    _followSub?.cancel();
-    _dishFollowSub?.cancel();
-    _dishAuthSub?.cancel();
-    _vendorSub?.cancel();
-    _freshnessTimer?.cancel();
-    _dishSearch.dispose();
-    super.dispose();
-  }
-
-  Future<void> _refreshVendor() async {
-    setState(() => _isRefreshing = true);
-    final updated = await _vendorService.getVendorProfile(_vendor.vendorId);
-    if (mounted) {
-      setState(() {
-        if (updated != null) {
-          _vendor = updated;
-        }
-        _isRefreshing = false;
-      });
-    }
-  }
-
-  Future<void> _listenDishFollows() async {
-    await _dishFollowSub?.cancel();
-    _dishFollowSub = null;
-    final user = FirebaseAuth.instance.currentUser;
-    if (mounted) {
-      setState(() {
-        _followedDishIds.clear();
-        _customerAccount = false;
-        _dishFollowError = false;
-        _dishFollowLoading = false;
-      });
-    }
-    if (user == null || user.isAnonymous || !user.emailVerified) {
-      return;
-    }
-    if (mounted) {
-      setState(() {
-        _dishFollowLoading = true;
-        _dishFollowError = false;
-      });
-    }
-    try {
-      final profile = await AuthService()
-          .getUserData(user.uid)
-          .timeout(const Duration(seconds: 10));
-      if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) {
-        return;
-      }
-      if (profile?.role != 'customer') {
-        setState(() {
-          _dishFollowLoading = false;
-          _dishFollowError = profile == null;
-        });
-        return;
-      }
-      _customerAccount = true;
-      _dishFollowSub = _dishFollows
-          .watch(user.uid, vendorId: _vendor.vendorId)
-          .listen((follows) {
-        if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) {
-          return;
-        }
-        setState(() {
-          _followedDishIds
-            ..clear()
-            ..addAll(follows.map((follow) => follow.itemId));
-          _dishFollowLoading = false;
-          _dishFollowError = false;
-        });
-      }, onError: (Object error) {
-        if (mounted) {
-          setState(() {
-            _dishFollowLoading = false;
-            _dishFollowError = true;
-          });
-        }
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _dishFollowLoading = false;
-          _dishFollowError = true;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleDishFollow(MenuItemModel item) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) {
-      _showLoginRequiredDialog(context, action: 'Following dishes');
-      return;
-    }
-    if (!user.emailVerified || !_customerAccount) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(!user.emailVerified
-              ? 'Verify your email before following dishes.'
-              : 'Only customer accounts can follow dishes.')));
-      return;
-    }
-    if (_savingDishes.contains(item.itemId) ||
-        _dishFollowLoading ||
-        _dishFollowError) {
-      return;
-    }
-    final following = _followedDishIds.contains(item.itemId);
-    setState(() => _savingDishes.add(item.itemId));
-    try {
-      if (following) {
-        await _dishFollows.unfollow(user.uid, _vendor.vendorId, item.itemId);
-      } else {
-        await _dishFollows.follow(user.uid, _vendor.vendorId, item.itemId);
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(following
-                ? 'Dish unfollowed.'
-                : 'Following ${item.name}. We’ll alert you when it is restocked.')));
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not update dish following. Please retry.')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _savingDishes.remove(item.itemId));
-      }
-    }
-  }
-
-  Future<void> _toggleFollow(String customerId) async {
-    if (_isFollowSaving) {
-      return;
-    }
-    _isFollowSaving = true;
-    final wasFollowing = _isFollowing;
-    // Flip immediately -- don't wait for Firestore to confirm. If the
-    // write fails for some reason, it gets reverted in the catch below.
-    setState(() => _isFollowing = !wasFollowing);
-
-    try {
-      if (wasFollowing) {
-        await _followService.unfollowVendor(customerId, _vendor.vendorId);
-      } else {
-        await _followService.followVendor(customerId, _vendor.vendorId);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _isFollowing = wasFollowing);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Could not update following. Please retry.')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isFollowSaving = false);
-      }
-    }
-  }
-
-  Future<void> _openNavigation() async {
-    final coordinates = '${_vendor.latitude},${_vendor.longitude}';
-    final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS;
-    final googleMapsUri = isApplePlatform
-        ? Uri.parse(
-            'comgooglemaps://?daddr=$coordinates&directionsmode=driving')
-        : Uri.parse('google.navigation:q=$coordinates&mode=d');
-    final wazeUri = Uri.parse('waze://?ll=$coordinates&navigate=yes');
-    final browserUri = Uri.https(
-      'www.google.com',
-      '/maps/dir/',
-      {'api': '1', 'destination': coordinates},
-    );
-    var googleMapsAvailable = false;
-    var wazeAvailable = false;
-    if (!kIsWeb) {
-      try {
-        googleMapsAvailable = await canLaunchUrl(googleMapsUri);
-        wazeAvailable = await canLaunchUrl(wazeUri);
-      } catch (_) {
-        // The browser fallback remains available when app detection fails.
-      }
-    }
-    if (!mounted) {
-      return;
-    }
-
-    Future<void> launchNavigation(Uri uri) async {
-      Navigator.pop(context);
-      var launched = false;
-      try {
-        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (_) {
-        launched = false;
-      }
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not open that navigation app.')));
-      }
-    }
-
-    await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ListTile(
-                  title: const Text('Choose navigation app'),
-                  subtitle: Text(_vendor.stallName.isEmpty
-                      ? 'Stall location'
-                      : _vendor.stallName)),
-              if (googleMapsAvailable)
-                ListTile(
-                    leading: const Icon(Icons.map_outlined),
-                    title: const Text('Google Maps'),
-                    onTap: () => launchNavigation(googleMapsUri)),
-              if (wazeAvailable)
-                ListTile(
-                    leading: const Icon(Icons.navigation_outlined),
-                    title: const Text('Waze'),
-                    onTap: () => launchNavigation(wazeUri)),
-              ListTile(
-                  leading: const Icon(Icons.open_in_browser),
-                  title: const Text('Google Maps in browser'),
-                  onTap: () => launchNavigation(browserUri)),
-              if (!googleMapsAvailable && !wazeAvailable)
-                const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Text(
-                        'Google Maps and Waze were not detected. Browser directions are still available.',
-                        style: TextStyle(color: Colors.grey))),
-            ])));
-  }
-
-  void _showLoginRequiredDialog(BuildContext context,
-      {String action = 'Following vendors'}) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create an Account'),
-        content: Text(
-          '$action requires an account. Log in or register to continue.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Not Now'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-            },
-            child: const Text('Log In'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'available':
-        return const Color(0xFF15803D);
-      case 'low_stock':
-        return const Color(0xFF92400E);
-      case 'out_of_stock':
-        return const Color(0xFFB42318);
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'available':
-        return 'Available';
-      case 'low_stock':
-        return 'Low Stock';
-      case 'out_of_stock':
-        return 'Sold out';
-      default:
-        return status;
-    }
-  }
-
-  Future<void> _editReview(StallReview? existing) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) {
-      _showLoginRequiredDialog(context, action: 'Writing reviews');
-      return;
-    }
-    final profile = await AuthService().getUserData(user.uid);
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => _ReviewEditor(
-            vendorId: _vendor.vendorId,
-            customerId: user.uid,
-            customerName: profile?.fullName ?? user.displayName ?? 'Customer',
-            existing: existing));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final customerId = currentUser?.uid;
-    final isGuest = currentUser?.isAnonymous ?? true;
-    final isTablet = MediaQuery.sizeOf(context).width >= 700;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Stall details'),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: 'Refresh stall status',
-            onPressed: _isRefreshing ? null : _refreshVendor,
-          ),
-          if (customerId != null)
-            isGuest
-                ? IconButton(
-                    icon: const Icon(Icons.favorite_border),
-                    tooltip: 'Follow',
-                    onPressed: () => _showLoginRequiredDialog(context),
-                  )
-                : IconButton(
-                    icon: Icon(
-                      _isFollowing ? Icons.favorite : Icons.favorite_border,
-                      color: _isFollowing ? Colors.red : null,
-                    ),
-                    tooltip: _isFollowing ? 'Unfollow' : 'Follow',
-                    onPressed: _isFollowSaving || _vendorDeleted
-                        ? null
-                        : () => _toggleFollow(customerId),
-                  ),
-        ],
-      ),
-      // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
-      bottomNavigationBar: isTablet
-          ? null
-          : SafeArea(
-              minimum: const EdgeInsets.all(16),
-              child: _buildActionButtons(isGuest: isGuest),
-            ),
-      body: isTablet
-          ? _buildTabletLayout(context, isGuest: isGuest)
-          : _buildMobileLayout(context),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Responsive Layouts (Mobile vs Tablet)
-  // ---------------------------------------------------------------------------
-
-  Widget _buildMobileLayout(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      children: [
-        ..._buildStallInfoWidgets(isTablet: false),
-        const SizedBox(height: 26),
-        ..._buildMenuAndReviewWidgets(),
-      ],
-    );
-  }
-
-  Widget _buildTabletLayout(BuildContext context, {required bool isGuest}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Left Column: Stall Identity & Info & Actions
-        SizedBox(
-          width: 380,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 20, 24),
-            children: [
-              ..._buildStallInfoWidgets(isTablet: true),
-              const SizedBox(height: 20),
-              _buildActionButtons(isGuest: isGuest),
-            ],
-          ),
-        ),
-        const VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: Color(0xFFE9ECF0),
-        ),
-        // Right Column: Menu & Reviews
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            children: _buildMenuAndReviewWidgets(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Component Blocks
-  // ---------------------------------------------------------------------------
-
-  Widget _buildStallPhoto({double height = 210}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: SizedBox(
-        height: height,
-        width: double.infinity,
-        child: _vendor.imageUrl.isNotEmpty
-            ? Image.network(
-                _vendor.imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _photoPlaceholder(),
-              )
-            : _photoPlaceholder(),
-      ),
-    );
-  }
-
-  List<Widget> _buildStallInfoWidgets({required bool isTablet}) {
-    return [
-      if (_vendorDeleted || _vendorError != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            _vendorDeleted
-                ? 'This stall is no longer available.'
-                : _vendorError!,
-            style: const TextStyle(color: Colors.red),
-          ),
-        ),
-      _buildStallPhoto(height: isTablet ? 220 : 200),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _badge(
-            _vendor.isOpenNow ? 'Open now' : 'Closed',
-            _vendor.isOpenNow
-                ? const Color(0xFF15803D)
-                : const Color(0xFFB42318),
-            Icons.circle,
-          ),
-          if (_vendor.category.isNotEmpty)
-            _badge(_vendor.category, const Color(0xFF64748B),
-                Icons.restaurant_outlined),
-        ],
-      ),
-      const SizedBox(height: 12),
-      Text(
-        _vendor.stallName.isEmpty ? 'Unnamed stall' : _vendor.stallName,
-        style: const TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
-          height: 1.2,
-          color: Color(0xFF17202D),
-        ),
-      ),
-      if (_vendor.description.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        Text(
-          _vendor.description,
-          style: const TextStyle(
-            fontSize: 14,
-            height: 1.5,
-            color: Color(0xFF64748B),
-          ),
-        ),
-      ],
-      const SizedBox(height: 18),
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(26),
-        ),
-        child: Column(
-          children: [
-            _info(
-              Icons.schedule_rounded,
-              'Opening hours',
-              _vendor.hoursToday.isEmpty
-                  ? 'Not provided by this vendor'
-                  : _vendor.hoursToday,
-            ),
-            if (_vendor.isTemporarilyClosed) ...[
-              const Divider(height: 24, indent: 36),
-              _info(
-                Icons.event_busy_outlined,
-                'Temporary closure',
-                'This stall is temporarily closed.',
-              ),
-            ],
-            if (_vendor.phoneNumber.isNotEmpty) ...[
-              const Divider(height: 24, indent: 36),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading:
-                    const Icon(Icons.call_outlined, color: Color(0xFF64748B)),
-                title: const Text('Vendor phone'),
-                subtitle: Text(_vendor.phoneNumber),
-                trailing: const Icon(Icons.call),
-                onTap: () =>
-                    launchUrl(Uri(scheme: 'tel', path: _vendor.phoneNumber)),
-              ),
-            ],
-            const Divider(height: 24, indent: 36),
-            _info(
-              Icons.location_on_outlined,
-              _vendor.hasFreshLocation
-                  ? 'Location updated recently'
-                  : 'Last known location',
-              _vendor.hasFreshLocation
-                  ? 'The vendor is sharing their location.'
-                  : 'This location may be outdated. Check before travelling.',
-            ),
-          ],
-        ),
-      ),
-    ];
-  }
-
-  Widget _buildActionButtons({required bool isGuest}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (!_vendorDeleted &&
-            _vendor.selfCollectEnabled &&
-            _vendor.isOpenNow &&
-            _vendor.hasValidLocation) ...[
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: isGuest
-                  ? () => _showLoginRequiredDialog(context,
-                      action: 'self-collect bookings')
-                  : () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              DemoOrderCartScreen(vendor: _vendor))),
-              icon: const Icon(Icons.shopping_bag_outlined),
-              label:
-                  Text(isGuest ? 'Sign in to book' : 'Book for self-collect'),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: !_vendorDeleted && _vendor.hasValidLocation
-                ? _openNavigation
-                : null,
-            icon: const Icon(Icons.directions),
-            label: const Text('Get directions'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  List<Widget> _buildMenuAndReviewWidgets() {
-    return [
-      const Text(
-        'On the menu',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF17202D),
-        ),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        'Availability is updated by the vendor',
-        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-      ),
-      const SizedBox(height: 4),
-      const Text(
-        'Follow a dish to hear when it is back in stock.',
-        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-      ),
-      if (_dishFollowError)
-        Row(children: [
-          const Expanded(child: Text('Could not load dish following.')),
-          TextButton(
-            onPressed: _listenDishFollows,
-            child: const Text('Retry'),
-          ),
-        ]),
-      if (_focusedDishId != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Row(children: [
-            const Expanded(child: Text('Showing your followed dish')),
-            TextButton(
-              onPressed: () => setState(() => _focusedDishId = null),
-              child: const Text('Show all dishes'),
-            ),
-          ]),
-        ),
-      const SizedBox(height: 14),
-      TextField(
-        controller: _dishSearch,
-        onChanged: (value) => setState(() {
-          _focusedDishId = null;
-          _dishQuery = value.trim().toLowerCase();
-        }),
-        decoration: InputDecoration(
-          hintText: 'Search dishes',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _dishQuery.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: 'Clear dish search',
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    _dishSearch.clear();
-                    setState(() => _dishQuery = '');
-                  },
-                ),
-          border: const OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 14),
-      StreamBuilder<List<MenuItemModel>>(
-        stream: _menuStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(children: [
-                const Text('Could not load the menu.'),
-                TextButton(
-                  onPressed: () => setState(() => _menuStream =
-                      _menuService.getMenuItems(_vendor.vendorId)),
-                  child: const Text('Retry'),
-                ),
-              ]),
-            );
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final items = snapshot.data ?? [];
-          if (items.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('The vendor has not added a menu yet.'),
-            );
-          }
-          final filtered = items
-              .where((item) =>
-                  (_focusedDishId == null || item.itemId == _focusedDishId) &&
-                  item.name.toLowerCase().contains(_dishQuery))
-              .toList();
-          if (filtered.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(_focusedDishId != null
-                  ? 'This dish is no longer on the menu.'
-                  : 'No dishes match your search.'),
-            );
-          }
-          final sections = <String, List<MenuItemModel>>{};
-          for (final item in filtered) {
-            sections.putIfAbsent(item.section, () => []).add(item);
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final entry in sections.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    entry.key,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                ...entry.value.map(_menuCard),
-              ],
-            ],
-          );
-        },
-      ),
-      const SizedBox(height: 24),
-      StreamBuilder<List<StallReview>>(
-        stream: _reviewStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Text('Could not load reviews.');
-          }
-          final reviews = snapshot.data ?? [];
-          final uid = FirebaseAuth.instance.currentUser?.uid;
-          StallReview? mine;
-          for (final review in reviews) {
-            if (review.customerId == uid) {
-              mine = review;
-              break;
-            }
-          }
-          final average = reviews.isEmpty
-              ? 0.0
-              : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
-                  reviews.length;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Expanded(
-                  child: Text(
-                    'Reviews (${reviews.length})',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                if (reviews.isNotEmpty)
-                  Text(
-                    '${average.toStringAsFixed(1)} ★',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-              ]),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => _editReview(mine),
-                icon: const Icon(Icons.rate_review_outlined),
-                label:
-                    Text(mine == null ? 'Write a review' : 'Edit your review'),
-              ),
-              if (reviews.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('No reviews yet.'),
-                ),
-              for (final review in reviews) _reviewCard(review),
-            ],
-          );
-        },
-      ),
-    ];
-  }
-
-  Widget _photoPlaceholder() => Container(
-      color: AppColors.mint,
-      alignment: Alignment.center,
-      child: const Icon(Icons.storefront_rounded,
-          size: 60, color: AppColors.primary));
-
-  Widget _badge(String text, Color color, IconData icon) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-            color: color.withValues(alpha: .08),
-            borderRadius: BorderRadius.circular(20)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 5),
-          Flexible(
-              child: Text(text,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: color))),
-        ]),
-      );
-
-  Widget _info(IconData icon, String title, String detail) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, color: const Color(0xFF64748B), size: 21),
-        const SizedBox(width: 14),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF17202D))),
-          const SizedBox(height: 4),
-          Text(detail,
-              style: const TextStyle(
-                  fontSize: 12, height: 1.4, color: Color(0xFF64748B))),
-        ])),
-      ]);
-
-  Widget _menuCard(MenuItemModel item) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(26)),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SizedBox(
-                  width: 68,
-                  height: 68,
-                  child: item.imageUrl.isEmpty
-                      ? _photoPlaceholder()
-                      : Image.network(item.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _photoPlaceholder()))),
-          const SizedBox(width: 14),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(item.name,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF17202D))),
-                const SizedBox(height: 4),
-                Text('RM ${item.price.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary)),
-                const SizedBox(height: 8),
-                _badge(_statusLabel(item.status), _statusColor(item.status),
-                    Icons.circle),
-                if (item.statusUpdatedAt != null) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                      'Stock updated ${_formatStockTime(item.statusUpdatedAt!)}',
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFF64748B))),
-                ],
-                const SizedBox(height: 6),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerLeft),
-                  onPressed: _vendorDeleted ||
-                          _savingDishes.contains(item.itemId) ||
-                          _dishFollowLoading ||
-                          _dishFollowError
-                      ? null
-                      : () => _toggleDishFollow(item),
-                  icon: _savingDishes.contains(item.itemId)
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : Icon(
-                          _followedDishIds.contains(item.itemId)
-                              ? Icons.notifications_active_outlined
-                              : Icons.notifications_none_outlined,
-                          size: 18),
-                  label: Text(_followedDishIds.contains(item.itemId)
-                      ? 'Following dish'
-                      : 'Follow dish'),
-                ),
-              ])),
-        ]),
-      );
-
-  String _formatStockTime(DateTime value) {
-    final my = value.toUtc().add(const Duration(hours: 8));
-    final hour = my.hour % 12 == 0 ? 12 : my.hour % 12;
-    final minute = my.minute.toString().padLeft(2, '0');
-    return '${my.day}/${my.month}/${my.year} $hour:$minute ${my.hour < 12 ? 'AM' : 'PM'}';
-  }
-
-  Widget _reviewCard(StallReview review) => Card(
-      margin: const EdgeInsets.only(top: 10),
-      child: Padding(
-          padding: const EdgeInsets.all(14),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                  child: Text(review.customerName,
-                      style: const TextStyle(fontWeight: FontWeight.w700))),
-              Text('${review.rating} ★')
-            ]),
-            if (review.text.isNotEmpty)
-              Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(review.text)),
-            if (review.photoUrls.isNotEmpty)
-              Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: SizedBox(
-                      height: 90,
-                      child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: review.photoUrls.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) => ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(review.photoUrls[index],
-                                  width: 90,
-                                  height: 90,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                      width: 90,
-                                      child: Icon(
-                                          Icons.broken_image_outlined))))))),
-          ])));
-}
-
-class _ReviewEditor extends StatefulWidget {
-  const _ReviewEditor(
-      {required this.vendorId,
-      required this.customerId,
-      required this.customerName,
-      required this.existing});
-  final String vendorId;
-  final String customerId;
-  final String customerName;
-  final StallReview? existing;
-  @override
-  State<_ReviewEditor> createState() => _ReviewEditorState();
-}
-
-class _ReviewEditorState extends State<_ReviewEditor> {
-  final _storage = StorageService();
-  final _service = StallReviewService();
-  final _text = TextEditingController();
-  final _photos = <File>[];
-  final _existingUrls = <String>[];
-  int _rating = 0;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _rating = widget.existing?.rating ?? 0;
-    _text.text = widget.existing?.text ?? '';
-    _existingUrls.addAll(widget.existing?.photoUrls ?? []);
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
-
-  Future<void> _addPhotos() async {
-    final remaining = 5 - _existingUrls.length - _photos.length;
-    if (remaining <= 0) {
-      return;
-    }
-    final picked = await _storage.pickReviewImages(remaining);
-    if (mounted) setState(() => _photos.addAll(picked));
-  }
-
-  Future<void> _save() async {
-    if (_rating == 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Choose a star rating.')));
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final urls = [..._existingUrls];
-      for (var i = 0; i < _photos.length; i++) {
-        urls.add(await _storage.uploadReviewImage(
-            widget.vendorId,
-            widget.customerId,
-            '${DateTime.now().microsecondsSinceEpoch}_$i',
-            _photos[i]));
-      }
-      await _service.saveReview(widget.vendorId, widget.customerId,
-          widget.customerName, _rating, _text.text, urls);
-      final removed = (widget.existing?.photoUrls ?? <String>[])
-          .where((url) => !urls.contains(url));
-      for (final url in removed) {
-        try {
-          await _storage.deleteReviewImageUrl(
-              widget.vendorId, widget.customerId, url);
-        } catch (_) {
-          // The review was saved; account deletion also cleans up old photos.
-        }
-      }
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not save your review. Please retry.')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-      child: SingleChildScrollView(
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            Text(
-                widget.existing == null
-                    ? 'Review this stall'
-                    : 'Edit your review',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            Row(children: [
-              for (var star = 1; star <= 5; star++)
-                IconButton(
-                    tooltip: '$star stars',
-                    onPressed:
-                        _saving ? null : () => setState(() => _rating = star),
-                    icon: Icon(star <= _rating ? Icons.star : Icons.star_border,
-                        color: Colors.amber))
-            ]),
-            TextField(
-                controller: _text,
-                maxLength: 1000,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                    labelText: 'Your experience (optional)',
-                    border: OutlineInputBorder())),
-            Text('Photos (${_existingUrls.length + _photos.length}/5)'),
-            Wrap(spacing: 8, children: [
-              for (var i = 0; i < _existingUrls.length; i++)
-                InputChip(
-                    label: Text('Photo ${i + 1}'),
-                    onDeleted: _saving
-                        ? null
-                        : () => setState(() => _existingUrls.removeAt(i))),
-              for (var i = 0; i < _photos.length; i++)
-                InputChip(
-                    label: Text('New photo ${i + 1}'),
-                    onDeleted: _saving
-                        ? null
-                        : () => setState(() => _photos.removeAt(i))),
-            ]),
-            TextButton.icon(
-                onPressed: _saving ? null : _addPhotos,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: const Text('Add photos')),
-            const SizedBox(height: 12),
-            FilledButton(
-                onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Saving…' : 'Save review')),
-          ])));
 }
 ````
 
@@ -14569,8 +19202,1116 @@ class StallSeekerApp extends StatelessWidget {
 }
 ````
 
+## File: lib/features/auth/screens/register_screen.dart
+````dart
+import '../../../core/widgets/app_back_button.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/utils/vendor_phone.dart';
+import 'login_screen.dart';
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _auth = AuthService();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  final _phone = TextEditingController();
+  String _role = 'customer';
+  bool _busy = false;
+  bool _hidePassword = true;
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final error = await _auth.signUp(
+        email: _email.text.trim(),
+        password: _password.text,
+        fullName: _name.text.trim(),
+        role: _role,
+        vendorPhone: _role == 'vendor' ? _phone.text : null,
+        customerPhone: _role == 'customer' ? _phone.text : null);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error), backgroundColor: const Color(0xFFB3261E)));
+    }
+  }
+
+  Future<void> _guest() async {
+    if (_busy) return;
+    if (FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+      Navigator.maybePop(context);
+      return;
+    }
+    setState(() => _busy = true);
+    final error = await _auth.signInAsGuest();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error == null) {
+      Navigator.maybePop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error), backgroundColor: const Color(0xFFB3261E)));
+    }
+  }
+
+  InputDecoration _field(String label, {Widget? suffix}) => InputDecoration(
+        labelText: label,
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(26),
+            borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(26),
+            borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(26),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.4)),
+        errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(26),
+            borderSide: const BorderSide(color: Color(0xFFB3261E))),
+      );
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    _confirm.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: AppBackButton(
+                label: 'Continue as guest',
+                enabled: !_busy,
+                onPressed: _guest)),
+        Expanded(
+            child: Center(
+                child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Form(
+                  key: _formKey,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 18),
+                        const Icon(Icons.storefront_rounded,
+                            size: 46, color: AppColors.primary),
+                        const SizedBox(height: 14),
+                        const Text('Create your account',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 27,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -.4)),
+                        const SizedBox(height: 7),
+                        const Text(
+                            'Save favourite stalls and receive live updates.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: Color(0xFF707078))),
+                        const SizedBox(height: 28),
+                        TextFormField(
+                            controller: _name,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Full name'),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Enter your name.'
+                                : null),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Email address'),
+                            validator: (v) =>
+                                v == null || !v.trim().contains('@')
+                                    ? 'Enter a valid email address.'
+                                    : null),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _password,
+                            obscureText: _hidePassword,
+                            textInputAction: TextInputAction.next,
+                            decoration: _field('Password',
+                                suffix: IconButton(
+                                    onPressed: () => setState(
+                                        () => _hidePassword = !_hidePassword),
+                                    icon: Icon(_hidePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined))),
+                            validator: (v) => v == null || v.length < 6
+                                ? 'Use at least 6 characters.'
+                                : null),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _confirm,
+                            obscureText: _hidePassword,
+                            textInputAction: TextInputAction.done,
+                            decoration: _field('Confirm password'),
+                            validator: (v) => v != _password.text
+                                ? 'Passwords do not match.'
+                                : null),
+                        const SizedBox(height: 18),
+                        const Text('Account type',
+                            style: TextStyle(
+                                fontSize: 13, color: Color(0xFF707078))),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(
+                                  value: 'customer',
+                                  icon: Icon(Icons.person_outline),
+                                  label: Text('Customer')),
+                              ButtonSegment(
+                                  value: 'vendor',
+                                  icon: Icon(Icons.storefront_outlined),
+                                  label: Text('Vendor')),
+                            ],
+                            selected: {
+                              _role
+                            },
+                            onSelectionChanged: _busy
+                                ? null
+                                : (v) => setState(() => _role = v.first),
+                            style: ButtonStyle(
+                                shape: WidgetStatePropertyAll(
+                                    RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(16))))),
+                        ...[
+                          const SizedBox(height: 12),
+                          TextFormField(
+                              controller: _phone,
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.telephoneNumber],
+                              decoration: _field(_role == 'vendor'
+                                  ? 'Business phone number'
+                                  : 'Phone number (optional)'),
+                              validator: (value) {
+                                final input = (value ?? '').trim();
+                                if (_role == 'customer' && input.isEmpty) {
+                                  return null;
+                                }
+                                return normalizeVendorPhone(input) == null
+                                    ? 'Enter a valid Malaysian phone number.'
+                                    : null;
+                              }),
+                          Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                  _role == 'vendor'
+                                      ? 'Customers can see and call this number from your stall listing.'
+                                      : 'You can leave this blank and add it later in your profile.',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Color(0xFF707078)))),
+                        ],
+                        const SizedBox(height: 24),
+                        SizedBox(
+                            height: 56,
+                            child: FilledButton(
+                                onPressed: _busy ? null : _register,
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(28))),
+                                child: _busy
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2))
+                                    : const Text('Create account',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600)))),
+                        const SizedBox(height: 18),
+                        Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text('Already have an account? ',
+                                  style: TextStyle(color: Color(0xFF707078))),
+                              TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const LoginScreen())),
+                                  child: const Text('Sign in',
+                                      style: TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w600))),
+                            ]),
+                      ]))),
+        ))),
+      ])));
+}
+````
+
+## File: lib/features/vendor/profile/edit_stall_screen.dart
+````dart
+import 'unsaved_stall_changes_guard.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/stall_categories.dart';
+import '../../../core/models/stall_schedule.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../../core/services/storage_service.dart';
+import 'edit_stall_view.dart';
+import 'stall_profile_draft.dart';
+import '../../customer/vendor_details/vendor_details_screen.dart';
+
+class EditStallScreen extends StatefulWidget {
+  const EditStallScreen({super.key});
+
+  @override
+  State<EditStallScreen> createState() => _EditStallScreenState();
+}
+
+class _EditStallScreenState extends State<EditStallScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _vendorService = VendorService();
+  final _storageService = StorageService();
+  final _auth = FirebaseAuth.instance;
+
+  final _stallNameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _openingHoursController = TextEditingController();
+  final _phoneController = TextEditingController();
+
+  final _selectedCategories = <String>{'Beverages'};
+  String? _initialValues;
+  final _exitGuard = GlobalKey<UnsavedStallChangesGuardState>();
+  final List<String> _categories = stallCategories;
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isPickingImage = false;
+  VendorModel? _loadedVendor;
+  String? _loadError;
+  Map<int, List<StallHoursInterval>> _weeklyHours = {};
+  List<TemporaryClosure> _temporaryClosures = [];
+
+  // Existing photo URL loaded from Firestore, and a newly picked local
+  // file (not yet uploaded) if the vendor chose a new photo this session.
+  String _existingImageUrl = '';
+  File? _pickedImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExistingVendorData();
+  }
+
+  // Fetch vendor info from Firestore to pre-fill the form
+  Future<void> _loadExistingVendorData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final user = _auth.currentUser;
+    if (user == null) {
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Sign in again to edit your stall.';
+      });
+      return;
+    }
+    VendorModel? vendor = await _vendorService.getVendorProfile(user.uid);
+    if (!mounted) return;
+    _loadedVendor = vendor ??
+        VendorModel(
+            vendorId: user.uid,
+            stallName: '',
+            description: '',
+            category: 'Beverages',
+            openingHours: '');
+    if (vendor != null) {
+      _stallNameController.text = vendor.stallName;
+      _descriptionController.text = vendor.description;
+      _openingHoursController.text = vendor.openingHours;
+      _weeklyHours = vendor.weeklyHours;
+      _temporaryClosures = vendor.temporaryClosures;
+      _phoneController.text = vendor.phoneNumber;
+      _existingImageUrl = vendor.imageUrl;
+      _selectedCategories
+        ..clear()
+        ..addAll(vendor.allCategories);
+      if (_selectedCategories.isEmpty) _selectedCategories.add('Beverages');
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _initialValues = _currentValues();
+    });
+  }
+
+  Future<void> _pickImage() async {
+    if (_isSaving || _isPickingImage) return;
+    setState(() => _isPickingImage = true);
+    try {
+      final file = await _storageService.pickImage();
+      if (file != null && mounted) {
+        setState(() => _pickedImage = file);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open your photos. Please try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _isPickingImage = false);
+    }
+  }
+
+  // Save updated stall profile to Firestore
+  Future<void> _saveStallProfile() async {
+    if (_selectedCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose at least one food category.')));
+      return;
+    }
+    if (_isLoading ||
+        _isSaving ||
+        _isPickingImage ||
+        _formKey.currentState?.validate() != true) {
+      return;
+    }
+
+    final user = _auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      // Only upload if the vendor picked a new photo this session.
+      // Otherwise keep whatever URL was already saved.
+      String imageUrl = _existingImageUrl;
+      if (_pickedImage != null) {
+        imageUrl =
+            await _storageService.uploadStallImage(user.uid, _pickedImage!);
+      }
+
+      final vendor = _draftVendor(imageUrl: imageUrl);
+
+      await _vendorService.saveVendorProfile(vendor);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Stall profile saved successfully!')),
+        );
+        _exitGuard.currentState?.close();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _stallNameController.dispose();
+    _descriptionController.dispose();
+    _openingHoursController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  String _currentValues() => jsonEncode({
+        'name': _stallNameController.text,
+        'description': _descriptionController.text,
+        'phone': _phoneController.text,
+        'hours': _openingHoursController.text,
+        'categories': _selectedCategories.toList()..sort(),
+        'weeklyHours': serializeWeeklyHours(_weeklyHours),
+        'closures': _temporaryClosures
+            .map((closure) => [
+                  closure.start.toUtc().millisecondsSinceEpoch,
+                  closure.end.toUtc().millisecondsSinceEpoch,
+                ])
+            .toList(),
+      });
+
+  bool get _hasUnsavedChanges =>
+      !_isLoading &&
+      _loadError == null &&
+      _loadedVendor != null &&
+      (_pickedImage != null || _currentValues() != _initialValues);
+
+  void _requestLeave() => _exitGuard.currentState?.requestLeave();
+
+  VendorModel _draftVendor({String? imageUrl}) => buildStallProfileDraft(
+        original: _loadedVendor!,
+        name: _stallNameController.text,
+        description: _descriptionController.text,
+        phone: _phoneController.text,
+        legacyHours: _openingHoursController.text,
+        categories: _selectedCategories,
+        hours: _weeklyHours,
+        closures: _temporaryClosures,
+        imageUrl: imageUrl,
+      );
+
+  void _preview() {
+    if (_isLoading || _isSaving || _isPickingImage || _loadedVendor == null) {
+      return;
+    }
+    if (_auth.currentUser?.uid != _loadedVendor!.vendorId) return;
+    FocusScope.of(context).unfocus();
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => VendorDetailsScreen(
+                vendor: _draftVendor(),
+                previewOnly: true,
+                draftPreview: true,
+                draftPhoto: _pickedImage)));
+  }
+
+  Widget _buildImagePicker() {
+    final placeholder = const Center(
+        child: Icon(Icons.storefront_outlined,
+            size: 52, color: AppColors.primary));
+    final image = _pickedImage != null
+        ? Image.file(_pickedImage!,
+            fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder)
+        : _existingImageUrl.isNotEmpty
+            ? Image.network(_existingImageUrl,
+                fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder)
+            : placeholder;
+    return LayoutBuilder(
+        builder: (context, constraints) => SizedBox(
+              height:
+                  (constraints.maxWidth * 9 / 16).clamp(160, 260).toDouble(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Material(
+                    color: AppColors.mint,
+                    child: InkWell(
+                      onTap: _isSaving || _isPickingImage ? null : _pickImage,
+                      child: Stack(fit: StackFit.expand, children: [
+                        image,
+                        Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                            child: Center(
+                                child: FilledButton.icon(
+                                    onPressed: _isSaving || _isPickingImage
+                                        ? null
+                                        : _pickImage,
+                                    style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: AppColors.primary,
+                                        minimumSize: const Size(48, 48),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 18, vertical: 12)),
+                                    icon: const Icon(Icons.camera_alt_outlined,
+                                        size: 20),
+                                    label: Text(_isPickingImage
+                                        ? 'Opening photos…'
+                                        : 'Change photo')))),
+                      ]),
+                    )),
+              ),
+            ));
+  }
+
+  @override
+  Widget build(BuildContext context) => UnsavedStallChangesGuard(
+        key: _exitGuard,
+        hasChanges: _hasUnsavedChanges,
+        saving: _isSaving,
+        onSave: _saveStallProfile,
+        child: EditStallView(
+          formKey: _formKey,
+          nameController: _stallNameController,
+          descriptionController: _descriptionController,
+          phoneController: _phoneController,
+          image: _buildImagePicker(),
+          categoryOptions: _categories,
+          selectedCategories: _selectedCategories,
+          legacyHours: _openingHoursController.text,
+          hours: _weeklyHours,
+          closures: _temporaryClosures,
+          loading: _isLoading,
+          saving: _isSaving,
+          pickingImage: _isPickingImage,
+          newPhoto: _pickedImage != null,
+          error: _loadError,
+          onRetry: _loadExistingVendorData,
+          onFormChanged: () => setState(() {}),
+          onCancel: _requestLeave,
+          onSave: _saveStallProfile,
+          onPreview: _preview,
+          onCategoryChanged: (category, selected) => setState(() {
+            if (selected) {
+              _selectedCategories.add(category);
+            } else {
+              _selectedCategories.remove(category);
+            }
+          }),
+          onScheduleChanged: (hours, closures) => setState(() {
+            _weeklyHours = hours;
+            _temporaryClosures = closures;
+          }),
+        ),
+      );
+}
+````
+
+## File: lib/features/vendor/menu/vendor_menu_screen.dart
+````dart
+import '../../../core/widgets/app_back_button.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/services/menu_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../core/widgets/app_dropdown.dart';
+
+class VendorMenuScreen extends StatefulWidget {
+  const VendorMenuScreen({super.key, this.stockOnly = false});
+  final bool stockOnly;
+  @override
+  State<VendorMenuScreen> createState() => _VendorMenuScreenState();
+}
+
+class _VendorMenuScreenState extends State<VendorMenuScreen> {
+  final _menu = MenuService();
+  final _storage = StorageService();
+  final _busyItems = <String>{};
+  late Stream<List<MenuItemModel>> _items;
+  final _uid = FirebaseAuth.instance.currentUser?.uid;
+  static const _statuses = {
+    'available': ('Available', Colors.green),
+    'low_stock': ('Low stock', Colors.orange),
+    'out_of_stock': ('Sold out', Colors.red),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    _items = _uid == null
+        ? Stream.value(<MenuItemModel>[])
+        : _menu.getMenuItems(_uid);
+  }
+
+  void _error(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _status(MenuItemModel item, String status) async {
+    if (_uid == null ||
+        _busyItems.contains(item.itemId) ||
+        item.status == status) {
+      return;
+    }
+    setState(() => _busyItems.add(item.itemId));
+    try {
+      await _menu.updateItemStatus(_uid, item.itemId, status);
+    } catch (_) {
+      _error('Could not update stock. Please retry.');
+    } finally {
+      if (mounted) {
+        setState(() => _busyItems.remove(item.itemId));
+      }
+    }
+  }
+
+  Future<void> _delete(MenuItemModel item) async {
+    if (_uid == null || _busyItems.contains(item.itemId)) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Delete dish?'),
+              content: Text(
+                  'Delete ${item.name} from your menu? This cannot be undone.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Delete')),
+              ],
+            ));
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() => _busyItems.add(item.itemId));
+    try {
+      await _menu.deleteMenuItem(_uid, item.itemId);
+    } catch (_) {
+      _error('Could not delete this dish. Please retry.');
+    } finally {
+      if (mounted) {
+        setState(() => _busyItems.remove(item.itemId));
+      }
+    }
+  }
+
+  Future<void> _edit([MenuItemModel? item]) async {
+    if (_uid == null) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (_) =>
+          _MenuEditor(uid: _uid, item: item, menu: _menu, storage: _storage),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppPageAppBar(
+            title: Text(widget.stockOnly ? 'Update stock' : 'Menu & stock')),
+        floatingActionButton: _uid == null || widget.stockOnly
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: _edit,
+                icon: const Icon(Icons.add),
+                label: const Text('Add dish')),
+        body: StreamBuilder<List<MenuItemModel>>(
+            stream: _items,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('Could not load your menu.'),
+                  TextButton(
+                      onPressed: () => setState(_reload),
+                      child: const Text('Retry')),
+                ]));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final items = snapshot.data ?? [];
+              if (items.isEmpty) {
+                return Center(
+                    child: Text(
+                        widget.stockOnly
+                            ? 'No dishes to update.\nAdd dishes from Menu first.'
+                            : 'Your menu is empty.\nTap Add dish to get started.',
+                        textAlign: TextAlign.center));
+              }
+              return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    final busy = _busyItems.contains(item.itemId);
+                    return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: SizedBox(
+                                          width: 56,
+                                          height: 56,
+                                          child: item.imageUrl.isEmpty
+                                              ? const Icon(Icons.restaurant,
+                                                  size: 32)
+                                              : Image.network(item.imageUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) =>
+                                                      const Icon(
+                                                          Icons.restaurant,
+                                                          size: 32)))),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text(item.name,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium),
+                                        Text(
+                                            'RM ${item.price.toStringAsFixed(2)}'),
+                                        Text(item.section,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall),
+                                      ])),
+                                  if (!widget.stockOnly)
+                                    AppDropdown<String>(
+                                      iconOnly: true,
+                                      icon: Icons.more_vert,
+                                      hint: 'Dish options',
+                                      options: const {
+                                        'edit': 'Edit dish',
+                                        'delete': 'Delete dish',
+                                      },
+                                      onChanged: busy
+                                          ? null
+                                          : (value) {
+                                              if (value == 'edit') {
+                                                _edit(item);
+                                              } else {
+                                                _delete(item);
+                                              }
+                                            },
+                                    ),
+                                ]),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: _statuses.entries
+                                        .map((entry) => ChoiceChip(
+                                              label: Text(entry.value.$1),
+                                              avatar: Icon(Icons.circle,
+                                                  size: 12,
+                                                  color: entry.value.$2),
+                                              selected:
+                                                  item.status == entry.key,
+                                              onSelected: busy
+                                                  ? null
+                                                  : (_) =>
+                                                      _status(item, entry.key),
+                                            ))
+                                        .toList()),
+                                if (busy) const LinearProgressIndicator(),
+                              ]),
+                        ));
+                  });
+            }),
+      );
+}
+
+class _MenuEditor extends StatefulWidget {
+  const _MenuEditor(
+      {required this.uid,
+      required this.item,
+      required this.menu,
+      required this.storage});
+  final String uid;
+  final MenuItemModel? item;
+  final MenuService menu;
+  final StorageService storage;
+  @override
+  State<_MenuEditor> createState() => _MenuEditorState();
+}
+
+class _MenuEditorState extends State<_MenuEditor> {
+  final _form = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _price;
+  late final TextEditingController _section;
+  late final TextEditingController _description;
+  late final TextEditingController _portion;
+  late final TextEditingController _ingredients;
+  late final String _itemId;
+  File? _image;
+  bool _saving = false;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.item?.name ?? '');
+    _price = TextEditingController(
+        text: widget.item?.price.toStringAsFixed(2) ?? '');
+    _section = TextEditingController(text: widget.item?.section ?? 'Main menu');
+    _description = TextEditingController(text: widget.item?.description ?? '');
+    _portion = TextEditingController(text: widget.item?.portionSize ?? '');
+    _ingredients =
+        TextEditingController(text: widget.item?.ingredients.join(', ') ?? '');
+    // Reuse the same ID on retries so an uncertain network result cannot duplicate a dish.
+    _itemId = widget.item?.itemId ?? widget.menu.newMenuItemId(widget.uid);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _price.dispose();
+    _section.dispose();
+    _description.dispose();
+    _portion.dispose();
+    _ingredients.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick() async {
+    try {
+      final image = await widget.storage.pickImage();
+      if (mounted && image != null) {
+        setState(() => _image = image);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not open your photos. Please retry.');
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_form.currentState!.validate()) {
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      String? imageUrl;
+      if (_image != null) {
+        imageUrl = await widget.storage
+            .uploadMenuItemImage(widget.uid, _itemId, _image!);
+      }
+      if (widget.item == null) {
+        await widget.menu.addMenuItem(
+            widget.uid, _name.text.trim(), double.parse(_price.text.trim()),
+            itemId: _itemId,
+            imageUrl: imageUrl,
+            section: _section.text.trim(),
+            description: _description.text.trim(),
+            portionSize: _portion.text.trim(),
+            ingredients: _ingredients.text
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty)
+                .toSet()
+                .toList());
+      } else {
+        await widget.menu.updateMenuItem(widget.uid, _itemId, _name.text.trim(),
+            double.parse(_price.text.trim()),
+            imageUrl: imageUrl,
+            section: _section.text.trim(),
+            description: _description.text.trim(),
+            portionSize: _portion.text.trim(),
+            ingredients: _ingredients.text
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty)
+                .toSet()
+                .toList());
+      }
+      if (mounted) {
+        setState(() => _saving = false);
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error =
+              'Could not save this dish. Your changes are still here. Please retry.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: !_saving,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+          child: Form(
+              key: _form,
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      AppBackButton(
+                          label: 'Cancel',
+                          enabled: !_saving,
+                          onPressed: () => Navigator.pop(context)),
+                      Expanded(
+                        child: Text(
+                          widget.item == null ? 'Add dish' : 'Edit dish',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(_saving ? 'Saving…' : 'Done'),
+                      ),
+                    ]),
+                    const SizedBox(height: 16),
+                    if (_image != null)
+                      ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(_image!,
+                              height: 140, fit: BoxFit.cover))
+                    else if (widget.item?.imageUrl.isNotEmpty == true)
+                      Image.network(widget.item!.imageUrl,
+                          height: 140,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.restaurant)),
+                    TextButton.icon(
+                        onPressed: _saving ? null : _pick,
+                        icon: const Icon(Icons.add_a_photo_outlined),
+                        label: const Text('Choose photo')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _name,
+                        enabled: !_saving,
+                        maxLength: 80,
+                        decoration:
+                            const InputDecoration(labelText: 'Dish name'),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? 'Enter a dish name.'
+                                : null),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _section,
+                        enabled: !_saving,
+                        maxLength: 40,
+                        decoration: const InputDecoration(
+                            labelText: 'Menu section',
+                            hintText: 'e.g. Drinks, Mains, Desserts'),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? 'Enter a menu section.'
+                                : null),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _price,
+                        enabled: !_saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'Price', prefixText: 'RM '),
+                        validator: (value) {
+                          final text = value?.trim() ?? '';
+                          final price = double.tryParse(text);
+                          if (price == null ||
+                              !price.isFinite ||
+                              price <= 0 ||
+                              !RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(text)) {
+                            return 'Enter a positive price with up to 2 decimal places.';
+                          }
+                          return null;
+                        }),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _description,
+                        enabled: !_saving,
+                        maxLength: 500,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                            labelText: 'Description',
+                            hintText: 'What makes this dish special?')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _portion,
+                        enabled: !_saving,
+                        maxLength: 80,
+                        decoration: const InputDecoration(
+                            labelText: 'Portion size',
+                            hintText: 'e.g. 1 bowl, 6 pieces, serves 2')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: _ingredients,
+                        enabled: !_saving,
+                        maxLength: 500,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                            labelText: 'Ingredients',
+                            hintText: 'Separate ingredients with commas')),
+                    if (_error != null)
+                      Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(_error!,
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error))),
+                    if (_saving) const LinearProgressIndicator(),
+                  ])),
+        ),
+      );
+}
+````
+
 ## File: lib/features/auth/screens/login_screen.dart
 ````dart
+import '../../../core/widgets/app_back_button.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -14773,6 +20514,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: const Color(0xFFD2D2D5),
                     borderRadius: BorderRadius.circular(3))),
           ],
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: AppBackButton(
+                  label: 'Cancel', enabled: !_busy, onPressed: _close)),
           Expanded(
               child: SingleChildScrollView(
             controller: widget.scrollController,
@@ -14789,15 +20534,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                            tooltip: 'Close',
-                            onPressed: _busy ? null : _close,
-                            style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFEAEAEC)),
-                            icon: const Icon(Icons.close_rounded,
-                                color: Color(0xFF73737A)))),
                     Center(
                         child: Image.asset('assets/app_logo.png',
                             width: 54, height: 54)),
@@ -14930,6 +20666,162 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
         backgroundColor: Colors.white, body: SafeArea(child: _panel(context)));
   }
+}
+````
+
+## File: lib/features/auth/auth_wrapper.dart
+````dart
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stallseeker/features/auth/screens/welcome_screen.dart';
+import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
+import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
+import 'package:stallseeker/core/services/notification_service.dart';
+import 'package:stallseeker/core/services/auth_service.dart';
+import 'screens/email_verification_screen.dart';
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  final _authStream = FirebaseAuth.instance.userChanges();
+  bool _guestAccessGranted = false;
+
+  void _grantGuestAccess() {
+    if (!mounted) return;
+    setState(() => _guestAccessGranted = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+        stream: _authStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const _AccountRecovery(
+                message: 'Could not check your session. Please sign in again.');
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+                body: Center(child: CircularProgressIndicator()));
+          }
+          final user = snapshot.data;
+          if (user == null || (user.isAnonymous && !_guestAccessGranted)) {
+            return WelcomeScreen(onGuestAccessGranted: _grantGuestAccess);
+          }
+          if (user.isAnonymous) {
+            return const CustomerHomeScreen();
+          }
+          if (!user.emailVerified) {
+            NotificationService.instance.setNavigationReady(false);
+            return EmailVerificationScreen(key: ValueKey('verify-${user.uid}'));
+          }
+          return _AccountGate(key: ValueKey(user.uid), user: user);
+        });
+  }
+}
+
+class _AccountGate extends StatefulWidget {
+  const _AccountGate({super.key, required this.user});
+  final User user;
+  @override
+  State<_AccountGate> createState() => _AccountGateState();
+}
+
+class _AccountGateState extends State<_AccountGate> {
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _profile;
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  void _listen() {
+    _profile = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .snapshots();
+    unawaited(AuthService().repairCurrentUserProfile().catchError(
+          (Object error) => debugPrint('Account profile repair failed: $error'),
+        ));
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.setNavigationReady(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _profile,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final role = snapshot.data?.data()?['role'];
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            !snapshot.data!.exists ||
+            (role != 'vendor' && role != 'customer')) {
+          NotificationService.instance.setNavigationReady(false);
+          return _AccountRecovery(
+            message: snapshot.hasError
+                ? 'Could not load your account. Check your connection and retry.'
+                : 'Your account setup is incomplete. Retry, or sign out and contact support.',
+            retry: () => setState(_listen),
+          );
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            NotificationService.instance.setNavigationReady(true);
+            unawaited(NotificationService.instance.configureForRole(role));
+          }
+        });
+        return role == 'vendor'
+            ? const VendorMainScreen()
+            : const CustomerHomeScreen();
+      },
+    );
+  }
+}
+
+class _AccountRecovery extends StatelessWidget {
+  const _AccountRecovery({required this.message, this.retry});
+  final String message;
+  final VoidCallback? retry;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+          body: Center(
+              child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cloud_off_outlined, size: 40),
+          const SizedBox(height: 16),
+          Text(message, textAlign: TextAlign.center),
+          if (retry != null)
+            TextButton(onPressed: retry, child: const Text('Retry')),
+          TextButton(
+              onPressed: () async {
+                try {
+                  await AuthService().signOut();
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Could not sign out. Please retry.')));
+                  }
+                }
+              },
+              child: const Text('Sign out')),
+        ]),
+      )));
 }
 ````
 
@@ -15158,7 +21050,9 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         MaterialPageRoute(
             builder: (_) => EditProfileScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
-                email: _userModel?.email ?? user?.email ?? '')));
+                email: _userModel?.email ?? user?.email ?? '',
+                phoneNumber: _userModel?.phoneNumber,
+                editPhone: true)));
     if (saved == true && mounted) {
       await _loadUserData();
       if (mounted) {
@@ -15176,6 +21070,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
             builder: (_) => PersonalInformationScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '',
+                phoneNumber: _userModel?.phoneNumber,
                 isVendor: false)));
     if (mounted) {
       await _loadUserData();
@@ -15248,370 +21143,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       onLogout: () => confirmAndLogout(context, _authService),
       onSignIn: () => Navigator.push(
           context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-    );
-  }
-}
-````
-
-## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
-````dart
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../../../core/models/vendor_model.dart';
-import '../../../core/services/vendor_service.dart';
-import '../../../core/services/vendor_location_service.dart';
-import '../profile/edit_stall_screen.dart';
-import '../menu/vendor_menu_screen.dart';
-import '../../shared/manual_location_dialog.dart';
-import '../../shared/demo_orders_screen.dart';
-import '../../shared/live_booking_section.dart';
-import '../../../core/utils/vendor_phone.dart';
-import 'vendor_demo_sales.dart';
-
-class VendorDashboardScreen extends StatefulWidget {
-  const VendorDashboardScreen({super.key});
-  @override
-  VendorDashboardScreenState createState() => VendorDashboardScreenState();
-}
-
-class VendorDashboardScreenState extends State<VendorDashboardScreen> {
-  final _vendorService = VendorService();
-  final _location = VendorLocationService.instance;
-  StreamSubscription<VendorModel?>? _subscription;
-  VendorModel? _vendor;
-  bool _loading = true;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _location.addListener(_locationChanged);
-    fetchVendorDetails();
-  }
-
-  void _locationChanged() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
-  void dispose() {
-    _location.removeListener(_locationChanged);
-    _subscription?.cancel();
-    super.dispose();
-  }
-
-  Future<void> fetchVendorDetails() async {
-    await _subscription?.cancel();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || !mounted) {
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    _subscription = _vendorService.watchVendorProfile(uid).listen((vendor) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _vendor = vendor;
-        _loading = false;
-        _error = null;
-      });
-      if (vendor?.isOpen != true && _location.isSharing) {
-        unawaited(_location.pause());
-      }
-    }, onError: (Object error) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error =
-              'Could not load your stall. Check your connection and retry.';
-        });
-      }
-    });
-  }
-
-  Future<Position> _position() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      throw StateError('Turn on GPS before sharing your location.');
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.deniedForever) {
-      throw StateError('Allow location access in your phone settings.');
-    }
-    if (permission == LocationPermission.denied) {
-      throw StateError('Location permission is required.');
-    }
-    return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    ).timeout(const Duration(seconds: 12));
-  }
-
-  Future<void> _toggle(bool open) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (_saving || uid == null) {
-      return;
-    }
-    if (open && (_vendor?.stallName.trim().isEmpty ?? true)) {
-      _message('Set up your stall name before opening.');
-      return;
-    }
-    if (open && normalizeVendorPhone(_vendor?.phoneNumber ?? '') == null) {
-      _message('Add a business phone number in My stall before opening.');
-      return;
-    }
-    if (open && (_vendor?.isTemporarilyClosed ?? false)) {
-      _message('Remove the active temporary closure before opening.');
-      return;
-    }
-    if (open) {
-      final agreed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-                title: const Text('Open stall and share location?'),
-                content: const Text(
-                    'Your location continues updating while your stall is open, even when you lock your phone or use another app. Android shows a persistent notification while sharing is active.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Open stall')),
-                ],
-              ));
-      if (agreed != true || !mounted) {
-        return;
-      }
-    }
-    setState(() => _saving = true);
-    try {
-      if (open) {
-        double? latitude;
-        double? longitude;
-        var manualLocation = false;
-        try {
-          final position = await _position();
-          latitude = position.latitude;
-          longitude = position.longitude;
-        } catch (_) {
-          if (!mounted) {
-            return;
-          }
-          final existing = _vendor?.hasValidLocation == true
-              ? LatLng(_vendor!.latitude, _vendor!.longitude)
-              : null;
-          final selection = await showManualLocationDialog(context,
-              initialLocation: existing, title: 'Set Stall Location Manually');
-          if (selection == null || !mounted) {
-            return;
-          }
-          latitude = selection.coordinates.latitude;
-          longitude = selection.coordinates.longitude;
-          manualLocation = true;
-        }
-        if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) {
-          return;
-        }
-        await _vendorService.updateVendorLocation(uid, latitude, longitude,
-            sharingActive: !manualLocation);
-        await _vendorService.toggleStallStatus(uid, true);
-        if (!manualLocation && mounted) {
-          await _location.start(uid);
-        }
-        if (manualLocation) {
-          _message('Your stall is open using the manually entered location.');
-        }
-      } else {
-        await _location.pause();
-        await _vendorService.toggleStallStatus(uid, false);
-      }
-      if (!open) {
-        _message('Your stall is closed.');
-      }
-      if (open && _location.isSharing) {
-        _message('Your stall is open.');
-      }
-    } catch (_) {
-      _message(
-          'Could not update your stall. Check GPS, location permission, and connection, then retry.');
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
-  Future<void> _resume() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _saving) {
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      await _position();
-      if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
-        await _location.start(uid);
-      }
-    } catch (_) {
-      _message('Could not share location. Check GPS and location permission.');
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
-  Future<void> _toggleDemoSelfCollect(bool enabled) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _saving) return;
-    setState(() => _saving = true);
-    try {
-      await _vendorService.setSelfCollectEnabled(uid, enabled);
-      _message(enabled
-          ? 'Customers can now pay for self-collect bookings immediately.'
-          : 'New self-collect bookings are off.');
-    } catch (_) {
-      _message('Could not save booking setting. Please retry.');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  void _message(String text) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(_error!, textAlign: TextAlign.center),
-        TextButton(onPressed: fetchVendorDetails, child: const Text('Retry')),
-      ]));
-    }
-    final open = _vendor?.isOpen ?? false;
-    return RefreshIndicator(
-      onRefresh: fetchVendorDetails,
-      child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
-          children: [
-            Text(
-                _vendor?.stallName.isNotEmpty == true
-                    ? _vendor!.stallName
-                    : 'Set up your stall',
-                style: Theme.of(context).textTheme.headlineSmall),
-            const LiveBookingSection(isVendor: true),
-            const VendorDemoSales(),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(_vendor?.isTemporarilyClosed == true
-                                  ? 'Temporary closure active'
-                                  : open
-                                      ? 'Stall open'
-                                      : 'Stall closed'),
-                              subtitle: Text(_vendor?.isTemporarilyClosed ==
-                                      true
-                                  ? 'Customers see your stall as closed. The Open switch will turn off shortly.'
-                                  : 'Control whether customers can find you on the live map'),
-                              value: open,
-                              onChanged: _saving ? null : _toggle),
-                          if (_saving) const LinearProgressIndicator(),
-                          const Divider(),
-                          Text(!open
-                              ? 'Location sharing off'
-                              : _location.error ??
-                                  (_location.isSharing
-                                      ? 'Location sharing active in the background'
-                                      : 'Location sharing paused')),
-                          if (open && !_location.isSharing)
-                            TextButton.icon(
-                                onPressed: _saving ? null : _resume,
-                                icon: const Icon(Icons.my_location),
-                                label: const Text('Resume sharing')),
-                        ]))),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(children: [
-                SwitchListTile(
-                  title: const Text('Self-collect bookings'),
-                  subtitle:
-                      const Text('Allow customers to book for collection.'),
-                  value: _vendor?.selfCollectEnabled ?? false,
-                  onChanged: _saving ? null : _toggleDemoSelfCollect,
-                ),
-                SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const DemoOrdersScreen(isVendor: true))),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('View current and past bookings'),
-                    )),
-              ]),
-            )),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const VendorMenuScreen())),
-                icon: const Icon(Icons.restaurant_menu),
-                label: const Text('Manage menu & stock')),
-            const SizedBox(height: 16),
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Stall information',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 8),
-                          Text(_vendor?.category ?? 'Choose a food category'),
-                          Text(_vendor?.hoursToday ?? 'Add your opening hours'),
-                          const SizedBox(height: 8),
-                          Text(_vendor?.description ??
-                              'Tell customers what you sell.'),
-                          TextButton.icon(
-                              onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const EditStallScreen())),
-                              icon: const Icon(Icons.edit_outlined),
-                              label: const Text('Edit stall')),
-                        ]))),
-          ]),
     );
   }
 }
@@ -15701,12 +21232,23 @@ class AuthService {
     required String fullName,
     required String role,
     String? vendorPhone,
+    String? customerPhone,
   }) async {
     try {
       final normalizedPhone =
           role == 'vendor' ? normalizeVendorPhone(vendorPhone ?? '') : null;
       if (role == 'vendor' && normalizedPhone == null) {
         return 'Enter a valid Malaysian business phone number.';
+      }
+      final customerPhoneInput = (customerPhone ?? '').trim();
+      final normalizedCustomerPhone =
+          role == 'customer' && customerPhoneInput.isNotEmpty
+              ? normalizeVendorPhone(customerPhoneInput)
+              : null;
+      if (role == 'customer' &&
+          customerPhoneInput.isNotEmpty &&
+          normalizedCustomerPhone == null) {
+        return 'Enter a valid Malaysian phone number.';
       }
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -15718,6 +21260,7 @@ class AuthService {
           uid: credential.user!.uid,
           email: email.trim(),
           fullName: fullName.trim(),
+          phoneNumber: normalizedCustomerPhone,
           role: role,
           createdAt: DateTime.now(),
         );
@@ -16065,7 +21608,11 @@ class AuthService {
   }
 
 // update name
-  Future<String?> updateFullName(String uid, String newName) async {
+  Future<String?> updateFullName(
+    String uid,
+    String newName, {
+    String? customerPhone,
+  }) async {
     try {
       final user = _auth.currentUser;
       if (user == null || user.isAnonymous || user.uid != uid) {
@@ -16075,10 +21622,20 @@ class AuthService {
       if (name.isEmpty || name.length > 80) {
         return 'Enter a name between 1 and 80 characters.';
       }
+      final updates = <String, dynamic>{'fullName': name};
+      if (customerPhone != null) {
+        final input = customerPhone.trim();
+        final normalized =
+            input.isEmpty ? null : normalizeVendorPhone(input);
+        if (input.isNotEmpty && normalized == null) {
+          return 'Enter a valid Malaysian phone number.';
+        }
+        updates['phoneNumber'] = normalized ?? FieldValue.delete();
+      }
       await _firestore
           .collection(FirestoreCollections.users)
           .doc(uid)
-          .update({'fullName': name});
+          .update(updates);
       // Firestore is the app's profile source. Sync Auth's display name as well.
       try {
         await user.updateDisplayName(name);
@@ -16150,164 +21707,1654 @@ class AuthService {
 }
 ````
 
-## File: lib/features/auth/auth_wrapper.dart
+## File: lib/features/vendor/dashboard/vendor_dashboard_screen.dart
 ````dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stallseeker/features/auth/screens/welcome_screen.dart';
-import 'package:stallseeker/features/vendor/vendor_main_screen.dart';
-import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
-import 'package:stallseeker/core/services/notification_service.dart';
-import 'package:stallseeker/core/services/auth_service.dart';
-import 'screens/email_verification_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/models/demo_order.dart';
+import '../../../core/services/demo_order_service.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../../core/services/vendor_location_service.dart';
+import '../profile/edit_stall_screen.dart';
+import '../menu/vendor_menu_screen.dart';
+import '../../shared/manual_location_dialog.dart';
+import '../../shared/demo_orders_screen.dart';
+import '../../shared/booking_detail_screen.dart';
+import '../../customer/vendor_details/vendor_details_screen.dart';
+import 'vendor_dashboard_view.dart';
+import '../reviews/vendor_reviews_dashboard_card.dart';
+import '../../../core/utils/vendor_phone.dart';
+import 'vendor_demo_sales.dart';
 
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
+class VendorDashboardScreen extends StatefulWidget {
+  const VendorDashboardScreen({super.key});
   @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
+  VendorDashboardScreenState createState() => VendorDashboardScreenState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
-  final _authStream = FirebaseAuth.instance.userChanges();
-  bool _guestAccessGranted = false;
+class VendorDashboardScreenState extends State<VendorDashboardScreen> {
+  final _vendorService = VendorService();
+  final _orders = DemoOrderService();
+  late Stream<List<DemoOrder>> _bookings;
+  final _busyBookings = <String>{};
+  Timer? _clock;
+  final _location = VendorLocationService.instance;
+  StreamSubscription<VendorModel?>? _subscription;
+  VendorModel? _vendor;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
 
-  void _grantGuestAccess() {
-    if (!mounted) return;
-    setState(() => _guestAccessGranted = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-        stream: _authStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const _AccountRecovery(
-                message: 'Could not check your session. Please sign in again.');
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-                body: Center(child: CircularProgressIndicator()));
-          }
-          final user = snapshot.data;
-          if (user == null || (user.isAnonymous && !_guestAccessGranted)) {
-            return WelcomeScreen(onGuestAccessGranted: _grantGuestAccess);
-          }
-          if (user.isAnonymous) {
-            return const CustomerHomeScreen();
-          }
-          if (!user.emailVerified) {
-            NotificationService.instance.setNavigationReady(false);
-            return EmailVerificationScreen(key: ValueKey('verify-${user.uid}'));
-          }
-          return _AccountGate(key: ValueKey(user.uid), user: user);
-        });
-  }
-}
-
-class _AccountGate extends StatefulWidget {
-  const _AccountGate({super.key, required this.user});
-  final User user;
-  @override
-  State<_AccountGate> createState() => _AccountGateState();
-}
-
-class _AccountGateState extends State<_AccountGate> {
-  late Stream<DocumentSnapshot<Map<String, dynamic>>> _profile;
   @override
   void initState() {
     super.initState();
-    _listen();
+    _listenBookings();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+    _location.addListener(_locationChanged);
+    fetchVendorDetails();
   }
 
-  void _listen() {
-    _profile = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.user.uid)
-        .snapshots();
-    unawaited(AuthService().repairCurrentUserProfile().catchError(
-          (Object error) => debugPrint('Account profile repair failed: $error'),
-        ));
+  void _locationChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    NotificationService.instance.setNavigationReady(false);
+    _location.removeListener(_locationChanged);
+    _subscription?.cancel();
+    _clock?.cancel();
     super.dispose();
+  }
+
+  Future<void> fetchVendorDetails() async {
+    await _subscription?.cancel();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    _subscription = _vendorService.watchVendorProfile(uid).listen((vendor) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _vendor = vendor;
+        _loading = false;
+        _error = null;
+      });
+      if (vendor?.isOpen != true && _location.isSharing) {
+        unawaited(_location.pause());
+      }
+    }, onError: (Object error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error =
+              'Could not load your stall. Check your connection and retry.';
+        });
+      }
+    });
+  }
+
+  Future<Position> _position() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      throw StateError('Turn on GPS before sharing your location.');
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      throw StateError('Allow location access in your phone settings.');
+    }
+    if (permission == LocationPermission.denied) {
+      throw StateError('Location permission is required.');
+    }
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    ).timeout(const Duration(seconds: 12));
+  }
+
+  Future<void> _toggle(bool open) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (_saving || uid == null) {
+      return;
+    }
+    if (open && (_vendor?.stallName.trim().isEmpty ?? true)) {
+      _message('Set up your stall name before opening.');
+      return;
+    }
+    if (open && normalizeVendorPhone(_vendor?.phoneNumber ?? '') == null) {
+      _message('Add a business phone number in My stall before opening.');
+      return;
+    }
+    if (open && (_vendor?.isTemporarilyClosed ?? false)) {
+      _message('Remove the active temporary closure before opening.');
+      return;
+    }
+    if (open) {
+      final agreed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+                title: const Text('Open stall and share location?'),
+                content: const Text(
+                    'Your location continues updating while your stall is open, even when you lock your phone or use another app. Android shows a persistent notification while sharing is active.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Open stall')),
+                ],
+              ));
+      if (agreed != true || !mounted) {
+        return;
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      if (open) {
+        double? latitude;
+        double? longitude;
+        var manualLocation = false;
+        try {
+          final position = await _position();
+          latitude = position.latitude;
+          longitude = position.longitude;
+        } catch (_) {
+          if (!mounted) {
+            return;
+          }
+          final existing = _vendor?.hasValidLocation == true
+              ? LatLng(_vendor!.latitude, _vendor!.longitude)
+              : null;
+          final selection = await showManualLocationDialog(context,
+              initialLocation: existing, title: 'Set Stall Location Manually');
+          if (selection == null || !mounted) {
+            return;
+          }
+          latitude = selection.coordinates.latitude;
+          longitude = selection.coordinates.longitude;
+          manualLocation = true;
+        }
+        if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) {
+          return;
+        }
+        await _vendorService.updateVendorLocation(uid, latitude, longitude,
+            sharingActive: !manualLocation);
+        await _vendorService.toggleStallStatus(uid, true);
+        if (!manualLocation && mounted) {
+          await _location.start(uid);
+        }
+        if (manualLocation) {
+          _message('Your stall is open using the manually entered location.');
+        }
+      } else {
+        await _location.pause();
+        await _vendorService.toggleStallStatus(uid, false);
+      }
+      if (!open) {
+        _message('Your stall is closed.');
+      }
+      if (open && _location.isSharing) {
+        _message('Your stall is open.');
+      }
+    } catch (_) {
+      _message(
+          'Could not update your stall. Check GPS, location permission, and connection, then retry.');
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _resume() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _saving) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await _position();
+      if (mounted && FirebaseAuth.instance.currentUser?.uid == uid) {
+        await _location.start(uid);
+      }
+    } catch (_) {
+      _message('Could not share location. Check GPS and location permission.');
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _toggleDemoSelfCollect(bool enabled) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await _vendorService.setSelfCollectEnabled(uid, enabled);
+      _message(enabled
+          ? 'Customers can now pay for self-collect bookings immediately.'
+          : 'New self-collect bookings are off.');
+    } catch (_) {
+      _message('Could not save booking setting. Please retry.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _message(String text) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    }
+  }
+
+  void _listenBookings() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _bookings = uid == null
+        ? Stream.value(<DemoOrder>[])
+        : _orders.watchVendorOrders(uid);
+  }
+
+  Future<void> _refresh() async {
+    setState(_listenBookings);
+    await fetchVendorDetails();
+  }
+
+  void _push(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _advanceBooking(DemoOrder booking) async {
+    if (_busyBookings.contains(booking.id)) return;
+    setState(() => _busyBookings.add(booking.id));
+    try {
+      await _orders.advance(booking.id, booking.effectiveStatus);
+      _message(booking.effectiveStatus == 'preparing'
+          ? 'Booking is ready for collection.'
+          : 'Booking is now being prepared.');
+    } catch (_) {
+      _message('Could not update this booking. Please retry.');
+    } finally {
+      if (mounted) setState(() => _busyBookings.remove(booking.id));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _profile,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
-        }
-        final role = snapshot.data?.data()?['role'];
-        if (snapshot.hasError ||
-            !snapshot.hasData ||
-            !snapshot.data!.exists ||
-            (role != 'vendor' && role != 'customer')) {
-          NotificationService.instance.setNavigationReady(false);
-          return _AccountRecovery(
-            message: snapshot.hasError
-                ? 'Could not load your account. Check your connection and retry.'
-                : 'Your account setup is incomplete. Retry, or sign out and contact support.',
-            retry: () => setState(_listen),
-          );
-        }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            NotificationService.instance.setNavigationReady(true);
-            unawaited(NotificationService.instance.configureForRole(role));
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+          child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_error!, textAlign: TextAlign.center),
+          TextButton(onPressed: _refresh, child: const Text('Retry')),
+        ]),
+      ));
+    }
+    return StreamBuilder<List<DemoOrder>>(
+      stream: _bookings,
+      builder: (context, snapshot) => VendorDashboardView(
+        vendor: _vendor,
+        reviewsCard: _vendor == null
+            ? null
+            : VendorReviewsDashboardCard(
+                key: ValueKey(_vendor!.vendorId),
+                vendorId: _vendor!.vendorId,
+                stallName: _vendor!.stallName),
+        bookings: snapshot.data ?? const [],
+        bookingsLoading: !snapshot.hasData && !snapshot.hasError,
+        bookingsError: snapshot.hasError,
+        saving: _saving,
+        locationSharing: _location.isSharing,
+        locationError: _location.error,
+        busyBookings: _busyBookings,
+        onRefresh: _refresh,
+        onToggleOpen: _toggle,
+        onToggleSelfCollect: _toggleDemoSelfCollect,
+        onResumeLocation: _resume,
+        onPreview: () {
+          if (_vendor != null) {
+            _push(VendorDetailsScreen(vendor: _vendor!, previewOnly: true));
           }
+        },
+        onEditStall: () => _push(const EditStallScreen()),
+        onMenu: () => _push(const VendorMenuScreen()),
+        onStock: () => _push(const VendorMenuScreen(stockOnly: true)),
+        onBookings: () => _push(const DemoOrdersScreen(isVendor: true)),
+        onPaymentHistory: () => _push(const VendorPaymentHistoryScreen()),
+        onOpenBooking: (booking) =>
+            _push(BookingDetailScreen(bookingId: booking.id, isVendor: true)),
+        onAdvanceBooking: _advanceBooking,
+      ),
+    );
+  }
+}
+````
+
+## File: lib/features/customer/vendor_details/vendor_details_screen.dart
+````dart
+import '../../shared/stall_review_card.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/models/vendor_model.dart';
+import '../../../core/models/menu_item_model.dart';
+import '../../../core/models/stall_review.dart';
+import '../../../core/models/dish_follow_model.dart';
+import '../../../core/services/menu_service.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/stall_review_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../core/services/follow_service.dart';
+import '../../../core/services/dish_follow_service.dart';
+import '../../../core/services/vendor_service.dart';
+import '../../auth/screens/login_screen.dart';
+import '../orders/demo_order_cart_screen.dart';
+
+class VendorDetailsScreen extends StatefulWidget {
+  final VendorModel vendor;
+  final String? initialDishId;
+  final bool previewOnly;
+  // Freeze profile fields for the unsaved Edit stall preview.
+  final bool draftPreview;
+  final File? draftPhoto;
+
+  const VendorDetailsScreen(
+      {super.key,
+      required this.vendor,
+      this.initialDishId,
+      this.previewOnly = false,
+      this.draftPreview = false,
+      this.draftPhoto})
+      : assert(!draftPreview || previewOnly),
+        assert(draftPhoto == null || draftPreview);
+
+  @override
+  State<VendorDetailsScreen> createState() => _VendorDetailsScreenState();
+}
+
+class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
+  final _menuService = MenuService();
+  final _followService = FollowService();
+  final _dishFollows = DishFollowService();
+  final _vendorService = VendorService();
+  final _reviews = StallReviewService();
+
+  // Local copy of the vendor, refreshable independently of the
+  // instance passed in -- the one passed in is a snapshot from
+  // whenever the customer tapped the marker/card, and doesn't update
+  // on its own if the vendor changes their status while this screen
+  // is open.
+  late VendorModel _vendor;
+  bool _isRefreshing = false;
+  String? _vendorError;
+  bool _vendorDeleted = false;
+  bool _isFollowSaving = false;
+  StreamSubscription<VendorModel?>? _vendorSub;
+  Timer? _freshnessTimer;
+  late Stream<List<MenuItemModel>> _menuStream;
+  late Stream<List<StallReview>> _reviewStream;
+  final _dishSearch = TextEditingController();
+  String _dishQuery = '';
+  String? _focusedDishId;
+  final _selectedDishKey = GlobalKey();
+  bool _revealedSelectedDish = false;
+  final _followedDishIds = <String>{};
+  final _savingDishes = <String>{};
+  StreamSubscription<List<DishFollowModel>>? _dishFollowSub;
+  StreamSubscription<User?>? _dishAuthSub;
+  bool _dishFollowLoading = true;
+  bool _dishFollowError = false;
+  bool _customerAccount = false;
+
+  // Local follow state, kept in sync with Firestore via a listener but
+  // updated OPTIMISTICALLY (immediately, before the write completes)
+  // when the user taps the heart -- this is what makes the icon flip
+  // instantly instead of waiting on a round-trip.
+  bool _isFollowing = false;
+  StreamSubscription<bool>? _followSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _vendor = widget.vendor;
+    _focusedDishId = widget.initialDishId;
+    _menuStream = _menuService.getMenuItems(_vendor.vendorId);
+    _reviewStream = _reviews.watchReviews(_vendor.vendorId);
+    if (!widget.draftPreview) {
+      _vendorSub = _vendorService.watchVendorProfile(_vendor.vendorId).listen(
+        (vendor) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _vendorDeleted = vendor == null;
+            if (vendor != null) {
+              _vendor = vendor;
+            }
+            _vendorError = null;
+          });
+        },
+        onError: (Object error) {
+          if (mounted) {
+            setState(() => _vendorError =
+                'Could not update this stall. Showing last known details.');
+          }
+        },
+      );
+      _freshnessTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final customerId = user?.uid;
+    if (!widget.previewOnly &&
+        customerId != null &&
+        user?.isAnonymous == false) {
+      _followSub = _followService
+          .isFollowing(customerId, _vendor.vendorId)
+          .listen((value) {
+        if (mounted) {
+          setState(() => _isFollowing = value);
+        }
+      });
+    }
+    if (!widget.previewOnly) {
+      _dishAuthSub = FirebaseAuth.instance.userChanges().listen((_) {
+        unawaited(_listenDishFollows());
+      });
+    } else {
+      _dishFollowLoading = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _followSub?.cancel();
+    _dishFollowSub?.cancel();
+    _dishAuthSub?.cancel();
+    _vendorSub?.cancel();
+    _freshnessTimer?.cancel();
+    _dishSearch.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshVendor() async {
+    if (widget.draftPreview) return;
+    setState(() => _isRefreshing = true);
+    final updated = await _vendorService.getVendorProfile(_vendor.vendorId);
+    if (mounted) {
+      setState(() {
+        if (updated != null) {
+          _vendor = updated;
+        }
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _listenDishFollows() async {
+    await _dishFollowSub?.cancel();
+    _dishFollowSub = null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (mounted) {
+      setState(() {
+        _followedDishIds.clear();
+        _customerAccount = false;
+        _dishFollowError = false;
+        _dishFollowLoading = false;
+      });
+    }
+    if (user == null || user.isAnonymous || !user.emailVerified) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _dishFollowLoading = true;
+        _dishFollowError = false;
+      });
+    }
+    try {
+      final profile = await AuthService()
+          .getUserData(user.uid)
+          .timeout(const Duration(seconds: 10));
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) {
+        return;
+      }
+      if (profile?.role != 'customer') {
+        setState(() {
+          _dishFollowLoading = false;
+          _dishFollowError = profile == null;
         });
-        return role == 'vendor'
-            ? const VendorMainScreen()
-            : const CustomerHomeScreen();
-      },
+        return;
+      }
+      _customerAccount = true;
+      _dishFollowSub = _dishFollows
+          .watch(user.uid, vendorId: _vendor.vendorId)
+          .listen((follows) {
+        if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) {
+          return;
+        }
+        setState(() {
+          _followedDishIds
+            ..clear()
+            ..addAll(follows.map((follow) => follow.itemId));
+          _dishFollowLoading = false;
+          _dishFollowError = false;
+        });
+      }, onError: (Object error) {
+        if (mounted) {
+          setState(() {
+            _dishFollowLoading = false;
+            _dishFollowError = true;
+          });
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _dishFollowLoading = false;
+          _dishFollowError = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleDishFollow(MenuItemModel item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      _showLoginRequiredDialog(context, action: 'Following dishes');
+      return;
+    }
+    if (!user.emailVerified || !_customerAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(!user.emailVerified
+              ? 'Verify your email before following dishes.'
+              : 'Only customer accounts can follow dishes.')));
+      return;
+    }
+    if (_savingDishes.contains(item.itemId) ||
+        _dishFollowLoading ||
+        _dishFollowError) {
+      return;
+    }
+    final following = _followedDishIds.contains(item.itemId);
+    setState(() => _savingDishes.add(item.itemId));
+    try {
+      if (following) {
+        await _dishFollows.unfollow(user.uid, _vendor.vendorId, item.itemId);
+      } else {
+        await _dishFollows.follow(user.uid, _vendor.vendorId, item.itemId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(following
+                ? 'Dish unfollowed.'
+                : 'Following ${item.name}. We’ll alert you when it is restocked.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not update dish following. Please retry.')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _savingDishes.remove(item.itemId));
+      }
+    }
+  }
+
+  Future<void> _toggleFollow(String customerId) async {
+    if (_isFollowSaving) {
+      return;
+    }
+    _isFollowSaving = true;
+    final wasFollowing = _isFollowing;
+    // Flip immediately -- don't wait for Firestore to confirm. If the
+    // write fails for some reason, it gets reverted in the catch below.
+    setState(() => _isFollowing = !wasFollowing);
+
+    try {
+      if (wasFollowing) {
+        await _followService.unfollowVendor(customerId, _vendor.vendorId);
+      } else {
+        await _followService.followVendor(customerId, _vendor.vendorId);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isFollowing = wasFollowing);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not update following. Please retry.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFollowSaving = false);
+      }
+    }
+  }
+
+  Future<void> _openNavigation() async {
+    final coordinates = '${_vendor.latitude},${_vendor.longitude}';
+    final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    final googleMapsUri = isApplePlatform
+        ? Uri.parse(
+            'comgooglemaps://?daddr=$coordinates&directionsmode=driving')
+        : Uri.parse('google.navigation:q=$coordinates&mode=d');
+    final wazeUri = Uri.parse('waze://?ll=$coordinates&navigate=yes');
+    final browserUri = Uri.https(
+      'www.google.com',
+      '/maps/dir/',
+      {'api': '1', 'destination': coordinates},
+    );
+    var googleMapsAvailable = false;
+    var wazeAvailable = false;
+    if (!kIsWeb) {
+      try {
+        googleMapsAvailable = await canLaunchUrl(googleMapsUri);
+        wazeAvailable = await canLaunchUrl(wazeUri);
+      } catch (_) {
+        // The browser fallback remains available when app detection fails.
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+
+    Future<void> launchNavigation(Uri uri) async {
+      Navigator.pop(context);
+      var launched = false;
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        launched = false;
+      }
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open that navigation app.')));
+      }
+    }
+
+    await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ListTile(
+                  title: const Text('Choose navigation app'),
+                  subtitle: Text(_vendor.stallName.isEmpty
+                      ? 'Stall location'
+                      : _vendor.stallName)),
+              if (googleMapsAvailable)
+                ListTile(
+                    leading: const Icon(Icons.map_outlined),
+                    title: const Text('Google Maps'),
+                    onTap: () => launchNavigation(googleMapsUri)),
+              if (wazeAvailable)
+                ListTile(
+                    leading: const Icon(Icons.navigation_outlined),
+                    title: const Text('Waze'),
+                    onTap: () => launchNavigation(wazeUri)),
+              ListTile(
+                  leading: const Icon(Icons.open_in_browser),
+                  title: const Text('Google Maps in browser'),
+                  onTap: () => launchNavigation(browserUri)),
+              if (!googleMapsAvailable && !wazeAvailable)
+                const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                        'Google Maps and Waze were not detected. Browser directions are still available.',
+                        style: TextStyle(color: Colors.grey))),
+            ])));
+  }
+
+  void _showLoginRequiredDialog(BuildContext context,
+      {String action = 'Following vendors'}) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create an Account'),
+        content: Text(
+          '$action requires an account. Log in or register to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+            child: const Text('Log In'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'available':
+        return const Color(0xFF15803D);
+      case 'low_stock':
+        return const Color(0xFF92400E);
+      case 'out_of_stock':
+        return const Color(0xFFB42318);
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'available':
+        return 'Available';
+      case 'low_stock':
+        return 'Low Stock';
+      case 'out_of_stock':
+        return 'Sold out';
+      default:
+        return status;
+    }
+  }
+
+  Future<void> _editReview(StallReview? existing) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      _showLoginRequiredDialog(context, action: 'Writing reviews');
+      return;
+    }
+    final profile = await AuthService().getUserData(user.uid);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => _ReviewEditor(
+            vendorId: _vendor.vendorId,
+            customerId: user.uid,
+            customerName: profile?.fullName ?? user.displayName ?? 'Customer',
+            existing: existing));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final customerId = currentUser?.uid;
+    final isGuest = currentUser?.isAnonymous ?? true;
+    final isTablet = MediaQuery.sizeOf(context).width >= 700;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppPageAppBar(
+        title: Text(widget.previewOnly ? 'Stall preview' : 'Stall details'),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        actions: [
+          if (!widget.draftPreview)
+            IconButton(
+              icon: _isRefreshing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh stall status',
+              onPressed: _isRefreshing ? null : _refreshVendor,
+            ),
+          if (!widget.previewOnly && customerId != null)
+            isGuest
+                ? IconButton(
+                    icon: const Icon(Icons.favorite_border),
+                    tooltip: 'Follow',
+                    onPressed: () => _showLoginRequiredDialog(context),
+                  )
+                : IconButton(
+                    icon: Icon(
+                      _isFollowing ? Icons.favorite : Icons.favorite_border,
+                      color: _isFollowing ? Colors.red : null,
+                    ),
+                    tooltip: _isFollowing ? 'Unfollow' : 'Follow',
+                    onPressed: _isFollowSaving || _vendorDeleted
+                        ? null
+                        : () => _toggleFollow(customerId),
+                  ),
+        ],
+      ),
+      // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
+      bottomNavigationBar: isTablet || widget.previewOnly
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.all(16),
+              child: _buildActionButtons(isGuest: isGuest),
+            ),
+      body: isTablet
+          ? _buildTabletLayout(context, isGuest: isGuest)
+          : _buildMobileLayout(context),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Responsive Layouts (Mobile vs Tablet)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        ..._buildStallInfoWidgets(isTablet: false),
+        const SizedBox(height: 26),
+        ..._buildMenuAndReviewWidgets(),
+      ],
+    );
+  }
+
+  Widget _buildTabletLayout(BuildContext context, {required bool isGuest}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Column: Stall Identity & Info & Actions
+        SizedBox(
+          width: 380,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 20, 24),
+            children: [
+              ..._buildStallInfoWidgets(isTablet: true),
+              const SizedBox(height: 20),
+              if (!widget.previewOnly) _buildActionButtons(isGuest: isGuest),
+            ],
+          ),
+        ),
+        const VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: Color(0xFFE9ECF0),
+        ),
+        // Right Column: Menu & Reviews
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            children: _buildMenuAndReviewWidgets(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Component Blocks
+  // ---------------------------------------------------------------------------
+
+  Widget _buildStallPhoto({double height = 210}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: widget.draftPhoto != null
+            ? Image.file(widget.draftPhoto!, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _photoPlaceholder())
+            : _vendor.imageUrl.isNotEmpty
+            ? Image.network(
+                _vendor.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _photoPlaceholder(),
+              )
+            : _photoPlaceholder(),
+      ),
+    );
+  }
+
+  List<Widget> _buildStallInfoWidgets({required bool isTablet}) {
+    return [
+      if (widget.draftPreview)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Text('Preview of your changes. Save changes to publish.',
+              style: TextStyle(color: AppColors.primary, fontSize: 13)),
+        ),
+      if (_vendorDeleted || _vendorError != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            _vendorDeleted
+                ? 'This stall is no longer available.'
+                : _vendorError!,
+            style: const TextStyle(color: Colors.red),
+          ),
+        ),
+      _buildStallPhoto(height: isTablet ? 220 : 200),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _badge(
+            _vendor.isOpenNow ? 'Open now' : 'Closed',
+            _vendor.isOpenNow
+                ? const Color(0xFF15803D)
+                : const Color(0xFFB42318),
+            Icons.circle,
+          ),
+          if (_vendor.categoryLabel.isNotEmpty)
+            _badge(_vendor.categoryLabel, const Color(0xFF64748B),
+                Icons.restaurant_outlined),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Text(
+        _vendor.stallName.isEmpty ? 'Unnamed stall' : _vendor.stallName,
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
+          height: 1.2,
+          color: Color(0xFF17202D),
+        ),
+      ),
+      if (_vendor.description.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text(
+          _vendor.description,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: Color(0xFF64748B),
+          ),
+        ),
+      ],
+      const SizedBox(height: 18),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+        ),
+        child: Column(
+          children: [
+            _info(
+              Icons.schedule_rounded,
+              'Opening hours',
+              _vendor.hoursToday.isEmpty
+                  ? 'Not provided by this vendor'
+                  : _vendor.hoursToday,
+            ),
+            if (_vendor.isTemporarilyClosed) ...[
+              const Divider(height: 24, indent: 36),
+              _info(
+                Icons.event_busy_outlined,
+                'Temporary closure',
+                'This stall is temporarily closed.',
+              ),
+            ],
+            if (_vendor.phoneNumber.isNotEmpty) ...[
+              const Divider(height: 24, indent: 36),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading:
+                    const Icon(Icons.call_outlined, color: Color(0xFF64748B)),
+                title: const Text('Vendor phone'),
+                subtitle: Text(_vendor.phoneNumber),
+                trailing: const Icon(Icons.call),
+                onTap: () =>
+                    launchUrl(Uri(scheme: 'tel', path: _vendor.phoneNumber)),
+              ),
+            ],
+            const Divider(height: 24, indent: 36),
+            _info(
+              Icons.location_on_outlined,
+              _vendor.hasFreshLocation
+                  ? 'Location updated recently'
+                  : 'Last known location',
+              _vendor.hasFreshLocation
+                  ? 'The vendor is sharing their location.'
+                  : 'This location may be outdated. Check before travelling.',
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildActionButtons({required bool isGuest}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!_vendorDeleted &&
+            _vendor.selfCollectEnabled &&
+            _vendor.isOpenNow &&
+            _vendor.hasValidLocation) ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: isGuest
+                  ? () => _showLoginRequiredDialog(context,
+                      action: 'self-collect bookings')
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              DemoOrderCartScreen(vendor: _vendor))),
+              icon: const Icon(Icons.shopping_bag_outlined),
+              label:
+                  Text(isGuest ? 'Sign in to book' : 'Book for self-collect'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: !_vendorDeleted && _vendor.hasValidLocation
+                ? _openNavigation
+                : null,
+            icon: const Icon(Icons.directions),
+            label: const Text('Get directions'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildMenuAndReviewWidgets() {
+    return [
+      const Text(
+        'On the menu',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF17202D),
+        ),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'Availability is updated by the vendor',
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'Follow a dish to hear when it is back in stock.',
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
+      if (_dishFollowError)
+        Row(children: [
+          const Expanded(child: Text('Could not load dish following.')),
+          TextButton(
+            onPressed: _listenDishFollows,
+            child: const Text('Retry'),
+          ),
+        ]),
+      if (_focusedDishId != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            const Expanded(child: Text('Showing the selected dish')),
+            TextButton(
+              onPressed: () => setState(() => _focusedDishId = null),
+              child: const Text('Show all dishes'),
+            ),
+          ]),
+        ),
+      const SizedBox(height: 14),
+      TextField(
+        key: const ValueKey('stall-menu-search'),
+        controller: _dishSearch,
+        onChanged: (value) => setState(() {
+          _focusedDishId = null;
+          _dishQuery = value.trim().toLowerCase();
+        }),
+        decoration: InputDecoration(
+          hintText: 'Search dishes',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _dishQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear dish search',
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    _dishSearch.clear();
+                    setState(() => _dishQuery = '');
+                  },
+                ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 14),
+      StreamBuilder<List<MenuItemModel>>(
+        // Preserve the live snapshot when selected-dish or error rows change.
+        key: const ValueKey('stall-menu-stream'),
+        stream: _menuStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(children: [
+                const Text('Could not load the menu.'),
+                TextButton(
+                  onPressed: () => setState(() => _menuStream =
+                      _menuService.getMenuItems(_vendor.vendorId)),
+                  child: const Text('Retry'),
+                ),
+              ]),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final items = snapshot.data ?? [];
+          if (items.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('The vendor has not added a menu yet.'),
+            );
+          }
+          final filtered = items
+              .where((item) =>
+                  (_focusedDishId == null || item.itemId == _focusedDishId) &&
+                  item.name.toLowerCase().contains(_dishQuery))
+              .toList();
+          if (filtered.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(_focusedDishId != null
+                  ? 'This dish is no longer on the menu.'
+                  : 'No dishes match your search.'),
+            );
+          }
+          final sections = <String, List<MenuItemModel>>{};
+          if (_focusedDishId != null && !_revealedSelectedDish) {
+            _revealedSelectedDish = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final target = _selectedDishKey.currentContext;
+              if (mounted && target != null) {
+                Scrollable.ensureVisible(target,
+                    duration: const Duration(milliseconds: 300), alignment: .1);
+              }
+            });
+          }
+          for (final item in filtered) {
+            sections.putIfAbsent(item.section, () => []).add(item);
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final entry in sections.entries) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                        color: AppColors.mint,
+                        borderRadius: BorderRadius.circular(16)),
+                    child: Row(children: [
+                      Expanded(
+                          child: Text(entry.key,
+                              style: const TextStyle(
+                                  fontSize: 17, fontWeight: FontWeight.w700))),
+                      Text('${entry.value.length}',
+                          style: const TextStyle(color: AppColors.primary)),
+                    ]),
+                  ),
+                ),
+                ...entry.value.map((item) => KeyedSubtree(
+                    key:
+                        item.itemId == _focusedDishId ? _selectedDishKey : null,
+                    child: _menuCard(item))),
+              ],
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 24),
+      StreamBuilder<List<StallReview>>(
+        key: const ValueKey('stall-reviews-stream'),
+        stream: _reviewStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text('Could not load reviews.');
+          }
+          final reviews = snapshot.data ?? [];
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          StallReview? mine;
+          for (final review in reviews) {
+            if (review.customerId == uid) {
+              mine = review;
+              break;
+            }
+          }
+          final average = reviews.isEmpty
+              ? 0.0
+              : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
+                  reviews.length;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    'Reviews (${reviews.length})',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (reviews.isNotEmpty)
+                  Text(
+                    '${average.toStringAsFixed(1)} ★',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+              if (!widget.previewOnly)
+                OutlinedButton.icon(
+                  onPressed: () => _editReview(mine),
+                  icon: const Icon(Icons.rate_review_outlined),
+                  label: Text(
+                      mine == null ? 'Write a review' : 'Edit your review'),
+                ),
+              if (reviews.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No reviews yet.'),
+                ),
+              for (final review in reviews) _reviewCard(review),
+            ],
+          );
+        },
+      ),
+    ];
+  }
+
+  Widget _photoPlaceholder() => Container(
+      color: AppColors.mint,
+      alignment: Alignment.center,
+      child: const Icon(Icons.storefront_rounded,
+          size: 60, color: AppColors.primary));
+
+  Widget _badge(String text, Color color, IconData icon) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+            color: color.withValues(alpha: .08),
+            borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+              child: Text(text,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color))),
+        ]),
+      );
+
+  Widget _info(IconData icon, String title, String detail) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFF64748B), size: 21),
+        const SizedBox(width: 14),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF17202D))),
+          const SizedBox(height: 4),
+          Text(detail,
+              style: const TextStyle(
+                  fontSize: 12, height: 1.4, color: Color(0xFF64748B))),
+        ])),
+      ]);
+
+  Widget _menuCard(MenuItemModel item) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(26)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                  width: 68,
+                  height: 68,
+                  child: item.imageUrl.isEmpty
+                      ? _photoPlaceholder()
+                      : Image.network(item.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _photoPlaceholder()))),
+          const SizedBox(width: 14),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(item.name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF17202D))),
+                const SizedBox(height: 4),
+                Text('RM ${item.price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary)),
+                const SizedBox(height: 8),
+                if (item.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(item.description,
+                      style: const TextStyle(color: AppColors.textMuted)),
+                ],
+                if (item.portionSize.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text('Portion: ${item.portionSize}'),
+                ],
+                if (item.ingredients.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text('Ingredients: ${item.ingredients.join(', ')}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ],
+                const SizedBox(height: 8),
+                _badge(_statusLabel(item.status), _statusColor(item.status),
+                    Icons.circle),
+                if (item.statusUpdatedAt != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                      'Stock updated ${_formatStockTime(item.statusUpdatedAt!)}',
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF64748B))),
+                ],
+                const SizedBox(height: 6),
+                if (!widget.previewOnly)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        alignment: Alignment.centerLeft),
+                    onPressed: _vendorDeleted ||
+                            _savingDishes.contains(item.itemId) ||
+                            _dishFollowLoading ||
+                            _dishFollowError
+                        ? null
+                        : () => _toggleDishFollow(item),
+                    icon: _savingDishes.contains(item.itemId)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(
+                            _followedDishIds.contains(item.itemId)
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_none_outlined,
+                            size: 18),
+                    label: Text(_followedDishIds.contains(item.itemId)
+                        ? 'Following dish'
+                        : 'Follow dish'),
+                  ),
+              ])),
+        ]),
+      );
+
+  String _formatStockTime(DateTime value) {
+    final my = value.toUtc().add(const Duration(hours: 8));
+    final hour = my.hour % 12 == 0 ? 12 : my.hour % 12;
+    final minute = my.minute.toString().padLeft(2, '0');
+    return '${my.day}/${my.month}/${my.year} $hour:$minute ${my.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  Future<void> _deleteReview(StallReview review) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null ||
+        user.isAnonymous ||
+        user.uid != review.customerId ||
+        !_customerAccount ||
+        widget.previewOnly) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your review?'),
+        content: const Text(
+          'Your rating, review, photos, and any stall owner reply will be removed from this stall.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete review'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _reviews.deleteReview(_vendor.vendorId, review.customerId);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Review deleted.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not delete your review. Please retry.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _reviewCard(StallReview review) {
+    final canEdit = !widget.previewOnly &&
+        _customerAccount &&
+        FirebaseAuth.instance.currentUser?.uid == review.customerId;
+    return StallReviewCard(
+      review: review,
+      stallName: _vendor.stallName,
+      onEditReview: canEdit ? () => _editReview(review) : null,
+      onDeleteReview: canEdit ? () => _deleteReview(review) : null,
     );
   }
 }
 
-class _AccountRecovery extends StatelessWidget {
-  const _AccountRecovery({required this.message, this.retry});
-  final String message;
-  final VoidCallback? retry;
+class _ReviewEditor extends StatefulWidget {
+  const _ReviewEditor(
+      {required this.vendorId,
+      required this.customerId,
+      required this.customerName,
+      required this.existing});
+  final String vendorId;
+  final String customerId;
+  final String customerName;
+  final StallReview? existing;
   @override
-  Widget build(BuildContext context) => Scaffold(
-          body: Center(
-              child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.cloud_off_outlined, size: 40),
-          const SizedBox(height: 16),
-          Text(message, textAlign: TextAlign.center),
-          if (retry != null)
-            TextButton(onPressed: retry, child: const Text('Retry')),
-          TextButton(
-              onPressed: () async {
-                try {
-                  await AuthService().signOut();
-                } catch (_) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Could not sign out. Please retry.')));
-                  }
-                }
-              },
-              child: const Text('Sign out')),
-        ]),
-      )));
+  State<_ReviewEditor> createState() => _ReviewEditorState();
+}
+
+class _ReviewEditorState extends State<_ReviewEditor> {
+  final _storage = StorageService();
+  final _service = StallReviewService();
+  final _text = TextEditingController();
+  final _photos = <File>[];
+  final _existingUrls = <String>[];
+  int _rating = 0;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rating = widget.existing?.rating ?? 0;
+    _text.text = widget.existing?.text ?? '';
+    _existingUrls.addAll(widget.existing?.photoUrls ?? []);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addPhotos() async {
+    final remaining = 5 - _existingUrls.length - _photos.length;
+    if (remaining <= 0) {
+      return;
+    }
+    final picked = await _storage.pickReviewImages(remaining);
+    if (mounted) setState(() => _photos.addAll(picked));
+  }
+
+  Future<void> _save() async {
+    if (_rating == 0) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Choose a star rating.')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final urls = [..._existingUrls];
+      for (var i = 0; i < _photos.length; i++) {
+        urls.add(await _storage.uploadReviewImage(
+            widget.vendorId,
+            widget.customerId,
+            '${DateTime.now().microsecondsSinceEpoch}_$i',
+            _photos[i]));
+      }
+      await _service.saveReview(widget.vendorId, widget.customerId,
+          widget.customerName, _rating, _text.text, urls,
+          customerAvatarUrl: FirebaseAuth.instance.currentUser?.photoURL ?? '');
+      final removed = (widget.existing?.photoUrls ?? <String>[])
+          .where((url) => !urls.contains(url));
+      for (final url in removed) {
+        try {
+          await _storage.deleteReviewImageUrl(
+              widget.vendorId, widget.customerId, url);
+        } catch (_) {
+          // The review was saved; account deletion also cleans up old photos.
+        }
+      }
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not save your review. Please retry.')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: SingleChildScrollView(
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+            Text(
+                widget.existing == null
+                    ? 'Review this stall'
+                    : 'Edit your review',
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Row(children: [
+              for (var star = 1; star <= 5; star++)
+                IconButton(
+                    tooltip: '$star stars',
+                    onPressed:
+                        _saving ? null : () => setState(() => _rating = star),
+                    icon: Icon(star <= _rating ? Icons.star : Icons.star_border,
+                        color: Colors.amber))
+            ]),
+            TextField(
+                controller: _text,
+                maxLength: 1000,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                    labelText: 'Your experience (optional)',
+                    border: OutlineInputBorder())),
+            Text('Photos (${_existingUrls.length + _photos.length}/5)'),
+            Wrap(spacing: 8, children: [
+              for (var i = 0; i < _existingUrls.length; i++)
+                InputChip(
+                    label: Text('Photo ${i + 1}'),
+                    onDeleted: _saving
+                        ? null
+                        : () => setState(() => _existingUrls.removeAt(i))),
+              for (var i = 0; i < _photos.length; i++)
+                InputChip(
+                    label: Text('New photo ${i + 1}'),
+                    onDeleted: _saving
+                        ? null
+                        : () => setState(() => _photos.removeAt(i))),
+            ]),
+            TextButton.icon(
+                onPressed: _saving ? null : _addPhotos,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: const Text('Add photos')),
+            const SizedBox(height: 12),
+            FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Saving…' : 'Save review')),
+          ])));
 }
 ````
 
 ## File: lib/features/customer/home/customer_home_screen.dart
 ````dart
+import '../../../core/widgets/app_sheet_header.dart';
+import '../../../core/widgets/app_page_app_bar.dart';
+import 'discovery_options.dart';
+import '../../../core/services/stall_review_service.dart';
+import '../../../core/services/saved_search_service.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/demo_order_service.dart';
 import '../notifications/customer_notifications_screen.dart';
@@ -16327,7 +23374,13 @@ import '../../../core/models/dish_search_entry.dart';
 import 'open_at_picker.dart';
 import 'discovery_search_filters.dart';
 import 'price_range_picker.dart';
-import 'map_marker_focus.dart';
+import 'discovery_map_widgets.dart';
+import 'stall_map_marker.dart';
+import 'stall_preview_sheet.dart';
+import '../../../core/services/follow_service.dart';
+import '../orders/demo_order_cart_screen.dart';
+import '../../auth/screens/login_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/dish_search_service.dart';
@@ -16340,7 +23393,6 @@ import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/saved_locations_sheet.dart';
 import '../../shared/pin_location_screen.dart';
-import '../../../core/widgets/app_dropdown.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -16378,6 +23430,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Timer? _cameraMoveGuard;
   bool _cameraMovedByUser = false;
   int _boundsRequest = 0;
+  DiscoverySort _sort = DiscoverySort.distance;
+  bool _listOnly = false;
+  bool _availableOnly = false;
+  bool _selfCollectOnly = false;
+  bool _recentOnly = false;
+  final _reviewService = StallReviewService();
+  final _savedSearches = SavedSearchService();
+  final _ratings = <String, StallRatingSummary>{};
+  final _ratingErrors = <String>{};
+  final _ratingSubscriptions = <String, StreamSubscription<dynamic>>{};
+  static const _clusterId = ClusterManagerId('nearby-stalls');
   OpeningTimeFilter? _openingTime;
   MenuPriceRange? _priceRange;
 
@@ -16415,7 +23478,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _locationPermissionGranted = false;
   String? _locationError;
   String? _category;
-  String _statusFilter = 'Open';
+  String _statusFilter = 'All';
   Timer? _freshnessTimer;
   late Stream<List<VendorModel>> _vendors;
   StreamSubscription<List<DishSearchEntry>>? _dishSubscription;
@@ -16423,10 +23486,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<String> _recentSearches = const [];
   bool _dishesLoading = true;
   String? _dishSearchError;
-  final ScrollController _stallScrollController = ScrollController();
-  List<VendorModel> _visibleVendors = [];
-  List<VendorModel> _markerVendors = [];
-  double _cardExtent = 288;
+  final _markerCache = StallMapMarkerCache();
+  final _markerIcons = <(String, bool), BitmapDescriptor>{};
+  final _followService = FollowService();
+  final _previewExtent = ValueNotifier<double>(.55);
+  String? _previewVendorId;
+  String? _selectedDishId;
+  CameraPosition? _previewCamera;
+  Stream<bool>? _previewFollowStream;
+  bool _followingBusy = false;
+  bool _searchBoundsActive = false;
   int _cameraRequest = 0;
 
   static const CameraPosition _defaultPosition = CameraPosition(
@@ -16438,7 +23507,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _vendors = _vendorService.getAllVendors();
+    _vendors = _watchVendors();
+    unawaited(_loadMapMarkerIcons());
     _searchFocus.addListener(_onSearchFocusChanged);
     _dishSubscription = _dishSearchService.watchAllDishes().listen(
       (dishes) {
@@ -16482,9 +23552,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ..removeListener(_onSearchFocusChanged)
       ..dispose();
     _dishSubscription?.cancel();
+    for (final subscription in _ratingSubscriptions.values) {
+      subscription.cancel();
+    }
     _mapController?.dispose();
     _mapBearing.dispose();
-    _stallScrollController.dispose();
+    _previewExtent.dispose();
     _freshnessTimer?.cancel();
     _cameraMoveGuard?.cancel();
     super.dispose();
@@ -16628,6 +23701,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _customerPosition = selection.coordinates;
       _searchCenter = selection.coordinates;
       _visibleBounds = null;
+      _searchBoundsActive = false;
+      _previewVendorId = null;
+      _selectedDishId = null;
       _showSearchArea = false;
       _customerLocationLabel = selection.label;
       _locationPermissionGranted = !isManual;
@@ -16736,9 +23812,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _setSearchRadius(double radius) {
-    setState(() => _searchRadiusKm = radius);
+    setState(() {
+      _searchRadiusKm = radius;
+      _visibleBounds = null;
+      _searchBoundsActive = false;
+      _showSearchArea = false;
+    });
     final center = _searchCenter ?? _customerPosition;
-    _visibleBounds = null;
     if (center != null) {
       if (_mapController != null) _expectProgrammaticCameraMove();
       final zoom = switch (radius) {
@@ -16852,7 +23932,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() {
       _selectedVendorId = vendor.vendorId;
     });
-    _revealSelectedCard();
     final controller = _mapController;
     if (controller == null) {
       return;
@@ -16879,84 +23958,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  void _revealSelectedCard() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_stallScrollController.hasClients) {
-        return;
-      }
-      final index =
-          _visibleVendors.indexWhere((v) => v.vendorId == _selectedVendorId);
-      if (index < 0) {
-        return;
-      }
-      final offset = (index * _cardExtent)
-          .clamp(
-            0.0,
-            _stallScrollController.position.maxScrollExtent,
-          )
-          .toDouble();
-      _stallScrollController.animateTo(offset,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic);
-    });
-  }
-
-  // NEW: Update the visible bounds whenever the map stops moving
+  // Camera movement never rewrites the searched area or carousel membership.
+  // Only Search here commits new bounds; this keeps the next card reachable.
   void _updateVisibleBounds() async {
     final controller = _mapController;
-    if (controller == null) {
-      return;
-    }
+    if (controller == null) return;
     final request = ++_boundsRequest;
     final movedByUser = _cameraMovedByUser && !_programmaticCameraMove;
     _cameraMovedByUser = false;
-    final center = _lastCameraPosition?.target ?? _mapCenter;
     try {
       final bounds = await controller.getVisibleRegion();
-      if (mounted && request == _boundsRequest) {
-        final focused = movedByUser && center != null
-            ? stallNearMapCenter(
-                center: center,
-                bounds: bounds,
-                vendors: _markerVendors,
-              )
-            : null;
-        setState(() {
-          _pendingBounds = bounds;
-          if (movedByUser && focused != null) {
-            _visibleBounds = bounds;
-            _searchCenter = center;
-            _showSearchArea = false;
-            _selectedVendorId = focused.vendorId;
-          } else if (_programmaticCameraMove && _selectedVendorId != null) {
-            _visibleBounds = bounds;
-            _showSearchArea = false;
-          } else if (_visibleBounds == null) {
-            _visibleBounds = bounds;
-            _showSearchArea = false;
-          } else if (!_programmaticCameraMove) {
-            final previous = _visibleBounds!;
-            _showSearchArea =
-                (previous.southwest.latitude - bounds.southwest.latitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.southwest.longitude - bounds.southwest.longitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.northeast.latitude - bounds.northeast.latitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.northeast.longitude - bounds.northeast.longitude)
-                            .abs() >
-                        0.0001;
-          }
-          _programmaticCameraMove = false;
-          _cameraMoveGuard?.cancel();
-        });
-        _revealSelectedCard();
-      }
+      if (!mounted || request != _boundsRequest) return;
+      setState(() {
+        _pendingBounds = bounds;
+        _visibleBounds ??= bounds;
+        if (movedByUser) {
+          final previous = _visibleBounds!;
+          _showSearchArea =
+              (previous.southwest.latitude - bounds.southwest.latitude).abs() >
+                      .0001 ||
+                  (previous.southwest.longitude - bounds.southwest.longitude)
+                          .abs() >
+                      .0001 ||
+                  (previous.northeast.latitude - bounds.northeast.latitude)
+                          .abs() >
+                      .0001 ||
+                  (previous.northeast.longitude - bounds.northeast.longitude)
+                          .abs() >
+                      .0001;
+        }
+        _programmaticCameraMove = false;
+        _cameraMoveGuard?.cancel();
+      });
     } catch (_) {
-      // Controller may have been disposed during navigation.
       _programmaticCameraMove = false;
       _cameraMoveGuard?.cancel();
     }
@@ -16966,11 +24000,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_pendingBounds == null || _mapCenter == null) return;
     setState(() {
       _visibleBounds = _pendingBounds;
+      _searchBoundsActive = true;
+      _selectedDishId = null;
       _searchCenter = _mapCenter;
       _showSearchArea = false;
       _selectedVendorId = null;
     });
-    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
   }
 
   Future<void> _resetCompass() async {
@@ -17018,7 +24053,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _priceRange = result.isActive ? result : null;
       _selectedVendorId = null;
     });
-    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
+  }
+
+  void _clearDiscoveryFilters() {
+    _searchFocus.unfocus();
+    setState(() {
+      _searchController.clear();
+      _searchQuery = '';
+      _category = null;
+      _priceRange = null;
+      _openingTime = null;
+      _statusFilter = 'All';
+      _sort = DiscoverySort.distance;
+      _availableOnly = false;
+      _selfCollectOnly = false;
+      _recentOnly = false;
+      _selectedVendorId = null;
+    });
   }
 
   bool _matchesOpening(VendorModel vendor) {
@@ -17055,7 +24106,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           _selectedIndex == 3 ? ProfilePage.background : AppColors.background,
       appBar: _selectedIndex == 0 || _selectedIndex == 3
           ? null
-          : AppBar(
+          : AppPageAppBar(
               title: Text(
                 _tabTitles[_selectedIndex],
                 overflow: TextOverflow.ellipsis,
@@ -17128,10 +24179,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               borderRadius: BorderRadius.circular(25),
               onTap: _chooseLocationSource,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 7, 12, 7),
+                padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
                 child: Row(children: [
                   const CircleAvatar(
-                    radius: 22,
+                    radius: 20,
                     backgroundColor: AppColors.mint,
                     child:
                         Icon(Icons.person_rounded, color: AppColors.textDark),
@@ -17261,34 +24312,402 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       );
 
+  Stream<List<VendorModel>> _watchVendors() =>
+      _vendorService.getAllVendors().map((vendors) {
+        final ids = vendors.map((vendor) => vendor.vendorId).toSet();
+        for (final id in _ratingSubscriptions.keys.toList()) {
+          if (!ids.contains(id)) {
+            _ratingSubscriptions.remove(id)?.cancel();
+            _ratings.remove(id);
+            _ratingErrors.remove(id);
+          }
+        }
+        for (final id in ids) {
+          _ratingSubscriptions.putIfAbsent(
+              id,
+              () => _reviewService.watchReviews(id).listen((reviews) {
+                    if (!mounted) return;
+                    setState(() {
+                      _ratingErrors.remove(id);
+                      _ratings[id] = StallRatingSummary(
+                          reviews.isEmpty
+                              ? 0
+                              : reviews.fold<int>(
+                                      0, (sum, review) => sum + review.rating) /
+                                  reviews.length,
+                          reviews.length);
+                    });
+                  }, onError: (Object _) {
+                    if (mounted) setState(() => _ratingErrors.add(id));
+                  }));
+        }
+        return vendors;
+      });
+
+  Widget _ratingLine(VendorModel vendor) {
+    final summary = _ratings[vendor.vendorId];
+    final text = _ratingErrors.contains(vendor.vendorId)
+        ? 'Rating unavailable'
+        : summary == null
+            ? 'Loading rating…'
+            : summary.count == 0
+                ? 'No reviews yet'
+                : '${summary.average.toStringAsFixed(1)} (${summary.count} ${summary.count == 1 ? 'review' : 'reviews'})';
+    return Row(children: [
+      const Icon(Icons.star_rounded, size: 15, color: Color(0xFF946000)),
+      const SizedBox(width: 4),
+      Expanded(
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textMuted))),
+    ]);
+  }
+
+  Future<void> _zoomToCluster(Cluster cluster) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    try {
+      if (cluster.bounds.southwest == cluster.bounds.northeast) {
+        final zoom = await controller.getZoomLevel();
+        await controller.animateCamera(CameraUpdate.newLatLngZoom(
+            cluster.position, (zoom + 2).clamp(0, 21).toDouble()));
+      } else {
+        await controller
+            .animateCamera(CameraUpdate.newLatLngBounds(cluster.bounds, 60));
+      }
+    } catch (_) {
+      // The map may have been closed while its camera was updating.
+    }
+  }
+
+  bool get _canSaveSearch =>
+      FirebaseAuth.instance.currentUser != null &&
+      FirebaseAuth.instance.currentUser!.isAnonymous == false &&
+      FirebaseAuth.instance.currentUser!.emailVerified;
+
+  Widget _buildDiscoveryList(
+      AsyncSnapshot<List<VendorModel>> snapshot,
+      List<VendorModel> vendors,
+      List<DishSearchEntry> dishes,
+      Map<String, VendorModel> vendorById,
+      List<DiscoverySuggestion> suggestions) {
+    final showDishes = _searchQuery.trim().isNotEmpty && dishes.isNotEmpty;
+    final count = showDishes ? dishes.length : vendors.length;
+    return Column(children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: _mapHeader()),
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocus,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() {
+                    _searchQuery = value;
+                    _selectedVendorId = null;
+                  }),
+              onSubmitted: _submitSearch,
+              decoration: InputDecoration(
+                  hintText: 'Search dishes or stalls…',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                                _selectedVendorId = null;
+                              }))))),
+      Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 0, 4),
+          child: _compactMapFilters()),
+      if (suggestions.isNotEmpty)
+        ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: _suggestionPanel(suggestions)),
+      Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(children: [
+            Expanded(
+                child: Text('$count ${showDishes ? 'dishes' : 'stalls'}',
+                    style: const TextStyle(fontWeight: FontWeight.w700))),
+            if ((_searchCenter ?? _customerPosition) == null)
+              const Flexible(
+                  child: Text('Set a location for distance sorting',
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted))),
+          ])),
+      Expanded(
+          child: snapshot.hasError
+              ? Center(
+                  child: TextButton(
+                      onPressed: () =>
+                          setState(() => _vendors = _watchVendors()),
+                      child: const Text('Retry loading stalls')))
+              : snapshot.connectionState == ConnectionState.waiting
+                  ? const Center(child: CircularProgressIndicator())
+                  : count == 0
+                      ? Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                  _dishesLoading
+                                      ? 'Loading dishes…'
+                                      : _dishSearchError ??
+                                          'No results match these filters. Try another search or a wider area.',
+                                  textAlign: TextAlign.center)))
+                      : ListView.separated(
+                          padding: EdgeInsets.fromLTRB(16, 4, 16,
+                              MediaQuery.paddingOf(context).bottom + 24),
+                          itemCount: count,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final scaled =
+                                MediaQuery.textScalerOf(context).scale(14) > 19;
+                            return SizedBox(
+                                height: scaled
+                                    ? 210
+                                    : showDishes
+                                        ? 144
+                                        : 136,
+                                child: showDishes
+                                    ? _dishCard(dishes[index],
+                                        vendorById[dishes[index].vendorId]!)
+                                    : _stallCard(vendors[index]));
+                          })),
+    ]);
+  }
+
+  Map<String, dynamic> _currentSearchFilters() {
+    final center = _searchCenter ?? _customerPosition;
+    return {
+      'query': _searchController.text.trim(),
+      'category': _category,
+      'minimum': _priceRange?.minimum,
+      'maximum': _priceRange?.maximum,
+      'radius': _searchRadiusKm,
+      'status': _statusFilter,
+      'sort': _sort.name,
+      'availableOnly': _availableOnly,
+      'selfCollectOnly': _selfCollectOnly,
+      'recentOnly': _recentOnly,
+      'listOnly': _listOnly,
+      'latitude': center?.latitude,
+      'longitude': center?.longitude,
+      'openingStart': _openingTime?.start.millisecondsSinceEpoch,
+      'openingEnd': _openingTime?.end?.millisecondsSinceEpoch,
+      'openingLabel': _openingTime?.label,
+    };
+  }
+
+  Future<void> _saveCurrentSearch() async {
+    if (!_canSaveSearch) return;
+    _searchFocus.unfocus();
+    final filters = _currentSearchFilters();
+    final query = _searchController.text.trim();
+    var name =
+        '${query.isEmpty ? 'Nearby stalls' : query}${_priceRange == null ? '' : ' · ${_priceRange!.label}'} · within ${_searchRadiusKm.toStringAsFixed(0)} km';
+    if (name.length > 80) name = name.substring(0, 80);
+    final chosen = await showDialog<String>(
+        context: context,
+        builder: (dialog) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+                    title: const Text('Save this search'),
+                    content: TextFormField(
+                        initialValue: name,
+                        maxLength: 80,
+                        decoration:
+                            const InputDecoration(labelText: 'Search name'),
+                        onChanged: (value) => update(() => name = value)),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialog),
+                          child: const Text('Cancel')),
+                      FilledButton(
+                          onPressed: name.trim().isEmpty
+                              ? null
+                              : () => Navigator.pop(dialog, name.trim()),
+                          child: const Text('Save')),
+                    ])));
+    if (chosen == null || !mounted || !_canSaveSearch) return;
+    try {
+      await _savedSearches.save(chosen, filters);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Search saved.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not save this search. Please retry.')));
+      }
+    }
+  }
+
+  Future<void> _showSavedSearches() async {
+    if (!_canSaveSearch) return;
+    _searchFocus.unfocus();
+    var future = _savedSearches.load();
+    final selected = await showModalBottomSheet<SavedDiscoverySearch>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (sheet) => StatefulBuilder(
+            builder: (context, update) => SizedBox(
+                height: MediaQuery.sizeOf(context).height * .65,
+                child: Column(children: [
+                  AppSheetHeader(
+                      title: const Text('Saved searches'),
+                      onBack: () => Navigator.pop(sheet)),
+                  Expanded(
+                      child: FutureBuilder<List<SavedDiscoverySearch>>(
+                          future: future,
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return Center(
+                                  child: TextButton(
+                                      onPressed: () => update(
+                                          () => future = _savedSearches.load()),
+                                      child: const Text(
+                                          'Retry loading saved searches')));
+                            }
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
+                            final searches = snapshot.data!;
+                            if (searches.isEmpty) {
+                              return const Center(
+                                  child: Text('No saved searches yet.'));
+                            }
+                            return ListView.builder(
+                                itemCount: searches.length,
+                                itemBuilder: (context, index) {
+                                  final search = searches[index];
+                                  return ListTile(
+                                      title: Text(search.name),
+                                      leading:
+                                          const Icon(Icons.bookmark_outline),
+                                      onTap: () => Navigator.pop(sheet, search),
+                                      trailing: IconButton(
+                                          tooltip: 'Delete saved search',
+                                          icon:
+                                              const Icon(Icons.delete_outline),
+                                          onPressed: () async {
+                                            try {
+                                              await _savedSearches
+                                                  .remove(search.id);
+                                              if (context.mounted) {
+                                                update(() => future =
+                                                    _savedSearches.load());
+                                              }
+                                            } catch (_) {
+                                              if (sheet.mounted) {
+                                                ScaffoldMessenger.of(sheet)
+                                                    .showSnackBar(const SnackBar(
+                                                        content: Text(
+                                                            'Could not delete this search.')));
+                                              }
+                                            }
+                                          }));
+                                });
+                          })),
+                ]))));
+    if (selected == null || !mounted || !_canSaveSearch) return;
+    final filters = selected.filters;
+    setState(() {
+      _searchQuery = filters['query'] as String;
+      _searchController.text = _searchQuery;
+      _searchController.selection =
+          TextSelection.collapsed(offset: _searchQuery.length);
+      _category = filters['category'] as String?;
+      final minimum = (filters['minimum'] as num?)?.toDouble();
+      final maximum = (filters['maximum'] as num?)?.toDouble();
+      _priceRange = minimum == null && maximum == null
+          ? null
+          : MenuPriceRange(minimum: minimum, maximum: maximum);
+      _searchRadiusKm = (filters['radius'] as num).toDouble();
+      _statusFilter = filters['status'] as String;
+      _sort = DiscoverySort.values.firstWhere(
+          (sort) => sort.name == filters['sort'],
+          orElse: () => DiscoverySort.distance);
+      _availableOnly = filters['availableOnly'] == true;
+      _selfCollectOnly = filters['selfCollectOnly'] == true;
+      _recentOnly = filters['recentOnly'] == true;
+      _listOnly = filters['listOnly'] == true;
+      _searchCenter = filters['latitude'] == null
+          ? null
+          : LatLng((filters['latitude'] as num).toDouble(),
+              (filters['longitude'] as num).toDouble());
+      _openingTime = filters['openingStart'] == null
+          ? null
+          : OpeningTimeFilter(
+              DateTime.fromMillisecondsSinceEpoch(
+                  filters['openingStart'] as int),
+              filters['openingLabel'] as String,
+              end: filters['openingEnd'] == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(
+                      filters['openingEnd'] as int));
+      _selectedVendorId = null;
+      _visibleBounds = null;
+      _searchBoundsActive = false;
+      if (_listOnly) _mapController = null;
+    });
+    if (!_listOnly && _searchCenter != null && _mapController != null) {
+      try {
+        await _mapController!
+            .animateCamera(CameraUpdate.newLatLngZoom(_searchCenter!, 14));
+      } catch (_) {/* The map may still be mounting. */}
+    }
+  }
+
   Widget _buildMapTab() {
     return StreamBuilder<List<VendorModel>>(
       stream: _vendors,
       builder: (context, snapshot) {
+        final eligibleDishes = _allDishes
+            .where((dish) => !_availableOnly || dishIsAvailable(dish))
+            .toList();
         final allVendors = (snapshot.data ?? [])
             .where((v) =>
                 v.hasValidLocation &&
-                (_category == null || v.category == _category))
+                (_category == null || v.hasCategory(_category!)))
             .toList();
 
         final query = normalizeDiscoveryQuery(_searchQuery);
         final dishesByVendor = <String, List<DishSearchEntry>>{};
-        for (final dish in _allDishes) {
+        for (final dish in eligibleDishes) {
           (dishesByVendor[dish.vendorId] ??= []).add(dish);
         }
-        final matchingDishVendorIds = query.isEmpty
-            ? const <String>{}
-            : _allDishes
-                .where((dish) =>
-                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
-                    (_priceRange == null || _priceRange!.contains(dish)))
-                .map((dish) => dish.vendorId)
-                .toSet();
+        final sortMenus = _sort == DiscoverySort.price && _priceRange != null
+            ? {
+                for (final entry in dishesByVendor.entries)
+                  entry.key: entry.value.where(_priceRange!.contains).toList()
+              }
+            : dishesByVendor;
+        final currentRatings = {
+          for (final entry in _ratings.entries)
+            if (!_ratingErrors.contains(entry.key)) entry.key: entry.value
+        };
         final matchingVendors = allVendors.where((vendor) {
-          final dishMatches = matchingDishVendorIds.contains(vendor.vendorId);
-          // A dish search must show every nearby seller, including closed
-          // stalls, so the customer can compare availability and status.
-          if (!dishMatches && !_matchesOpening(vendor)) return false;
+          final menu =
+              dishesByVendor[vendor.vendorId] ?? const <DishSearchEntry>[];
+          if (_availableOnly &&
+              (!vendor.isOpenNow || !menu.any(dishIsAvailable))) {
+            return false;
+          }
+          if (_selfCollectOnly && !vendor.selfCollectEnabled) return false;
+          if (_recentOnly && !stallUpdatedRecently(vendor, menu)) return false;
+          // All stalls are visible until the customer explicitly filters hours.
+          // Open now must also apply to stalls found through a dish search.
+          if (!_matchesOpening(vendor)) return false;
           return vendorMatchesQueryAndPrice(
             vendor: vendor,
             dishes: dishesByVendor[vendor.vendorId] ?? const [],
@@ -17305,35 +24724,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   position.longitude, vendor.latitude, vendor.longitude) <=
               _searchRadiusKm * 1000;
         }).toList();
-        _markerVendors = filteredVendors;
 
         final filteredVendorById = {
           for (final vendor in filteredVendors) vendor.vendorId: vendor,
         };
         final dishResults = query.isEmpty
             ? <DishSearchEntry>[]
-            : _allDishes
+            : eligibleDishes
                 .where((dish) =>
-                    normalizeDiscoveryQuery(dish.item.name).contains(query) &&
+                    discoveryMatches(query, dish.item.name) &&
                     (_priceRange == null || _priceRange!.contains(dish)) &&
                     filteredVendorById.containsKey(dish.vendorId))
                 .toList()
-          ..sort((a, b) {
-            final vendorA = filteredVendorById[a.vendorId]!;
-            final vendorB = filteredVendorById[b.vendorId]!;
-            final center = _searchCenter ?? _customerPosition;
-            if (center != null) {
-              final distanceA = Geolocator.distanceBetween(center.latitude,
-                  center.longitude, vendorA.latitude, vendorA.longitude);
-              final distanceB = Geolocator.distanceBetween(center.latitude,
-                  center.longitude, vendorB.latitude, vendorB.longitude);
-              final distanceOrder = distanceA.compareTo(distanceB);
-              if (distanceOrder != 0) return distanceOrder;
-            }
-            return a.item.name
-                .toLowerCase()
-                .compareTo(b.item.name.toLowerCase());
-          });
+          ..sort((a, b) => compareDiscoveryDishes(a, b,
+              sort: _sort,
+              vendors: filteredVendorById,
+              center: _searchCenter ?? _customerPosition,
+              ratings: currentRatings,
+              dishes: sortMenus,
+              query: query));
         final suggestionVendors = allVendors.where((vendor) {
           final center = _searchCenter ?? _customerPosition;
           return center == null ||
@@ -17344,20 +24753,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         final suggestions = buildDiscoverySuggestions(
           query: _searchController.text,
           vendors: suggestionVendors,
-          dishes: _allDishes,
+          dishes: eligibleDishes,
           categories: stallCategories,
           recentSearches: _recentSearches,
           priceRange: _priceRange,
         );
         final showSuggestions = _searchFocus.hasFocus && suggestions.isNotEmpty;
-        final showingDishResults = query.isNotEmpty &&
-            dishResults.isNotEmpty &&
-            _selectedVendorId == null;
+        final showingDishResults = query.isNotEmpty && dishResults.isNotEmpty;
 
-        // NEW: Filter to only vendors that are physically inside the current map view
+        // Freeze a committed search area while card swipes move the camera.
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
 
-        if (_visibleBounds != null) {
+        if (_searchBoundsActive && _visibleBounds != null) {
           final southWest = _visibleBounds!.southwest;
           final northEast = _visibleBounds!.northeast;
 
@@ -17369,43 +24776,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           }).toList();
         }
 
-        // Sort by distance for easier viewing
-        onScreenVendors.sort((a, b) {
-          final sortCenter = _searchCenter ?? _customerPosition;
-          if (sortCenter == null) {
-            return 0;
-          }
-          final distA = Geolocator.distanceBetween(
-            sortCenter.latitude,
-            sortCenter.longitude,
-            a.latitude,
-            a.longitude,
-          );
-          final distB = Geolocator.distanceBetween(
-            sortCenter.latitude,
-            sortCenter.longitude,
-            b.latitude,
-            b.longitude,
-          );
-          return distA.compareTo(distB);
-        });
+        onScreenVendors.sort((a, b) => compareDiscoveryVendors(a, b,
+            sort: _sort,
+            center: _searchCenter ?? _customerPosition,
+            ratings: currentRatings,
+            dishes: sortMenus,
+            query: query));
 
-        _visibleVendors = onScreenVendors;
+        if (!onScreenVendors
+            .any((vendor) => vendor.vendorId == _selectedVendorId)) {
+          _selectedVendorId = onScreenVendors.firstOrNull?.vendorId;
+        }
+        if (_previewVendorId != null &&
+            !onScreenVendors
+                .any((vendor) => vendor.vendorId == _previewVendorId)) {
+          _previewVendorId = null;
+          _previewCamera = null;
+        }
 
-        final markers = filteredVendors
+        final markers = onScreenVendors
+            .where((vendor) =>
+                _markerIcons.containsKey((_markerCategory(vendor), false)))
             .map(
               (v) => Marker(
                 markerId: MarkerId(v.vendorId),
+                clusterManagerId:
+                    v.vendorId == _selectedVendorId ? null : _clusterId,
                 position: LatLng(v.latitude, v.longitude),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
+                anchor: const Offset(.5, .5),
+                zIndexInt: v.vendorId == _selectedVendorId ? 2 : 1,
+                icon: _markerIcons[(
+                  _markerCategory(v),
                   v.vendorId == _selectedVendorId
-                      ? BitmapDescriptor.hueOrange
-                      : BitmapDescriptor.hueRed,
-                ),
+                )]!,
                 infoWindow: InfoWindow(
                   title: v.stallName,
-                  snippet: '${v.category} · ${_stallStatus(v)}',
-                  onTap: () => _openVendorDetails(v),
+                  snippet: '${v.categoryLabel} · ${_stallStatus(v)}',
+                  onTap: () => _openStallPreview(v),
                 ),
                 consumeTapEvents: true,
                 onTap: () => _selectVendor(v),
@@ -17427,600 +24834,672 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ));
         }
 
+        if (_listOnly) {
+          return _buildDiscoveryList(snapshot, onScreenVendors, dishResults,
+              filteredVendorById, showSuggestions ? suggestions : const []);
+        }
+
         return LayoutBuilder(builder: (context, constraints) {
-          final shortViewport = constraints.maxHeight < 400;
-
-          // With Scaffold.extendBody enabled, this includes the
-          // floating navigation bar and the device's bottom inset.
           final navClearance = MediaQuery.paddingOf(context).bottom + 12;
-
-          const headerHeight = 52.0;
-          final cardAreaHeight =
-              shortViewport ? 0.0 : (showingDishResults ? 144.0 : 112.0);
-          final panelHeight = headerHeight + cardAreaHeight + navClearance;
-
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final geometry = DiscoveryMapGeometry(constraints.biggest);
+          final overlayWidth = geometry.overlayWidth;
+          final headerHeight = math.max(54.0, 32 * textScale + 14);
+          final searchTop = 10 + headerHeight + 8;
+          final searchHeight = math.max(50.0, 16 * textScale + 28);
+          final filterTop = searchTop + searchHeight + 8;
+          final headerBottom =
+              filterTop + math.max(48.0, 14 * textScale + 26) + 10;
+          final panelWidth = geometry.panelWidth;
+          final desiredCardHeight = showingDishResults
+              ? 160.0 * textScale
+              : StallMapCard.preferredHeight(
+                  context, panelWidth, onScreenVendors,
+                  viewportFraction: geometry.viewportFraction,
+                  cardsPerPage: geometry.cardsPerPage);
+          final cardHeight = math.min(
+              desiredCardHeight,
+              math.max(100.0,
+                  constraints.maxHeight - headerBottom - navClearance - 56));
+          final panelHeight = cardHeight + 36;
+          final preview = onScreenVendors
+              .where((vendor) => vendor.vendorId == _previewVendorId)
+              .firstOrNull;
+          final cards = showingDishResults
+              ? dishResults
+                  .where((dish) => onScreenVendors
+                      .any((vendor) => vendor.vendorId == dish.vendorId))
+                  .toList()
+              : <DishSearchEntry>[];
           final resultCount =
-              showingDishResults ? dishResults.length : onScreenVendors.length;
-          final resultLabel = showingDishResults
-              ? (resultCount == 1 ? 'dish nearby' : 'dishes nearby')
-              : query.isEmpty
-                  ? (resultCount == 1
-                      ? 'stall in this area'
-                      : 'stalls in this area')
-                  : (resultCount == 1
-                      ? 'matching stall in this area'
-                      : 'matching stalls in this area');
+              showingDishResults ? cards.length : onScreenVendors.length;
+          final ids = showingDishResults
+              ? cards
+                  .map((dish) => '${dish.vendorId}/${dish.item.itemId}')
+                  .toList()
+              : onScreenVendors.map((vendor) => vendor.vendorId).toList();
+          if (showingDishResults &&
+              !cards.any((dish) =>
+                  '${dish.vendorId}/${dish.item.itemId}' == _selectedDishId &&
+                  dish.vendorId == _selectedVendorId)) {
+            final dish = cards
+                    .where((dish) => dish.vendorId == _selectedVendorId)
+                    .firstOrNull ??
+                cards.firstOrNull;
+            _selectedDishId =
+                dish == null ? null : '${dish.vendorId}/${dish.item.itemId}';
+          }
+          final selectedCard =
+              showingDishResults ? _selectedDishId : _selectedVendorId;
+          final searching = snapshot.connectionState == ConnectionState.waiting;
 
-          final useSidePanel =
-              constraints.maxWidth >= 900 && constraints.maxHeight >= 600;
-          final sidePanelWidth = math.min(420.0, constraints.maxWidth * .38);
-
-          final cardWidth = constraints.maxWidth >= 600
-              ? (!showingDishResults && onScreenVendors.length == 1
-                  ? math.min(520.0, constraints.maxWidth - 32)
-                  : 320.0)
-              : (constraints.maxWidth * .84).clamp(220.0, 360.0).toDouble();
-
-          final overlayWidth = math.max(
-            0.0,
-            constraints.maxWidth - (useSidePanel ? sidePanelWidth + 40 : 24),
-          );
-          final sidePanelHeight = math.min(
-            math.max(
-              180.0,
-              constraints.maxHeight - 12 - navClearance - 80,
-            ),
-            74.0 +
-                math.max(1, resultCount) * (showingDishResults ? 144.0 : 112.0),
-          );
-
-          _cardExtent = useSidePanel
-              ? (showingDishResults ? 144.0 : 112.0)
-              : cardWidth + 12;
-          // Full map with a floating results panel on tablets.
-          return Stack(children: [
-            Positioned.fill(
-                bottom: useSidePanel ? 0 : panelHeight,
-                child: Stack(children: [
-                  Positioned.fill(
-                      child: GoogleMap(
-                    style: _mapStyle,
-                    initialCameraPosition: _defaultPosition,
-                    markers: markers,
-                    myLocationEnabled: _locationPermissionGranted,
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: false,
-                    mapToolbarEnabled: false,
-                    compassEnabled: false,
-                    padding: EdgeInsets.fromLTRB(
+          return ValueListenableBuilder<double>(
+            valueListenable: _previewExtent,
+            builder: (context, extent, _) {
+              final covered = preview == null
+                  ? panelHeight + 64
+                  : (constraints.maxHeight - navClearance) * extent;
+              final controlsBottom = navClearance + covered + 12;
+              final controlsRoom = constraints.maxHeight -
+                  controlsBottom -
+                  headerBottom -
+                  (_locationError != null ? 60 : 0);
+              final mapTopInset =
+                  math.min(headerBottom, constraints.maxHeight * .38);
+              return Stack(children: [
+                Positioned.fill(
+                    child: GoogleMap(
+                  style: _mapStyle,
+                  initialCameraPosition: CameraPosition(
+                    target: _lastCameraPosition?.target ??
+                        _searchCenter ??
+                        _customerPosition ??
+                        _defaultPosition.target,
+                    zoom: _lastCameraPosition?.zoom ?? 14,
+                  ),
+                  markers: markers,
+                  clusterManagers: {
+                    ClusterManager(
+                        clusterManagerId: _clusterId,
+                        onClusterTap: _zoomToCluster)
+                  },
+                  myLocationEnabled: _locationPermissionGranted,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                  padding: EdgeInsets.fromLTRB(
                       12,
-                      206,
-                      useSidePanel ? sidePanelWidth + 28 : 12,
-                      useSidePanel ? navClearance + 80 : 12,
-                    ),
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                      if (_customerPosition != null) {
-                        _expectProgrammaticCameraMove();
-                        controller.animateCamera(
-                            CameraUpdate.newLatLngZoom(_customerPosition!, 15));
-                      }
-                      _updateVisibleBounds();
-                    },
-                    onCameraMove: (position) {
-                      _mapCenter = position.target;
-                      _lastCameraPosition = position;
-                      if ((_mapBearing.value - position.bearing).abs() > .1) {
-                        _mapBearing.value = position.bearing;
-                      }
-                    },
-                    onCameraMoveStarted: () {
-                      _boundsRequest++;
-                      if (!_programmaticCameraMove) _cameraMovedByUser = true;
-                    },
-                    onCameraIdle: _updateVisibleBounds,
-                    onTap: (_) {
-                      FocusScope.of(context).unfocus();
-                    },
-                  )),
-                  Positioned(
-                      top: 12,
-                      left: 12,
-                      child:
-                          SizedBox(width: overlayWidth, child: _mapHeader())),
-                  Positioned(
-                      top: 76,
-                      left: 12,
-                      child: SizedBox(
-                          width: overlayWidth,
-                          child: Material(
-                            elevation: 3,
-                            shadowColor: const Color(0x22000000),
-                            color: AppColors.cardColor.withValues(alpha: .94),
-                            borderRadius: BorderRadius.circular(25),
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _searchFocus,
-                              textInputAction: TextInputAction.search,
-                              onTap: () => setState(() {}),
-                              onChanged: (value) => setState(() {
-                                _searchQuery = value;
-                                _selectedVendorId = null;
-                              }),
-                              onSubmitted: _submitSearch,
-                              decoration: InputDecoration(
-                                filled: false,
-                                hintText: 'Search dishes or stalls…',
-                                hintStyle: const TextStyle(
-                                    fontSize: 13, color: AppColors.textMuted),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                prefixIcon: const Icon(Icons.search_rounded,
-                                    color: AppColors.textMuted),
-                                suffixIcon: _searchQuery.isNotEmpty
-                                    ? IconButton(
-                                        tooltip: 'Clear search',
-                                        icon: const Icon(Icons.close_rounded),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() => _searchQuery = '');
-                                        })
-                                    : AppDropdown<String>(
-                                        value: _category ?? 'All',
-                                        iconOnly: true,
-                                        icon: Icons.tune_rounded,
-                                        hint: 'Filter category',
-                                        options: {
-                                          'All': 'All',
-                                          for (final category
-                                              in stallCategories)
-                                            category: category,
-                                        },
-                                        onChanged: (value) => setState(() {
-                                          _category =
-                                              value == 'All' ? null : value;
-                                          _selectedVendorId = null;
-                                        }),
-                                      ),
-                              ),
-                            ),
-                          ))),
-                  Positioned(
-                      top: 134,
-                      left: 12,
-                      right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(children: [
-                          ActionChip(
-                              avatar: const Icon(
-                                  Icons.edit_location_alt_outlined,
-                                  size: 18),
-                              label: const Text('Set location'),
-                              onPressed: _chooseLocationSource),
-                          const SizedBox(width: 8),
-                          AppDropdown<String>(
-                            value: _statusFilter,
-                            displayText:
-                                _openingTime != null ? 'Scheduled' : null,
-                            width: 155,
-                            compact: true,
-                            hint: 'Choose stall status',
-                            icon: Icons.storefront_outlined,
-                            options: const {
-                              'Open': 'Open now',
-                              'Closed': 'Closed',
-                              'All': 'All stalls',
-                            },
-                            onChanged: (status) => setState(() {
-                              _statusFilter = status;
-                              _openingTime = null;
-                            }),
-                          ),
-                          const SizedBox(width: 8),
-                          AppDropdown<String>(
-                            value: _category ?? 'All',
-                            displayText: _category ?? 'All categories',
-                            width: 190,
-                            compact: true,
-                            hint: 'Choose category',
-                            icon: Icons.category_outlined,
-                            options: {
-                              'All': 'All',
-                              for (final category in stallCategories)
-                                category: category,
-                            },
-                            onChanged: (value) => setState(() {
-                              _category = value == 'All' ? null : value;
-                              _selectedVendorId = null;
-                            }),
-                          ),
-                          const SizedBox(width: 8),
-                          InputChip(
-                            avatar:
-                                const Icon(Icons.payments_outlined, size: 18),
-                            label: Text(_priceRange?.label ?? 'Any price'),
-                            onPressed: _choosePriceRange,
-                            onDeleted: _priceRange == null
-                                ? null
-                                : () => setState(() {
-                                      _priceRange = null;
-                                      _selectedVendorId = null;
-                                    }),
-                          ),
-                          const SizedBox(width: 8),
-                          InputChip(
-                            avatar: const Icon(Icons.schedule, size: 18),
-                            label: Text(_openingTime?.label ?? 'Open at…'),
-                            onPressed: _chooseOpeningTime,
-                            onDeleted: _openingTime == null
-                                ? null
-                                : () => setState(() {
-                                      _openingTime = null;
-                                      _statusFilter = 'Open';
-                                    }),
-                          ),
-                          if (_searchCenter != null ||
-                              _customerPosition != null) ...[
-                            const SizedBox(width: 8),
-                            AppDropdown<double>(
-                              value: _searchRadiusKm,
-                              width: 165,
-                              compact: true,
-                              hint: 'Choose distance',
-                              icon: Icons.radar,
-                              options: {
-                                for (final radius in [5.0, 10.0, 25.0, 50.0])
-                                  radius:
-                                      'Within ${radius.toStringAsFixed(0)} km',
-                              },
-                              onChanged: _setSearchRadius,
-                            ),
-                          ],
-                        ]),
-                      )),
-                  if (_showSearchArea)
-                    Positioned(
-                        top: 196,
-                        left: 0,
-                        right: useSidePanel ? sidePanelWidth + 28 : 0,
-                        child: Center(
-                            child: ElevatedButton.icon(
-                          onPressed: _searchThisArea,
-                          icon: const Icon(Icons.search, size: 18),
-                          label: const Text('Search this area'),
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.cardColor,
-                              foregroundColor: AppColors.primary,
-                              elevation: 3),
-                        ))),
-                  if (_locationError != null)
-                    Positioned(
-                        top: _showSearchArea ? 250 : 202,
-                        left: 12,
-                        right: useSidePanel ? sidePanelWidth + 28 : 68,
-                        child: Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Row(children: [
-                              Expanded(
-                                  child: Text(_locationError!,
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12))),
-                              TextButton(
-                                  onPressed: _enterCustomerLocationManually,
-                                  child: const Text('Enter manually')),
-                            ]),
-                          ),
-                        ))
-                  else if (!shortViewport && _isLocatingCustomer)
-                    Positioned(
-                      top: _showSearchArea ? 250 : 202,
-                      left: 12,
-                      right: useSidePanel ? null : 68,
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 3,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.primary,
+                      mapTopInset,
+                      12,
+                      math.min(
+                          navClearance + covered + 12,
+                          math.max(
+                              12, constraints.maxHeight - mapTopInset - 80))),
+                  onMapCreated: (controller) {
+                    _mapController = controller;
+                    if (_lastCameraPosition != null) {
+                      _expectProgrammaticCameraMove();
+                      controller.moveCamera(
+                          CameraUpdate.newCameraPosition(_lastCameraPosition!));
+                    } else if (_customerPosition != null) {
+                      _expectProgrammaticCameraMove();
+                      controller.animateCamera(
+                          CameraUpdate.newLatLngZoom(_customerPosition!, 15));
+                    }
+                    _updateVisibleBounds();
+                  },
+                  onCameraMove: (position) {
+                    _mapCenter = position.target;
+                    _lastCameraPosition = position;
+                    if ((_mapBearing.value - position.bearing).abs() > .1) {
+                      _mapBearing.value = position.bearing;
+                    }
+                  },
+                  onCameraMoveStarted: () {
+                    _boundsRequest++;
+                    if (!_programmaticCameraMove) _cameraMovedByUser = true;
+                  },
+                  onCameraIdle: _updateVisibleBounds,
+                  onTap: (_) => _searchFocus.unfocus(),
+                )),
+                Positioned(
+                    top: 10,
+                    left: 12,
+                    width: overlayWidth,
+                    child: _mapHeader()),
+                Positioned(
+                    top: searchTop,
+                    left: 12,
+                    width: overlayWidth,
+                    child: Material(
+                      color: AppColors.cardColor,
+                      elevation: 3,
+                      shadowColor: const Color(0x22000000),
+                      borderRadius: BorderRadius.circular(28),
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (value) => setState(() {
+                          _searchQuery = value;
+                          _selectedVendorId = null;
+                          _selectedDishId = null;
+                          _previewVendorId = null;
+                        }),
+                        onSubmitted: _submitSearch,
+                        decoration: InputDecoration(
+                          filled: false,
+                          hintText: 'Search dishes or stalls…',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          prefixIcon: const Icon(Icons.search_rounded,
+                              color: AppColors.textMuted),
+                          suffixIcon: _searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Clear search',
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: () => setState(() {
+                                    _searchController.clear();
+                                    _searchQuery = '';
+                                    _selectedVendorId = null;
+                                    _selectedDishId = null;
+                                  }),
                                 ),
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Finding your location…',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
                         ),
                       ),
-                    ),
+                    )),
+                Positioned(
+                    top: filterTop,
+                    left: 12,
+                    width: overlayWidth,
+                    child: _compactMapFilters()),
+                if (_locationError != null && preview == null)
                   Positioned(
-                      right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      bottom: useSidePanel ? navClearance + 40 : 12,
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      top: headerBottom,
+                      left: 12,
+                      width: overlayWidth,
+                      child: Material(
+                        color: AppColors.cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Row(children: [
+                            const Icon(Icons.location_off_outlined, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                                child: Text(
+                                    'Location unavailable. Browse the map or set a location.',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11))),
+                            TextButton(
+                                onPressed: _chooseLocationSource,
+                                child: const Text('Set location')),
+                          ]),
+                        ),
+                      )),
+                if (controlsRoom >= 48 && (preview == null || extent < .7))
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 120),
+                    right: 12,
+                    bottom: controlsBottom,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      if (controlsRoom >= 104) ...[
                         FloatingActionButton.small(
                           heroTag: 'compass_button',
                           tooltip: 'Reset compass',
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.textDark,
+                          backgroundColor: AppColors.cardColor,
                           onPressed: _resetCompass,
                           child: ValueListenableBuilder<double>(
-                            valueListenable: _mapBearing,
-                            child: const Icon(Icons.navigation_rounded),
-                            builder: (context, bearing, child) =>
-                                Transform.rotate(
-                              angle: -bearing * math.pi / 180,
-                              child: child,
-                            ),
-                          ),
+                              valueListenable: _mapBearing,
+                              builder: (_, bearing, __) => Transform.rotate(
+                                  angle: -bearing * math.pi / 180,
+                                  child: const Icon(Icons.navigation_rounded))),
                         ),
                         const SizedBox(height: 8),
-                        FloatingActionButton.small(
-                          heroTag: 'recenter_button',
-                          tooltip: 'My location',
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.textDark,
-                          onPressed: _getCustomerLocation,
-                          child: _isLocatingCustomer
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.my_location_rounded),
-                        ),
-                      ])),
-                  if (showSuggestions)
+                      ],
+                      FloatingActionButton.small(
+                        heroTag: 'recenter_button',
+                        tooltip: 'My location',
+                        backgroundColor: AppColors.cardColor,
+                        onPressed: _getCustomerLocation,
+                        child: _isLocatingCustomer
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.my_location_rounded),
+                      ),
+                    ]),
+                  ),
+                if (preview == null) ...[
+                  if (_showSearchArea)
                     Positioned(
-                      top: 135,
-                      left: 12,
-                      child: SizedBox(
-                          width: useSidePanel
-                              ? math.max(
-                                  0.0,
-                                  constraints.maxWidth - sidePanelWidth - 40,
-                                )
-                              : overlayWidth,
-                          child: _suggestionPanel(suggestions)),
+                      left: geometry.panelLeft + 12,
+                      right: geometry.panelLeft + 12,
+                      bottom: navClearance + panelHeight + 14,
+                      child: Center(
+                          child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.cardColor,
+                            foregroundColor: AppColors.textDark,
+                            shape: const StadiumBorder(),
+                            elevation: 3,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 10)),
+                        onPressed: _searchThisArea,
+                        child: const Text('Search here'),
+                      )),
                     ),
-                ])),
-            Positioned(
-                top: useSidePanel ? 12 : null,
-                left: useSidePanel ? null : 0,
-                right: useSidePanel ? 16 : 0,
-                bottom: useSidePanel ? null : 0,
-                width: useSidePanel ? sidePanelWidth : null,
-                height: useSidePanel ? sidePanelHeight : panelHeight,
-                child: Material(
-                  color: AppColors.background,
-                  elevation: 10,
-                  shadowColor: const Color(0x26000000),
-                  borderRadius: useSidePanel
-                      ? BorderRadius.circular(26)
-                      : const BorderRadius.vertical(top: Radius.circular(26)),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(children: [
-                    if (useSidePanel)
-                      const SizedBox(height: 12)
-                    else
-                      const SizedBox(
-                        height: 10,
-                        child: Center(
-                          child: SizedBox(
-                            width: 36,
-                            height: 4,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: AppColors.border,
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(4)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    SizedBox(
-                      height: 42,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 16, right: 8),
-                        child: Row(
-                          children: [
-                            if (!snapshot.hasError &&
-                                snapshot.connectionState !=
-                                    ConnectionState.waiting) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.mint,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Text(
-                                  '$resultCount',
-                                  style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
+                  Positioned(
+                    left: geometry.panelLeft,
+                    bottom: navClearance + 8,
+                    width: panelWidth,
+                    height: panelHeight,
+                    child: Column(children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(children: [
+                          Expanded(
                               child: Text(
-                                snapshot.hasError
-                                    ? 'Could not load stalls'
-                                    : snapshot.connectionState ==
-                                            ConnectionState.waiting
-                                        ? 'Finding stalls…'
-                                        : resultLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            if (snapshot.hasError ||
-                                (snapshot.connectionState !=
-                                        ConnectionState.waiting &&
-                                    resultCount > 1))
-                              TextButton(
-                                onPressed: snapshot.hasError
-                                    ? () => setState(() => _vendors =
-                                        _vendorService.getAllVendors())
-                                    : showingDishResults
-                                        ? () => _showAllDishes(
-                                              dishResults,
-                                              filteredVendorById,
-                                            )
-                                        : () => _showAllStalls(onScreenVendors),
-                                child: Text(
-                                  snapshot.hasError ? 'Retry' : 'View all',
+                                  '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600))),
+                          SizedBox(
+                              height: 30,
+                              child: TextButton(
+                                onPressed: snapshot.hasError
+                                    ? () => setState(
+                                        () => _vendors = _watchVendors())
+                                    : () => showingDishResults
+                                        ? _showAllDishes(
+                                            cards, filteredVendorById)
+                                        : _showAllStalls(onScreenVendors),
+                                child: Text(
+                                    snapshot.hasError ? 'Retry' : 'View all'),
+                              )),
+                        ]),
                       ),
-                    ),
-                    if (!shortViewport)
                       Expanded(
-                          child: snapshot.connectionState ==
-                                  ConnectionState.waiting
-                              ? const Center(child: CircularProgressIndicator())
-                              : showingDishResults
-                                  ? ListView.builder(
-                                      controller: _stallScrollController,
-                                      scrollDirection: useSidePanel
-                                          ? Axis.vertical
-                                          : Axis.horizontal,
-                                      padding: useSidePanel
-                                          ? const EdgeInsets.fromLTRB(
-                                              12, 8, 12, 12)
-                                          : const EdgeInsets.fromLTRB(
-                                              16, 0, 4, 10),
-                                      itemCount: dishResults.length,
-                                      itemExtent: _cardExtent,
-                                      itemBuilder: (context, index) {
-                                        final dish = dishResults[index];
-                                        return Padding(
-                                          padding: useSidePanel
-                                              ? const EdgeInsets.only(bottom: 8)
-                                              : const EdgeInsets.only(
-                                                  right: 12),
-                                          child: _dishCard(
-                                            dish,
-                                            filteredVendorById[dish.vendorId]!,
-                                          ),
-                                        );
-                                      },
-                                    )
-                                  : onScreenVendors.isEmpty
-                                      ? Center(
-                                          child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 24),
-                                              child: Text(
-                                                  snapshot.hasError
-                                                      ? 'Check your connection and retry.'
-                                                      : (query.isNotEmpty ||
-                                                                  _priceRange !=
-                                                                      null) &&
-                                                              _dishSearchError !=
-                                                                  null
-                                                          ? 'Could not load menu prices and dishes. Check your connection and retry.'
-                                                          : (query.isNotEmpty ||
-                                                                      _priceRange !=
-                                                                          null) &&
-                                                                  _dishesLoading
-                                                              ? 'Loading dishes and prices…'
-                                                              : _priceRange !=
-                                                                      null
-                                                                  ? 'No dishes or stalls match ${_priceRange!.label}${query.isEmpty ? '' : ' and “${_searchController.text.trim()}”'}. Try another price range or reset it.'
-                                                                  : _customerPosition !=
-                                                                              null &&
-                                                                          _searchRadiusKm <
-                                                                              50
-                                                                      ? 'No stalls found within ${_searchRadiusKm.toStringAsFixed(0)} km. Try Expand area.'
-                                                                      : query
-                                                                              .isNotEmpty
-                                                                          ? 'No nearby dishes or stalls match “${_searchController.text.trim()}”.'
-                                                                          : 'Move the map, zoom out, or clear your filters.',
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      color: Color(0xFF64748B),
-                                                      fontSize: 13))))
-                                      : ListView.builder(
-                                          controller: _stallScrollController,
-                                          scrollDirection: useSidePanel
-                                              ? Axis.vertical
-                                              : Axis.horizontal,
-                                          padding: useSidePanel
-                                              ? const EdgeInsets.fromLTRB(
-                                                  12, 8, 12, 12)
-                                              : EdgeInsets.fromLTRB(
-                                                  onScreenVendors.length == 1
-                                                      ? math.max(
-                                                          16.0,
-                                                          (constraints.maxWidth -
-                                                                  _cardExtent) /
-                                                              2,
-                                                        )
-                                                      : 16,
-                                                  0,
-                                                  4,
-                                                  8,
-                                                ),
-                                          itemCount: onScreenVendors.length,
-                                          itemExtent: _cardExtent,
-                                          itemBuilder: (context, index) =>
-                                              Padding(
-                                            padding: useSidePanel
-                                                ? const EdgeInsets.only(
-                                                    bottom: 8)
-                                                : const EdgeInsets.only(
-                                                    right: 12),
-                                            child: _stallCard(
-                                              onScreenVendors[index],
-                                            ),
-                                          ),
-                                        )),
-                    SizedBox(height: useSidePanel ? 0 : navClearance),
-                  ]),
-                )),
-          ]);
+                        child: searching
+                            ? const Center(child: CircularProgressIndicator())
+                            : resultCount == 0
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    child: Material(
+                                      color: AppColors.cardColor,
+                                      borderRadius: BorderRadius.circular(23),
+                                      child: Center(
+                                        child: Padding(
+                                            padding: const EdgeInsets.all(18),
+                                            child: Text(
+                                                snapshot.hasError
+                                                    ? 'Could not load stalls. Check your connection and retry.'
+                                                    : _dishSearchError !=
+                                                                null &&
+                                                            (query.isNotEmpty ||
+                                                                _priceRange !=
+                                                                    null)
+                                                        ? _dishSearchError!
+                                                        : _dishesLoading &&
+                                                                (query.isNotEmpty ||
+                                                                    _priceRange !=
+                                                                        null)
+                                                            ? 'Loading dishes and prices…'
+                                                            : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color:
+                                                        AppColors.textMuted))),
+                                      ),
+                                    ))
+                                : StallCardCarousel(
+                                    key: ValueKey(showingDishResults
+                                        ? 'dish-map-cards'
+                                        : 'stall-map-cards'),
+                                    ids: ids,
+                                    selectedId: selectedCard,
+                                    viewportFraction: geometry.viewportFraction,
+                                    cardsPerPage: geometry.cardsPerPage,
+                                    onSelected: (index) {
+                                      if (showingDishResults) {
+                                        final dish = cards[index];
+                                        _selectedDishId = ids[index];
+                                        _selectVendor(
+                                            filteredVendorById[dish.vendorId]!);
+                                      } else {
+                                        _selectVendor(onScreenVendors[index]);
+                                      }
+                                    },
+                                    itemBuilder: (_, index) =>
+                                        showingDishResults
+                                            ? _dishCard(
+                                                cards[index],
+                                                filteredVendorById[
+                                                    cards[index].vendorId]!)
+                                            : StallMapCard(
+                                                vendor: onScreenVendors[index],
+                                                onTap: () {
+                                                  final vendor =
+                                                      onScreenVendors[index];
+                                                  if (vendor.vendorId ==
+                                                      _selectedVendorId) {
+                                                    _openStallPreview(vendor);
+                                                  } else {
+                                                    _selectVendor(vendor);
+                                                  }
+                                                }),
+                                  ),
+                      ),
+                    ]),
+                  ),
+                ],
+                if (preview != null)
+                  Positioned.fill(
+                      left: geometry.previewInset,
+                      right: geometry.previewInset,
+                      bottom: navClearance,
+                      child: _buildStallPreview(preview)),
+                if (showSuggestions && preview == null)
+                  Positioned(
+                      top: searchTop + searchHeight + 4,
+                      left: 12,
+                      width: overlayWidth,
+                      child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                              maxHeight: constraints.maxHeight * .4),
+                          child: _suggestionPanel(suggestions))),
+              ]);
+            },
+          );
         });
       },
     );
+  }
+
+  Widget _compactMapFilters() => DiscoveryMapFilters(
+        category: _category,
+        hasExtraFilters: _priceRange != null ||
+            _openingTime != null ||
+            _statusFilter == 'Closed' ||
+            _searchRadiusKm != 5,
+        openNow: _statusFilter == 'Open' && _openingTime == null,
+        sort: _sort,
+        availableOnly: _availableOnly,
+        selfCollectOnly: _selfCollectOnly,
+        recentOnly: _recentOnly,
+        onCategory: (value) => setState(() {
+          _category = value;
+          _selectedVendorId = null;
+        }),
+        onOpenNow: (value) => setState(() {
+          _statusFilter = value ? 'Open' : 'All';
+          _openingTime = null;
+        }),
+        onSort: (value) => setState(() => _sort = value),
+        onAvailable: (value) => setState(() => _availableOnly = value),
+        onSelfCollect: (value) => setState(() => _selfCollectOnly = value),
+        onRecent: (value) => setState(() => _recentOnly = value),
+        onReset: _clearDiscoveryFilters,
+        moreItems: [
+          MenuItemButton(
+              leadingIcon: Icon(_listOnly ? Icons.map_outlined : Icons.list),
+              onPressed: () {
+                _searchFocus.unfocus();
+                setState(() {
+                  _listOnly = !_listOnly;
+                  _previewVendorId = null;
+                  if (_listOnly) _mapController = null;
+                });
+              },
+              child: Text(_listOnly ? 'Map view' : 'List view')),
+          MenuItemButton(
+              onPressed: _chooseLocationSource,
+              child: const Text('Set location')),
+          MenuItemButton(
+              onPressed: _choosePriceRange,
+              child: Text(_priceRange?.label ?? 'Any price')),
+          MenuItemButton(
+              onPressed: _chooseOpeningTime,
+              child: Text(_openingTime?.label ?? 'Open at…')),
+          SubmenuButton(
+              menuStyle: discoveryMenuStyle,
+              menuChildren: [
+                for (final radius in [5.0, 10.0, 25.0, 50.0])
+                  DiscoveryMenuChoice(
+                      label: 'Within ${radius.toStringAsFixed(0)} km',
+                      selected: _searchRadiusKm == radius,
+                      onPressed: () => _setSearchRadius(radius)),
+              ],
+              child:
+                  Text('Distance: ${_searchRadiusKm.toStringAsFixed(0)} km')),
+          SubmenuButton(
+              menuStyle: discoveryMenuStyle,
+              menuChildren: [
+                for (final status in ['All', 'Open', 'Closed'])
+                  DiscoveryMenuChoice(
+                      label: status == 'All' ? 'All stalls' : status,
+                      selected: _statusFilter == status && _openingTime == null,
+                      onPressed: () => setState(() {
+                            _statusFilter = status;
+                            _openingTime = null;
+                          })),
+              ],
+              child: const Text('Stall status')),
+          if (_canSaveSearch) ...[
+            MenuItemButton(
+                onPressed: _saveCurrentSearch,
+                child: const Text('Save search')),
+            MenuItemButton(
+                onPressed: _showSavedSearches,
+                child: const Text('Saved searches')),
+          ],
+        ],
+      );
+
+  String _markerCategory(VendorModel vendor) =>
+      vendor.allCategories.where(stallCategories.contains).firstOrNull ?? '';
+
+  Future<void> _loadMapMarkerIcons() async {
+    try {
+      final entries = await Future.wait([
+        for (final category in ['', ...stallCategories])
+          for (final selected in [false, true])
+            _markerCache
+                .icon(category, selected: selected)
+                .then((icon) => MapEntry((category, selected), icon)),
+      ]);
+      if (mounted) setState(() => _markerIcons.addEntries(entries));
+    } catch (_) {
+      // A disposed renderer must not interrupt discovery.
+    }
+  }
+
+  void _openStallPreview(VendorModel vendor) {
+    _searchFocus.unfocus();
+    _previewExtent.value = .55;
+    _previewCamera = _lastCameraPosition;
+    final user = FirebaseAuth.instance.currentUser;
+    _previewFollowStream = user == null || user.isAnonymous
+        ? Stream.value(false)
+        : _followService.isFollowing(user.uid, vendor.vendorId);
+    _expectProgrammaticCameraMove();
+    setState(() {
+      _selectedVendorId = vendor.vendorId;
+      _previewVendorId = vendor.vendorId;
+    });
+  }
+
+  Future<void> _closeStallPreview() async {
+    final camera = _previewCamera;
+    _expectProgrammaticCameraMove();
+    setState(() {
+      _previewVendorId = null;
+      _previewCamera = null;
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    if (camera != null && _mapController != null) {
+      try {
+        await _mapController!
+            .animateCamera(CameraUpdate.newCameraPosition(camera));
+      } catch (_) {/* Map can be disposed during navigation. */}
+    }
+  }
+
+  Widget _buildStallPreview(VendorModel vendor) => StreamBuilder<bool>(
+        stream: _previewFollowStream,
+        builder: (context, snapshot) => StallPreviewSheet(
+          key: ValueKey('preview-${vendor.vendorId}'),
+          vendor: vendor,
+          rating: _ratingLine(vendor),
+          distance: _distanceTo(vendor),
+          photos: <String>{
+            if (vendor.imageUrl.isNotEmpty) vendor.imageUrl,
+            ..._allDishes
+                .where((dish) => dish.vendorId == vendor.vendorId)
+                .map((dish) => dish.item.imageUrl)
+                .where((url) => url.isNotEmpty)
+          }.take(6).toList(),
+          following: snapshot.data ?? false,
+          onFollow: _followingBusy ||
+                  snapshot.connectionState == ConnectionState.waiting
+              ? null
+              : () => snapshot.hasError
+                  ? _retryPreviewFollow(vendor)
+                  : _togglePreviewFollow(vendor, snapshot.data ?? false),
+          onDirections: () => _previewDirections(vendor),
+          onViewMenu: () => _openVendorDetails(vendor,
+              dishId: _allDishes
+                  .where((dish) => dish.vendorId == vendor.vendorId)
+                  .firstOrNull
+                  ?.item
+                  .itemId),
+          onSelfCollect: vendor.isOpenNow && vendor.hasValidLocation
+              ? () => _previewSelfCollect(vendor)
+              : null,
+          onDetails: () => _openVendorDetails(vendor),
+          onClose: _closeStallPreview,
+          onExtentChanged: (extent) {
+            if ((_previewExtent.value - extent).abs() >= .015) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || _previewVendorId != vendor.vendorId) return;
+                _expectProgrammaticCameraMove();
+                _previewExtent.value = extent;
+              });
+            }
+          },
+        ),
+      );
+
+  void _retryPreviewFollow(VendorModel vendor) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) return;
+    setState(() => _previewFollowStream =
+        _followService.isFollowing(user.uid, vendor.vendorId));
+    _previewMessage('Could not load following. Retrying…');
+  }
+
+  void _previewMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<bool> _requireCustomerForPreview() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      final signIn = await showDialog<bool>(
+          context: context,
+          builder: (dialog) => AlertDialog(
+                title: const Text('Sign in to continue'),
+                content: const Text(
+                    'Use your customer account to follow stalls or book self-collect.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialog, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dialog, true),
+                      child: const Text('Sign in'))
+                ],
+              ));
+      if (mounted && signIn == true) {
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      }
+      return false;
+    }
+    if (!user.emailVerified) {
+      _previewMessage('Verify your email to continue.');
+      return false;
+    }
+    final profile = await _authService.getUserData(user.uid);
+    if (!mounted) return false;
+    if (profile?.role != 'customer') {
+      _previewMessage(
+          'Only customer accounts can follow stalls or book self-collect.');
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _togglePreviewFollow(VendorModel vendor, bool following) async {
+    if (_followingBusy) return;
+    setState(() => _followingBusy = true);
+    try {
+      if (!await _requireCustomerForPreview() || !mounted) return;
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      if (following) {
+        await _followService.unfollowVendor(uid, vendor.vendorId);
+      } else {
+        await _followService.followVendor(uid, vendor.vendorId);
+      }
+    } catch (_) {
+      _previewMessage('Could not update following. Please retry.');
+    } finally {
+      if (mounted) setState(() => _followingBusy = false);
+    }
+  }
+
+  Future<void> _previewDirections(VendorModel vendor) async {
+    try {
+      final launched = await launchUrl(
+          Uri.https('www.google.com', '/maps/dir/', {
+            'api': '1',
+            'destination': '${vendor.latitude},${vendor.longitude}',
+          }),
+          mode: LaunchMode.externalApplication);
+      if (!launched) {
+        _previewMessage('Could not open directions. Please retry.');
+      }
+    } catch (_) {
+      _previewMessage('Could not open directions. Please retry.');
+    }
+  }
+
+  Future<void> _previewSelfCollect(VendorModel vendor) async {
+    try {
+      if (!await _requireCustomerForPreview() || !mounted) return;
+      Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => DemoOrderCartScreen(vendor: vendor)));
+    } catch (_) {
+      _previewMessage('Could not open self-collect. Please retry.');
+    }
   }
 
   String? _distanceTo(VendorModel vendor) {
@@ -18070,7 +25549,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _openVendorDetails(vendor),
+          onTap: () => _openVendorDetails(vendor, dishId: dish.item.itemId),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -18138,6 +25617,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _stallCard(VendorModel vendor) {
     final selected = vendor.vendorId == _selectedVendorId;
     final distance = _distanceTo(vendor);
+    final pricedMenu = _allDishes.where((dish) =>
+        dish.vendorId == vendor.vendorId &&
+        (!_availableOnly || dishIsAvailable(dish)) &&
+        (_priceRange == null || _priceRange!.contains(dish)));
+    final fromPrice = lowestDishPrice(pricedMenu, _searchQuery);
 
     return Material(
       color: selected ? AppColors.mint : AppColors.cardColor,
@@ -18150,7 +25634,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _selectVendor(vendor),
+        onTap: _listOnly
+            ? () => _openVendorDetails(vendor)
+            : () => _selectVendor(vendor),
         onDoubleTap: () => _openVendorDetails(vendor),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -18176,7 +25662,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 3),
                     Text(
                       [
-                        vendor.category,
+                        vendor.categoryLabel,
                         _stallStatus(vendor),
                         if (distance != null) distance,
                       ].join(' · '),
@@ -18187,7 +25673,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
+                    Row(children: [
+                      Expanded(child: _ratingLine(vendor)),
+                      if (fromPrice != null) ...[
+                        const SizedBox(width: 6),
+                        Text('From RM ${fromPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.primary)),
+                      ],
+                    ]),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
                         Icon(
@@ -18244,14 +25740,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * .6,
         child: Column(children: [
-          ListTile(
-              title: const Text('Stalls in this area',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Choose a stall to find it on the map'),
-              trailing: IconButton(
-                  tooltip: 'Close list',
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context))),
+          const AppSheetHeader(
+              title: Text('Stalls in this area'),
+              subtitle: Text('Choose a stall to find it on the map')),
           const Divider(height: 1),
           Expanded(
               child: ListView.separated(
@@ -18265,7 +25756,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   leading: _stallPhoto(vendor),
                   title: Text(vendor.stallName),
                   subtitle: Text([
-                    vendor.category,
+                    vendor.categoryLabel,
                     _stallStatus(vendor),
                     if (_distanceTo(vendor) != null) _distanceTo(vendor)!
                   ].join(' · ')),
@@ -18285,7 +25776,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Future<void> _showAllDishes(
       List<DishSearchEntry> dishes, Map<String, VendorModel> vendors) async {
     _searchFocus.unfocus();
-    final selected = await showModalBottomSheet<VendorModel>(
+    final selected = await showModalBottomSheet<DishSearchEntry>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -18294,16 +25785,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * .72,
         child: Column(children: [
-          ListTile(
-            title: Text('${dishes.length} nearby dish results',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text('Results for “${_searchController.text.trim()}”'),
-            trailing: IconButton(
-              tooltip: 'Close results',
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
+          AppSheetHeader(
+              title: Text('${dishes.length} nearby dish results'),
+              subtitle: Text('Results for “${_searchController.text.trim()}”')),
           const Divider(height: 1),
           Expanded(
             child: ListView.separated(
@@ -18328,7 +25812,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     _stallStatus(vendor),
                   ].join(' · ')),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.pop(context, vendor),
+                  onTap: () => Navigator.pop(context, dish),
                 );
               },
             ),
@@ -18336,13 +25820,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ]),
       ),
     );
-    if (mounted && selected != null) _openVendorDetails(selected);
+    if (mounted && selected != null) {
+      _openVendorDetails(vendors[selected.vendorId]!,
+          dishId: selected.item.itemId);
+    }
   }
 
-  void _openVendorDetails(VendorModel vendor) {
+  void _openVendorDetails(VendorModel vendor, {String? dishId}) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => VendorDetailsScreen(vendor: vendor)),
+      MaterialPageRoute(
+          builder: (_) =>
+              VendorDetailsScreen(vendor: vendor, initialDishId: dishId)),
     );
   }
 }

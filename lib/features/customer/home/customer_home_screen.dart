@@ -22,8 +22,13 @@ import '../../../core/models/dish_search_entry.dart';
 import 'open_at_picker.dart';
 import 'discovery_search_filters.dart';
 import 'price_range_picker.dart';
-import 'map_marker_focus.dart';
-import 'map_marker_guide.dart';
+import 'discovery_map_widgets.dart';
+import 'stall_map_marker.dart';
+import 'stall_preview_sheet.dart';
+import '../../../core/services/follow_service.dart';
+import '../orders/demo_order_cart_screen.dart';
+import '../../auth/screens/login_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/vendor_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/dish_search_service.dart';
@@ -36,7 +41,6 @@ import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/saved_locations_sheet.dart';
 import '../../shared/pin_location_screen.dart';
-import '../../../core/widgets/app_dropdown.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -122,7 +126,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _locationPermissionGranted = false;
   String? _locationError;
   String? _category;
-  String _statusFilter = 'Open';
+  String _statusFilter = 'All';
   Timer? _freshnessTimer;
   late Stream<List<VendorModel>> _vendors;
   StreamSubscription<List<DishSearchEntry>>? _dishSubscription;
@@ -130,10 +134,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   List<String> _recentSearches = const [];
   bool _dishesLoading = true;
   String? _dishSearchError;
-  final ScrollController _stallScrollController = ScrollController();
-  List<VendorModel> _visibleVendors = [];
-  List<VendorModel> _markerVendors = [];
-  double _cardExtent = 288;
+  final _markerCache = StallMapMarkerCache();
+  final _markerIcons = <(String, bool), BitmapDescriptor>{};
+  final _followService = FollowService();
+  final _previewExtent = ValueNotifier<double>(.55);
+  String? _previewVendorId;
+  String? _selectedDishId;
+  CameraPosition? _previewCamera;
+  Stream<bool>? _previewFollowStream;
+  bool _followingBusy = false;
+  bool _searchBoundsActive = false;
   int _cameraRequest = 0;
 
   static const CameraPosition _defaultPosition = CameraPosition(
@@ -146,6 +156,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void initState() {
     super.initState();
     _vendors = _watchVendors();
+    unawaited(_loadMapMarkerIcons());
     _searchFocus.addListener(_onSearchFocusChanged);
     _dishSubscription = _dishSearchService.watchAllDishes().listen(
       (dishes) {
@@ -194,7 +205,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     _mapController?.dispose();
     _mapBearing.dispose();
-    _stallScrollController.dispose();
+    _previewExtent.dispose();
     _freshnessTimer?.cancel();
     _cameraMoveGuard?.cancel();
     super.dispose();
@@ -338,6 +349,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _customerPosition = selection.coordinates;
       _searchCenter = selection.coordinates;
       _visibleBounds = null;
+      _searchBoundsActive = false;
+      _previewVendorId = null;
+      _selectedDishId = null;
       _showSearchArea = false;
       _customerLocationLabel = selection.label;
       _locationPermissionGranted = !isManual;
@@ -446,9 +460,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _setSearchRadius(double radius) {
-    setState(() => _searchRadiusKm = radius);
+    setState(() {
+      _searchRadiusKm = radius;
+      _visibleBounds = null;
+      _searchBoundsActive = false;
+      _showSearchArea = false;
+    });
     final center = _searchCenter ?? _customerPosition;
-    _visibleBounds = null;
     if (center != null) {
       if (_mapController != null) _expectProgrammaticCameraMove();
       final zoom = switch (radius) {
@@ -562,7 +580,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     setState(() {
       _selectedVendorId = vendor.vendorId;
     });
-    _revealSelectedCard();
     final controller = _mapController;
     if (controller == null) {
       return;
@@ -589,84 +606,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  void _revealSelectedCard() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_stallScrollController.hasClients) {
-        return;
-      }
-      final index =
-          _visibleVendors.indexWhere((v) => v.vendorId == _selectedVendorId);
-      if (index < 0) {
-        return;
-      }
-      final offset = (index * _cardExtent)
-          .clamp(
-            0.0,
-            _stallScrollController.position.maxScrollExtent,
-          )
-          .toDouble();
-      _stallScrollController.animateTo(offset,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic);
-    });
-  }
-
-  // NEW: Update the visible bounds whenever the map stops moving
+  // Camera movement never rewrites the searched area or carousel membership.
+  // Only Search here commits new bounds; this keeps the next card reachable.
   void _updateVisibleBounds() async {
     final controller = _mapController;
-    if (controller == null) {
-      return;
-    }
+    if (controller == null) return;
     final request = ++_boundsRequest;
     final movedByUser = _cameraMovedByUser && !_programmaticCameraMove;
     _cameraMovedByUser = false;
-    final center = _lastCameraPosition?.target ?? _mapCenter;
     try {
       final bounds = await controller.getVisibleRegion();
-      if (mounted && request == _boundsRequest) {
-        final focused = movedByUser && center != null
-            ? stallNearMapCenter(
-                center: center,
-                bounds: bounds,
-                vendors: _markerVendors,
-              )
-            : null;
-        setState(() {
-          _pendingBounds = bounds;
-          if (movedByUser && focused != null) {
-            _visibleBounds = bounds;
-            _searchCenter = center;
-            _showSearchArea = false;
-            _selectedVendorId = focused.vendorId;
-          } else if (_programmaticCameraMove && _selectedVendorId != null) {
-            _visibleBounds = bounds;
-            _showSearchArea = false;
-          } else if (_visibleBounds == null) {
-            _visibleBounds = bounds;
-            _showSearchArea = false;
-          } else if (!_programmaticCameraMove) {
-            final previous = _visibleBounds!;
-            _showSearchArea =
-                (previous.southwest.latitude - bounds.southwest.latitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.southwest.longitude - bounds.southwest.longitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.northeast.latitude - bounds.northeast.latitude)
-                            .abs() >
-                        0.0001 ||
-                    (previous.northeast.longitude - bounds.northeast.longitude)
-                            .abs() >
-                        0.0001;
-          }
-          _programmaticCameraMove = false;
-          _cameraMoveGuard?.cancel();
-        });
-        _revealSelectedCard();
-      }
+      if (!mounted || request != _boundsRequest) return;
+      setState(() {
+        _pendingBounds = bounds;
+        _visibleBounds ??= bounds;
+        if (movedByUser) {
+          final previous = _visibleBounds!;
+          _showSearchArea =
+              (previous.southwest.latitude - bounds.southwest.latitude).abs() >
+                      .0001 ||
+                  (previous.southwest.longitude - bounds.southwest.longitude)
+                          .abs() >
+                      .0001 ||
+                  (previous.northeast.latitude - bounds.northeast.latitude)
+                          .abs() >
+                      .0001 ||
+                  (previous.northeast.longitude - bounds.northeast.longitude)
+                          .abs() >
+                      .0001;
+        }
+        _programmaticCameraMove = false;
+        _cameraMoveGuard?.cancel();
+      });
     } catch (_) {
-      // Controller may have been disposed during navigation.
       _programmaticCameraMove = false;
       _cameraMoveGuard?.cancel();
     }
@@ -676,11 +648,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     if (_pendingBounds == null || _mapCenter == null) return;
     setState(() {
       _visibleBounds = _pendingBounds;
+      _searchBoundsActive = true;
+      _selectedDishId = null;
       _searchCenter = _mapCenter;
       _showSearchArea = false;
       _selectedVendorId = null;
     });
-    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
   }
 
   Future<void> _resetCompass() async {
@@ -728,7 +701,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _priceRange = result.isActive ? result : null;
       _selectedVendorId = null;
     });
-    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
   }
 
   void _clearDiscoveryFilters() {
@@ -740,12 +712,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _priceRange = null;
       _openingTime = null;
       _statusFilter = 'All';
+      _sort = DiscoverySort.distance;
       _availableOnly = false;
       _selfCollectOnly = false;
       _recentOnly = false;
       _selectedVendorId = null;
     });
-    if (_stallScrollController.hasClients) _stallScrollController.jumpTo(0);
   }
 
   bool _matchesOpening(VendorModel vendor) {
@@ -855,10 +827,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               borderRadius: BorderRadius.circular(25),
               onTap: _chooseLocationSource,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 7, 12, 7),
+                padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
                 child: Row(children: [
                   const CircleAvatar(
-                    radius: 22,
+                    radius: 20,
                     backgroundColor: AppColors.mint,
                     child:
                         Icon(Icons.person_rounded, color: AppColors.textDark),
@@ -1063,74 +1035,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       FirebaseAuth.instance.currentUser!.isAnonymous == false &&
       FirebaseAuth.instance.currentUser!.emailVerified;
 
-  List<Widget> _extraDiscoveryControls() => [
-        ActionChip(
-            avatar: Icon(
-                _listOnly ? Icons.map_outlined : Icons.view_list_outlined,
-                size: 18),
-            label: Text(_listOnly ? 'Map view' : 'List view'),
-            onPressed: () {
-              _searchFocus.unfocus();
-              setState(() {
-                _listOnly = !_listOnly;
-                _selectedVendorId = null;
-                _visibleBounds = null;
-                if (_listOnly) _mapController = null;
-              });
-            }),
-        const SizedBox(width: 8),
-        AppDropdown<DiscoverySort>(
-            value: _sort,
-            width: 210,
-            compact: true,
-            hint: 'Sort results',
-            icon: Icons.sort,
-            options: {
-              for (final sort in DiscoverySort.values) sort: sort.label
-            },
-            onChanged: (sort) => setState(() {
-                  _sort = sort;
-                  _selectedVendorId = null;
-                })),
-        const SizedBox(width: 8),
-        FilterChip(
-            label: const Text('Available dishes'),
-            selected: _availableOnly,
-            onSelected: (value) => setState(() {
-                  _availableOnly = value;
-                  _selectedVendorId = null;
-                })),
-        const SizedBox(width: 8),
-        FilterChip(
-            label: const Text('Self-collect'),
-            selected: _selfCollectOnly,
-            onSelected: (value) => setState(() {
-                  _selfCollectOnly = value;
-                  _selectedVendorId = null;
-                })),
-        const SizedBox(width: 8),
-        FilterChip(
-            label: const Text('Updated in 24h'),
-            selected: _recentOnly,
-            onSelected: (value) => setState(() {
-                  _recentOnly = value;
-                  _selectedVendorId = null;
-                })),
-        if (_canSaveSearch) ...[
-          const SizedBox(width: 8),
-          ActionChip(
-              avatar: const Icon(Icons.bookmark_add_outlined, size: 18),
-              label: const Text('Save search'),
-              onPressed: _saveCurrentSearch),
-          const SizedBox(width: 8),
-          ActionChip(
-              avatar: const Icon(Icons.bookmarks_outlined, size: 18),
-              label: const Text('Saved searches'),
-              onPressed: _showSavedSearches),
-        ],
-        const SizedBox(width: 8),
-      ];
-
   Widget _buildDiscoveryList(
       AsyncSnapshot<List<VendorModel>> snapshot,
       List<VendorModel> vendors,
@@ -1169,7 +1073,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               }))))),
       Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 0, 4),
-          child: _standardDiscoveryFilters()),
+          child: _compactMapFilters()),
       if (suggestions.isNotEmpty)
         ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 150),
@@ -1401,6 +1305,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       filters['openingEnd'] as int));
       _selectedVendorId = null;
       _visibleBounds = null;
+      _searchBoundsActive = false;
       if (_listOnly) _mapController = null;
     });
     if (!_listOnly && _searchCenter != null && _mapController != null) {
@@ -1439,14 +1344,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           for (final entry in _ratings.entries)
             if (!_ratingErrors.contains(entry.key)) entry.key: entry.value
         };
-        final matchingDishVendorIds = query.isEmpty
-            ? const <String>{}
-            : eligibleDishes
-                .where((dish) =>
-                    discoveryMatches(query, dish.item.name) &&
-                    (_priceRange == null || _priceRange!.contains(dish)))
-                .map((dish) => dish.vendorId)
-                .toSet();
         final matchingVendors = allVendors.where((vendor) {
           final menu =
               dishesByVendor[vendor.vendorId] ?? const <DishSearchEntry>[];
@@ -1456,10 +1353,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           }
           if (_selfCollectOnly && !vendor.selfCollectEnabled) return false;
           if (_recentOnly && !stallUpdatedRecently(vendor, menu)) return false;
-          final dishMatches = matchingDishVendorIds.contains(vendor.vendorId);
-          // A dish search must show every nearby seller, including closed
-          // stalls, so the customer can compare availability and status.
-          if (!dishMatches && !_matchesOpening(vendor)) return false;
+          // All stalls are visible until the customer explicitly filters hours.
+          // Open now must also apply to stalls found through a dish search.
+          if (!_matchesOpening(vendor)) return false;
           return vendorMatchesQueryAndPrice(
             vendor: vendor,
             dishes: dishesByVendor[vendor.vendorId] ?? const [],
@@ -1476,7 +1372,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   position.longitude, vendor.latitude, vendor.longitude) <=
               _searchRadiusKm * 1000;
         }).toList();
-        _markerVendors = filteredVendors;
 
         final filteredVendorById = {
           for (final vendor in filteredVendors) vendor.vendorId: vendor,
@@ -1512,14 +1407,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           priceRange: _priceRange,
         );
         final showSuggestions = _searchFocus.hasFocus && suggestions.isNotEmpty;
-        final showingDishResults = query.isNotEmpty &&
-            dishResults.isNotEmpty &&
-            _selectedVendorId == null;
+        final showingDishResults = query.isNotEmpty && dishResults.isNotEmpty;
 
-        // NEW: Filter to only vendors that are physically inside the current map view
+        // Freeze a committed search area while card swipes move the camera.
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
 
-        if (!_listOnly && _visibleBounds != null) {
+        if (_searchBoundsActive && _visibleBounds != null) {
           final southWest = _visibleBounds!.southwest;
           final northEast = _visibleBounds!.northeast;
 
@@ -1538,24 +1431,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             dishes: sortMenus,
             query: query));
 
-        _visibleVendors = onScreenVendors;
+        if (!onScreenVendors
+            .any((vendor) => vendor.vendorId == _selectedVendorId)) {
+          _selectedVendorId = onScreenVendors.firstOrNull?.vendorId;
+        }
+        if (_previewVendorId != null &&
+            !onScreenVendors
+                .any((vendor) => vendor.vendorId == _previewVendorId)) {
+          _previewVendorId = null;
+          _previewCamera = null;
+        }
 
-        final markers = filteredVendors
+        final markers = onScreenVendors
+            .where((vendor) =>
+                _markerIcons.containsKey((_markerCategory(vendor), false)))
             .map(
               (v) => Marker(
                 markerId: MarkerId(v.vendorId),
                 clusterManagerId:
                     v.vendorId == _selectedVendorId ? null : _clusterId,
                 position: LatLng(v.latitude, v.longitude),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
+                anchor: const Offset(.5, .5),
+                zIndexInt: v.vendorId == _selectedVendorId ? 2 : 1,
+                icon: _markerIcons[(
+                  _markerCategory(v),
                   v.vendorId == _selectedVendorId
-                      ? BitmapDescriptor.hueOrange
-                      : BitmapDescriptor.hueRed,
-                ),
+                )]!,
                 infoWindow: InfoWindow(
                   title: v.stallName,
                   snippet: '${v.categoryLabel} · ${_stallStatus(v)}',
-                  onTap: () => _openVendorDetails(v),
+                  onTap: () => _openStallPreview(v),
                 ),
                 consumeTapEvents: true,
                 onTap: () => _selectVendor(v),
@@ -1583,624 +1488,667 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         }
 
         return LayoutBuilder(builder: (context, constraints) {
-          final shortViewport = constraints.maxHeight < 400;
-
-          // With Scaffold.extendBody enabled, this includes the
-          // floating navigation bar and the device's bottom inset.
           final navClearance = MediaQuery.paddingOf(context).bottom + 12;
-
-          const headerHeight = 52.0;
-          final useSidePanel =
-              constraints.maxWidth >= 900 && constraints.maxHeight >= 600;
-          final sidePanelWidth = math.min(420.0, constraints.maxWidth * .38);
-          final guideHeight = shortViewport
-              ? 0.0
-              : MapMarkerGuide.heightFor(context,
-                  useSidePanel ? sidePanelWidth : constraints.maxWidth);
-          final cardAreaHeight =
-              shortViewport ? 0.0 : (showingDishResults ? 144.0 : 136.0);
-          final panelHeight =
-              headerHeight + guideHeight + cardAreaHeight + navClearance;
-
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final geometry = DiscoveryMapGeometry(constraints.biggest);
+          final overlayWidth = geometry.overlayWidth;
+          final headerHeight = math.max(54.0, 32 * textScale + 14);
+          final searchTop = 10 + headerHeight + 8;
+          final searchHeight = math.max(50.0, 16 * textScale + 28);
+          final filterTop = searchTop + searchHeight + 8;
+          final headerBottom =
+              filterTop + math.max(48.0, 14 * textScale + 26) + 10;
+          final panelWidth = geometry.panelWidth;
+          final desiredCardHeight = showingDishResults
+              ? 160.0 * textScale
+              : StallMapCard.preferredHeight(
+                  context, panelWidth, onScreenVendors,
+                  viewportFraction: geometry.viewportFraction,
+                  cardsPerPage: geometry.cardsPerPage);
+          final cardHeight = math.min(
+              desiredCardHeight,
+              math.max(100.0,
+                  constraints.maxHeight - headerBottom - navClearance - 56));
+          final panelHeight = cardHeight + 36;
+          final preview = onScreenVendors
+              .where((vendor) => vendor.vendorId == _previewVendorId)
+              .firstOrNull;
+          final cards = showingDishResults
+              ? dishResults
+                  .where((dish) => onScreenVendors
+                      .any((vendor) => vendor.vendorId == dish.vendorId))
+                  .toList()
+              : <DishSearchEntry>[];
           final resultCount =
-              showingDishResults ? dishResults.length : onScreenVendors.length;
-          final resultLabel = showingDishResults
-              ? (resultCount == 1 ? 'dish nearby' : 'dishes nearby')
-              : query.isEmpty
-                  ? (resultCount == 1
-                      ? 'stall in this area'
-                      : 'stalls in this area')
-                  : (resultCount == 1
-                      ? 'matching stall in this area'
-                      : 'matching stalls in this area');
+              showingDishResults ? cards.length : onScreenVendors.length;
+          final ids = showingDishResults
+              ? cards
+                  .map((dish) => '${dish.vendorId}/${dish.item.itemId}')
+                  .toList()
+              : onScreenVendors.map((vendor) => vendor.vendorId).toList();
+          if (showingDishResults &&
+              !cards.any((dish) =>
+                  '${dish.vendorId}/${dish.item.itemId}' == _selectedDishId &&
+                  dish.vendorId == _selectedVendorId)) {
+            final dish = cards
+                    .where((dish) => dish.vendorId == _selectedVendorId)
+                    .firstOrNull ??
+                cards.firstOrNull;
+            _selectedDishId =
+                dish == null ? null : '${dish.vendorId}/${dish.item.itemId}';
+          }
+          final selectedCard =
+              showingDishResults ? _selectedDishId : _selectedVendorId;
+          final searching = snapshot.connectionState == ConnectionState.waiting;
 
-          final cardWidth = constraints.maxWidth >= 600
-              ? (!showingDishResults && onScreenVendors.length == 1
-                  ? math.min(520.0, constraints.maxWidth - 32)
-                  : 320.0)
-              : (constraints.maxWidth * .84).clamp(220.0, 360.0).toDouble();
-
-          final overlayWidth = math.max(
-            0.0,
-            constraints.maxWidth - (useSidePanel ? sidePanelWidth + 40 : 24),
-          );
-          final sidePanelHeight = math.min(
-            math.max(
-              180.0,
-              constraints.maxHeight - 12 - navClearance - 80,
-            ),
-            74.0 +
-                guideHeight +
-                math.max(1, resultCount) * (showingDishResults ? 144.0 : 136.0),
-          );
-
-          _cardExtent = useSidePanel
-              ? (showingDishResults ? 144.0 : 136.0)
-              : cardWidth + 12;
-          // Full map with a floating results panel on tablets.
-          return Stack(children: [
-            Positioned.fill(
-                bottom: useSidePanel ? 0 : panelHeight,
-                child: Stack(children: [
-                  Positioned.fill(
-                      child: GoogleMap(
-                    style: _mapStyle,
-                    initialCameraPosition: CameraPosition(
-                        target: _searchCenter ??
-                            _customerPosition ??
-                            _defaultPosition.target,
-                        zoom: 14),
-                    markers: markers,
-                    clusterManagers: {
-                      ClusterManager(
+          return ValueListenableBuilder<double>(
+            valueListenable: _previewExtent,
+            builder: (context, extent, _) {
+              final covered = preview == null
+                  ? panelHeight + 64
+                  : (constraints.maxHeight - navClearance) * extent;
+              final controlsBottom = navClearance + covered + 12;
+              final controlsRoom = constraints.maxHeight -
+                  controlsBottom -
+                  headerBottom -
+                  (_locationError != null ? 60 : 0);
+              final mapTopInset =
+                  math.min(headerBottom, constraints.maxHeight * .38);
+              return Stack(children: [
+                Positioned.fill(
+                    child: GoogleMap(
+                  style: _mapStyle,
+                  initialCameraPosition: CameraPosition(
+                    target: _lastCameraPosition?.target ??
+                        _searchCenter ??
+                        _customerPosition ??
+                        _defaultPosition.target,
+                    zoom: _lastCameraPosition?.zoom ?? 14,
+                  ),
+                  markers: markers,
+                  clusterManagers: {
+                    ClusterManager(
                         clusterManagerId: _clusterId,
-                        onClusterTap: (cluster) => _zoomToCluster(cluster),
-                      )
-                    },
-                    myLocationEnabled: _locationPermissionGranted,
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: false,
-                    mapToolbarEnabled: false,
-                    compassEnabled: false,
-                    padding: EdgeInsets.fromLTRB(
+                        onClusterTap: _zoomToCluster)
+                  },
+                  myLocationEnabled: _locationPermissionGranted,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                  padding: EdgeInsets.fromLTRB(
                       12,
-                      206,
-                      useSidePanel ? sidePanelWidth + 28 : 12,
-                      useSidePanel ? navClearance + 80 : 12,
-                    ),
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                      if (_customerPosition != null) {
-                        _expectProgrammaticCameraMove();
-                        controller.animateCamera(
-                            CameraUpdate.newLatLngZoom(_customerPosition!, 15));
-                      }
-                      _updateVisibleBounds();
-                    },
-                    onCameraMove: (position) {
-                      _mapCenter = position.target;
-                      _lastCameraPosition = position;
-                      if ((_mapBearing.value - position.bearing).abs() > .1) {
-                        _mapBearing.value = position.bearing;
-                      }
-                    },
-                    onCameraMoveStarted: () {
-                      _boundsRequest++;
-                      if (!_programmaticCameraMove) _cameraMovedByUser = true;
-                    },
-                    onCameraIdle: _updateVisibleBounds,
-                    onTap: (_) {
-                      FocusScope.of(context).unfocus();
-                    },
-                  )),
-                  Positioned(
-                      top: 12,
-                      left: 12,
-                      child:
-                          SizedBox(width: overlayWidth, child: _mapHeader())),
-                  Positioned(
-                      top: 76,
-                      left: 12,
-                      child: SizedBox(
-                          width: overlayWidth,
-                          child: Material(
-                            elevation: 3,
-                            shadowColor: const Color(0x22000000),
-                            color: AppColors.cardColor.withValues(alpha: .94),
-                            borderRadius: BorderRadius.circular(25),
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _searchFocus,
-                              textInputAction: TextInputAction.search,
-                              onTap: () => setState(() {}),
-                              onChanged: (value) => setState(() {
-                                _searchQuery = value;
-                                _selectedVendorId = null;
-                              }),
-                              onSubmitted: _submitSearch,
-                              decoration: InputDecoration(
-                                filled: false,
-                                hintText: 'Search dishes or stalls…',
-                                hintStyle: const TextStyle(
-                                    fontSize: 13, color: AppColors.textMuted),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                prefixIcon: const Icon(Icons.search_rounded,
-                                    color: AppColors.textMuted),
-                                suffixIcon: _searchQuery.isNotEmpty
-                                    ? IconButton(
-                                        tooltip: 'Clear search',
-                                        icon: const Icon(Icons.close_rounded),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() => _searchQuery = '');
-                                        })
-                                    : AppDropdown<String>(
-                                        value: _category ?? 'All',
-                                        iconOnly: true,
-                                        icon: Icons.tune_rounded,
-                                        hint: 'Filter category',
-                                        options: {
-                                          'All': 'All',
-                                          for (final category
-                                              in stallCategories)
-                                            category: category,
-                                        },
-                                        onChanged: (value) => setState(() {
-                                          _category =
-                                              value == 'All' ? null : value;
-                                          _selectedVendorId = null;
-                                        }),
-                                      ),
-                              ),
-                            ),
-                          ))),
-                  Positioned(
-                      top: 134,
-                      left: 12,
-                      right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      child: _standardDiscoveryFilters()),
-                  if (_showSearchArea)
-                    Positioned(
-                        top: 196,
-                        left: 0,
-                        right: useSidePanel ? sidePanelWidth + 28 : 0,
-                        child: Center(
-                            child: ElevatedButton.icon(
-                          onPressed: _searchThisArea,
-                          icon: const Icon(Icons.search, size: 18),
-                          label: const Text('Search this area'),
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.cardColor,
-                              foregroundColor: AppColors.primary,
-                              elevation: 3),
-                        ))),
-                  if (_locationError != null)
-                    Positioned(
-                        top: _showSearchArea ? 250 : 202,
-                        left: 12,
-                        right: useSidePanel ? sidePanelWidth + 28 : 68,
-                        child: Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Row(children: [
-                              Expanded(
-                                  child: Text(_locationError!,
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12))),
-                              Flexible(
-                                  child: TextButton(
-                                      onPressed: _enterCustomerLocationManually,
-                                      child: const Text('Enter manually'))),
-                            ]),
-                          ),
-                        ))
-                  else if (!shortViewport && _isLocatingCustomer)
-                    Positioned(
-                      top: _showSearchArea ? 250 : 202,
-                      left: 12,
-                      right: useSidePanel ? null : 68,
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 3,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.primary,
+                      mapTopInset,
+                      12,
+                      math.min(
+                          navClearance + covered + 12,
+                          math.max(
+                              12, constraints.maxHeight - mapTopInset - 80))),
+                  onMapCreated: (controller) {
+                    _mapController = controller;
+                    if (_lastCameraPosition != null) {
+                      _expectProgrammaticCameraMove();
+                      controller.moveCamera(
+                          CameraUpdate.newCameraPosition(_lastCameraPosition!));
+                    } else if (_customerPosition != null) {
+                      _expectProgrammaticCameraMove();
+                      controller.animateCamera(
+                          CameraUpdate.newLatLngZoom(_customerPosition!, 15));
+                    }
+                    _updateVisibleBounds();
+                  },
+                  onCameraMove: (position) {
+                    _mapCenter = position.target;
+                    _lastCameraPosition = position;
+                    if ((_mapBearing.value - position.bearing).abs() > .1) {
+                      _mapBearing.value = position.bearing;
+                    }
+                  },
+                  onCameraMoveStarted: () {
+                    _boundsRequest++;
+                    if (!_programmaticCameraMove) _cameraMovedByUser = true;
+                  },
+                  onCameraIdle: _updateVisibleBounds,
+                  onTap: (_) => _searchFocus.unfocus(),
+                )),
+                Positioned(
+                    top: 10,
+                    left: 12,
+                    width: overlayWidth,
+                    child: _mapHeader()),
+                Positioned(
+                    top: searchTop,
+                    left: 12,
+                    width: overlayWidth,
+                    child: Material(
+                      color: AppColors.cardColor,
+                      elevation: 3,
+                      shadowColor: const Color(0x22000000),
+                      borderRadius: BorderRadius.circular(28),
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (value) => setState(() {
+                          _searchQuery = value;
+                          _selectedVendorId = null;
+                          _selectedDishId = null;
+                          _previewVendorId = null;
+                        }),
+                        onSubmitted: _submitSearch,
+                        decoration: InputDecoration(
+                          filled: false,
+                          hintText: 'Search dishes or stalls…',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          prefixIcon: const Icon(Icons.search_rounded,
+                              color: AppColors.textMuted),
+                          suffixIcon: _searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Clear search',
+                                  icon: const Icon(Icons.close_rounded),
+                                  onPressed: () => setState(() {
+                                    _searchController.clear();
+                                    _searchQuery = '';
+                                    _selectedVendorId = null;
+                                    _selectedDishId = null;
+                                  }),
                                 ),
-                              ),
-                              SizedBox(width: 8),
-                              Flexible(
-                                  child: Text(
-                                'Finding your location…',
-                                style: TextStyle(fontSize: 12),
-                              )),
-                            ],
-                          ),
                         ),
                       ),
-                    ),
+                    )),
+                Positioned(
+                    top: filterTop,
+                    left: 12,
+                    width: overlayWidth,
+                    child: _compactMapFilters()),
+                if (_locationError != null && preview == null)
                   Positioned(
-                      right: useSidePanel ? sidePanelWidth + 28 : 12,
-                      bottom: useSidePanel ? navClearance + 40 : 12,
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      top: headerBottom,
+                      left: 12,
+                      width: overlayWidth,
+                      child: Material(
+                        color: AppColors.cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Row(children: [
+                            const Icon(Icons.location_off_outlined, size: 18),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                                child: Text(
+                                    'Location unavailable. Browse the map or set a location.',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11))),
+                            TextButton(
+                                onPressed: _chooseLocationSource,
+                                child: const Text('Set location')),
+                          ]),
+                        ),
+                      )),
+                if (controlsRoom >= 48 && (preview == null || extent < .7))
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 120),
+                    right: 12,
+                    bottom: controlsBottom,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      if (controlsRoom >= 104) ...[
                         FloatingActionButton.small(
                           heroTag: 'compass_button',
                           tooltip: 'Reset compass',
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.textDark,
+                          backgroundColor: AppColors.cardColor,
                           onPressed: _resetCompass,
                           child: ValueListenableBuilder<double>(
-                            valueListenable: _mapBearing,
-                            child: const Icon(Icons.navigation_rounded),
-                            builder: (context, bearing, child) =>
-                                Transform.rotate(
-                              angle: -bearing * math.pi / 180,
-                              child: child,
-                            ),
-                          ),
+                              valueListenable: _mapBearing,
+                              builder: (_, bearing, __) => Transform.rotate(
+                                  angle: -bearing * math.pi / 180,
+                                  child: const Icon(Icons.navigation_rounded))),
                         ),
                         const SizedBox(height: 8),
-                        FloatingActionButton.small(
-                          heroTag: 'recenter_button',
-                          tooltip: 'My location',
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.textDark,
-                          onPressed: _getCustomerLocation,
-                          child: _isLocatingCustomer
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.my_location_rounded),
-                        ),
-                      ])),
-                  if (showSuggestions)
-                    Positioned(
-                      top: 135,
-                      left: 12,
-                      child: SizedBox(
-                          width: useSidePanel
-                              ? math.max(
-                                  0.0,
-                                  constraints.maxWidth - sidePanelWidth - 40,
-                                )
-                              : overlayWidth,
-                          child: _suggestionPanel(suggestions)),
-                    ),
-                ])),
-            Positioned(
-                top: useSidePanel ? 12 : null,
-                left: useSidePanel ? null : 0,
-                right: useSidePanel ? 16 : 0,
-                bottom: useSidePanel ? null : 0,
-                width: useSidePanel ? sidePanelWidth : null,
-                height: useSidePanel ? sidePanelHeight : panelHeight,
-                child: Material(
-                  color: AppColors.background,
-                  elevation: 10,
-                  shadowColor: const Color(0x26000000),
-                  borderRadius: useSidePanel
-                      ? BorderRadius.circular(26)
-                      : const BorderRadius.vertical(top: Radius.circular(26)),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(children: [
-                    if (useSidePanel)
-                      const SizedBox(height: 12)
-                    else
-                      const SizedBox(
-                        height: 10,
-                        child: Center(
-                          child: SizedBox(
-                            width: 36,
-                            height: 4,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: AppColors.border,
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(4)),
-                              ),
-                            ),
-                          ),
-                        ),
+                      ],
+                      FloatingActionButton.small(
+                        heroTag: 'recenter_button',
+                        tooltip: 'My location',
+                        backgroundColor: AppColors.cardColor,
+                        onPressed: _getCustomerLocation,
+                        child: _isLocatingCustomer
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.my_location_rounded),
                       ),
-                    SizedBox(
-                      height: 42,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 16, right: 8),
-                        child: Row(
-                          children: [
-                            if (!snapshot.hasError &&
-                                snapshot.connectionState !=
-                                    ConnectionState.waiting) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.mint,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Text(
-                                  '$resultCount',
-                                  style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
+                    ]),
+                  ),
+                if (preview == null) ...[
+                  if (_showSearchArea)
+                    Positioned(
+                      left: geometry.panelLeft + 12,
+                      right: geometry.panelLeft + 12,
+                      bottom: navClearance + panelHeight + 14,
+                      child: Center(
+                          child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.cardColor,
+                            foregroundColor: AppColors.textDark,
+                            shape: const StadiumBorder(),
+                            elevation: 3,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 10)),
+                        onPressed: _searchThisArea,
+                        child: const Text('Search here'),
+                      )),
+                    ),
+                  Positioned(
+                    left: geometry.panelLeft,
+                    bottom: navClearance + 8,
+                    width: panelWidth,
+                    height: panelHeight,
+                    child: Column(children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(children: [
+                          Expanded(
                               child: Text(
-                                snapshot.hasError
-                                    ? 'Could not load stalls'
-                                    : snapshot.connectionState ==
-                                            ConnectionState.waiting
-                                        ? 'Finding stalls…'
-                                        : resultLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            if (snapshot.hasError ||
-                                (snapshot.connectionState !=
-                                        ConnectionState.waiting &&
-                                    resultCount > 1))
-                              TextButton(
+                                  '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600))),
+                          SizedBox(
+                              height: 30,
+                              child: TextButton(
                                 onPressed: snapshot.hasError
                                     ? () => setState(
                                         () => _vendors = _watchVendors())
-                                    : showingDishResults
-                                        ? () => _showAllDishes(
-                                              dishResults,
-                                              filteredVendorById,
-                                            )
-                                        : () => _showAllStalls(onScreenVendors),
+                                    : () => showingDishResults
+                                        ? _showAllDishes(
+                                            cards, filteredVendorById)
+                                        : _showAllStalls(onScreenVendors),
                                 child: Text(
-                                  snapshot.hasError ? 'Retry' : 'View all',
-                                  style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                                    snapshot.hasError ? 'Retry' : 'View all'),
+                              )),
+                        ]),
                       ),
-                    ),
-                    if (!shortViewport) const MapMarkerGuide(),
-                    if (!shortViewport)
                       Expanded(
-                          child: snapshot.connectionState ==
-                                  ConnectionState.waiting
-                              ? const Center(child: CircularProgressIndicator())
-                              : showingDishResults
-                                  ? ListView.builder(
-                                      controller: _stallScrollController,
-                                      scrollDirection: useSidePanel
-                                          ? Axis.vertical
-                                          : Axis.horizontal,
-                                      padding: useSidePanel
-                                          ? const EdgeInsets.fromLTRB(
-                                              12, 8, 12, 12)
-                                          : const EdgeInsets.fromLTRB(
-                                              16, 0, 4, 10),
-                                      itemCount: dishResults.length,
-                                      itemExtent: _cardExtent,
-                                      itemBuilder: (context, index) {
-                                        final dish = dishResults[index];
-                                        return Padding(
-                                          padding: useSidePanel
-                                              ? const EdgeInsets.only(bottom: 8)
-                                              : const EdgeInsets.only(
-                                                  right: 12),
-                                          child: _dishCard(
-                                            dish,
-                                            filteredVendorById[dish.vendorId]!,
-                                          ),
-                                        );
-                                      },
-                                    )
-                                  : onScreenVendors.isEmpty
-                                      ? Center(
-                                          child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 24),
-                                              child: Text(
-                                                  snapshot.hasError
-                                                      ? 'Check your connection and retry.'
-                                                      : (query.isNotEmpty ||
-                                                                  _priceRange !=
-                                                                      null) &&
-                                                              _dishSearchError !=
-                                                                  null
-                                                          ? 'Could not load menu prices and dishes. Check your connection and retry.'
-                                                          : (query.isNotEmpty ||
-                                                                      _priceRange !=
-                                                                          null) &&
-                                                                  _dishesLoading
-                                                              ? 'Loading dishes and prices…'
-                                                              : _priceRange !=
-                                                                      null
-                                                                  ? 'No dishes or stalls match ${_priceRange!.label}${query.isEmpty ? '' : ' and “${_searchController.text.trim()}”'}. Try another price range or reset it.'
-                                                                  : _customerPosition !=
-                                                                              null &&
-                                                                          _searchRadiusKm <
-                                                                              50
-                                                                      ? 'No stalls found within ${_searchRadiusKm.toStringAsFixed(0)} km. Try Expand area.'
-                                                                      : query
-                                                                              .isNotEmpty
-                                                                          ? 'No nearby dishes or stalls match “${_searchController.text.trim()}”.'
-                                                                          : 'Move the map, zoom out, or clear your filters.',
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                      color: Color(0xFF64748B),
-                                                      fontSize: 13))))
-                                      : ListView.builder(
-                                          controller: _stallScrollController,
-                                          scrollDirection: useSidePanel
-                                              ? Axis.vertical
-                                              : Axis.horizontal,
-                                          padding: useSidePanel
-                                              ? const EdgeInsets.fromLTRB(
-                                                  12, 8, 12, 12)
-                                              : EdgeInsets.fromLTRB(
-                                                  onScreenVendors.length == 1
-                                                      ? math.max(
-                                                          16.0,
-                                                          (constraints.maxWidth -
-                                                                  _cardExtent) /
-                                                              2,
-                                                        )
-                                                      : 16,
-                                                  0,
-                                                  4,
-                                                  8,
-                                                ),
-                                          itemCount: onScreenVendors.length,
-                                          itemExtent: _cardExtent,
-                                          itemBuilder: (context, index) =>
-                                              Padding(
-                                            padding: useSidePanel
-                                                ? const EdgeInsets.only(
-                                                    bottom: 8)
-                                                : const EdgeInsets.only(
-                                                    right: 12),
-                                            child: _stallCard(
-                                              onScreenVendors[index],
-                                            ),
-                                          ),
-                                        )),
-                    SizedBox(height: useSidePanel ? 0 : navClearance),
-                  ]),
-                )),
-          ]);
+                        child: searching
+                            ? const Center(child: CircularProgressIndicator())
+                            : resultCount == 0
+                                ? Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    child: Material(
+                                      color: AppColors.cardColor,
+                                      borderRadius: BorderRadius.circular(23),
+                                      child: Center(
+                                        child: Padding(
+                                            padding: const EdgeInsets.all(18),
+                                            child: Text(
+                                                snapshot.hasError
+                                                    ? 'Could not load stalls. Check your connection and retry.'
+                                                    : _dishSearchError !=
+                                                                null &&
+                                                            (query.isNotEmpty ||
+                                                                _priceRange !=
+                                                                    null)
+                                                        ? _dishSearchError!
+                                                        : _dishesLoading &&
+                                                                (query.isNotEmpty ||
+                                                                    _priceRange !=
+                                                                        null)
+                                                            ? 'Loading dishes and prices…'
+                                                            : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color:
+                                                        AppColors.textMuted))),
+                                      ),
+                                    ))
+                                : StallCardCarousel(
+                                    key: ValueKey(showingDishResults
+                                        ? 'dish-map-cards'
+                                        : 'stall-map-cards'),
+                                    ids: ids,
+                                    selectedId: selectedCard,
+                                    viewportFraction: geometry.viewportFraction,
+                                    cardsPerPage: geometry.cardsPerPage,
+                                    onSelected: (index) {
+                                      if (showingDishResults) {
+                                        final dish = cards[index];
+                                        _selectedDishId = ids[index];
+                                        _selectVendor(
+                                            filteredVendorById[dish.vendorId]!);
+                                      } else {
+                                        _selectVendor(onScreenVendors[index]);
+                                      }
+                                    },
+                                    itemBuilder: (_, index) =>
+                                        showingDishResults
+                                            ? _dishCard(
+                                                cards[index],
+                                                filteredVendorById[
+                                                    cards[index].vendorId]!)
+                                            : StallMapCard(
+                                                vendor: onScreenVendors[index],
+                                                onTap: () {
+                                                  final vendor =
+                                                      onScreenVendors[index];
+                                                  if (vendor.vendorId ==
+                                                      _selectedVendorId) {
+                                                    _openStallPreview(vendor);
+                                                  } else {
+                                                    _selectVendor(vendor);
+                                                  }
+                                                }),
+                                  ),
+                      ),
+                    ]),
+                  ),
+                ],
+                if (preview != null)
+                  Positioned.fill(
+                      left: geometry.previewInset,
+                      right: geometry.previewInset,
+                      bottom: navClearance,
+                      child: _buildStallPreview(preview)),
+                if (showSuggestions && preview == null)
+                  Positioned(
+                      top: searchTop + searchHeight + 4,
+                      left: 12,
+                      width: overlayWidth,
+                      child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                              maxHeight: constraints.maxHeight * .4),
+                          child: _suggestionPanel(suggestions))),
+              ]);
+            },
+          );
         });
       },
     );
   }
 
-  Widget _standardDiscoveryFilters() => Row(children: [
-        TextButton.icon(
-          onPressed: _clearDiscoveryFilters,
-          icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-          label: const Text('Clear filters'),
-          style: TextButton.styleFrom(backgroundColor: AppColors.cardColor),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-            child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            ..._extraDiscoveryControls(),
-            ActionChip(
-                avatar: const Icon(Icons.edit_location_alt_outlined, size: 18),
-                label: const Text('Set location'),
-                onPressed: _chooseLocationSource),
-            const SizedBox(width: 8),
-            AppDropdown<String>(
-              value: _statusFilter,
-              displayText: _openingTime != null ? 'Scheduled' : null,
-              width: 155,
-              compact: true,
-              hint: 'Choose stall status',
-              icon: Icons.storefront_outlined,
-              options: const {
-                'Open': 'Open now',
-                'Closed': 'Closed',
-                'All': 'All stalls',
+  Widget _compactMapFilters() => DiscoveryMapFilters(
+        category: _category,
+        hasExtraFilters: _priceRange != null ||
+            _openingTime != null ||
+            _statusFilter == 'Closed' ||
+            _searchRadiusKm != 5,
+        openNow: _statusFilter == 'Open' && _openingTime == null,
+        sort: _sort,
+        availableOnly: _availableOnly,
+        selfCollectOnly: _selfCollectOnly,
+        recentOnly: _recentOnly,
+        onCategory: (value) => setState(() {
+          _category = value;
+          _selectedVendorId = null;
+        }),
+        onOpenNow: (value) => setState(() {
+          _statusFilter = value ? 'Open' : 'All';
+          _openingTime = null;
+        }),
+        onSort: (value) => setState(() => _sort = value),
+        onAvailable: (value) => setState(() => _availableOnly = value),
+        onSelfCollect: (value) => setState(() => _selfCollectOnly = value),
+        onRecent: (value) => setState(() => _recentOnly = value),
+        onReset: _clearDiscoveryFilters,
+        moreItems: [
+          MenuItemButton(
+              leadingIcon: Icon(_listOnly ? Icons.map_outlined : Icons.list),
+              onPressed: () {
+                _searchFocus.unfocus();
+                setState(() {
+                  _listOnly = !_listOnly;
+                  _previewVendorId = null;
+                  if (_listOnly) _mapController = null;
+                });
               },
-              onChanged: (status) => setState(() {
-                _statusFilter = status;
-                _openingTime = null;
-              }),
-            ),
-            const SizedBox(width: 8),
-            AppDropdown<String>(
-              value: _category ?? 'All',
-              displayText: _category ?? 'All categories',
-              width: 190,
-              compact: true,
-              hint: 'Choose category',
-              icon: Icons.category_outlined,
-              options: {
-                'All': 'All',
-                for (final category in stallCategories) category: category,
-              },
-              onChanged: (value) => setState(() {
-                _category = value == 'All' ? null : value;
-                _selectedVendorId = null;
-              }),
-            ),
-            const SizedBox(width: 8),
-            InputChip(
-              avatar: const Icon(Icons.payments_outlined, size: 18),
-              label: Text(_priceRange?.label ?? 'Any price'),
+              child: Text(_listOnly ? 'Map view' : 'List view')),
+          MenuItemButton(
+              onPressed: _chooseLocationSource,
+              child: const Text('Set location')),
+          MenuItemButton(
               onPressed: _choosePriceRange,
-              onDeleted: _priceRange == null
-                  ? null
-                  : () => setState(() {
-                        _priceRange = null;
-                        _selectedVendorId = null;
-                      }),
-            ),
-            const SizedBox(width: 8),
-            InputChip(
-              avatar: const Icon(Icons.schedule, size: 18),
-              label: Text(_openingTime?.label ?? 'Open at…'),
+              child: Text(_priceRange?.label ?? 'Any price')),
+          MenuItemButton(
               onPressed: _chooseOpeningTime,
-              onDeleted: _openingTime == null
-                  ? null
-                  : () => setState(() {
-                        _openingTime = null;
-                        _statusFilter = 'Open';
-                      }),
-            ),
-            if (_searchCenter != null || _customerPosition != null) ...[
-              const SizedBox(width: 8),
-              AppDropdown<double>(
-                value: _searchRadiusKm,
-                width: 165,
-                compact: true,
-                hint: 'Choose distance',
-                icon: Icons.radar,
-                options: {
-                  for (final radius in [5.0, 10.0, 25.0, 50.0])
-                    radius: 'Within ${radius.toStringAsFixed(0)} km',
-                },
-                onChanged: _setSearchRadius,
-              ),
-            ],
-          ]),
-        )),
+              child: Text(_openingTime?.label ?? 'Open at…')),
+          SubmenuButton(
+              menuStyle: discoveryMenuStyle,
+              menuChildren: [
+                for (final radius in [5.0, 10.0, 25.0, 50.0])
+                  DiscoveryMenuChoice(
+                      label: 'Within ${radius.toStringAsFixed(0)} km',
+                      selected: _searchRadiusKm == radius,
+                      onPressed: () => _setSearchRadius(radius)),
+              ],
+              child:
+                  Text('Distance: ${_searchRadiusKm.toStringAsFixed(0)} km')),
+          SubmenuButton(
+              menuStyle: discoveryMenuStyle,
+              menuChildren: [
+                for (final status in ['All', 'Open', 'Closed'])
+                  DiscoveryMenuChoice(
+                      label: status == 'All' ? 'All stalls' : status,
+                      selected: _statusFilter == status && _openingTime == null,
+                      onPressed: () => setState(() {
+                            _statusFilter = status;
+                            _openingTime = null;
+                          })),
+              ],
+              child: const Text('Stall status')),
+          if (_canSaveSearch) ...[
+            MenuItemButton(
+                onPressed: _saveCurrentSearch,
+                child: const Text('Save search')),
+            MenuItemButton(
+                onPressed: _showSavedSearches,
+                child: const Text('Saved searches')),
+          ],
+        ],
+      );
+
+  String _markerCategory(VendorModel vendor) =>
+      vendor.allCategories.where(stallCategories.contains).firstOrNull ?? '';
+
+  Future<void> _loadMapMarkerIcons() async {
+    try {
+      final entries = await Future.wait([
+        for (final category in ['', ...stallCategories])
+          for (final selected in [false, true])
+            _markerCache
+                .icon(category, selected: selected)
+                .then((icon) => MapEntry((category, selected), icon)),
       ]);
+      if (mounted) setState(() => _markerIcons.addEntries(entries));
+    } catch (_) {
+      // A disposed renderer must not interrupt discovery.
+    }
+  }
+
+  void _openStallPreview(VendorModel vendor) {
+    _searchFocus.unfocus();
+    _previewExtent.value = .55;
+    _previewCamera = _lastCameraPosition;
+    final user = FirebaseAuth.instance.currentUser;
+    _previewFollowStream = user == null || user.isAnonymous
+        ? Stream.value(false)
+        : _followService.isFollowing(user.uid, vendor.vendorId);
+    _expectProgrammaticCameraMove();
+    setState(() {
+      _selectedVendorId = vendor.vendorId;
+      _previewVendorId = vendor.vendorId;
+    });
+  }
+
+  Future<void> _closeStallPreview() async {
+    final camera = _previewCamera;
+    _expectProgrammaticCameraMove();
+    setState(() {
+      _previewVendorId = null;
+      _previewCamera = null;
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    if (camera != null && _mapController != null) {
+      try {
+        await _mapController!
+            .animateCamera(CameraUpdate.newCameraPosition(camera));
+      } catch (_) {/* Map can be disposed during navigation. */}
+    }
+  }
+
+  Widget _buildStallPreview(VendorModel vendor) => StreamBuilder<bool>(
+        stream: _previewFollowStream,
+        builder: (context, snapshot) => StallPreviewSheet(
+          key: ValueKey('preview-${vendor.vendorId}'),
+          vendor: vendor,
+          rating: _ratingLine(vendor),
+          distance: _distanceTo(vendor),
+          photos: <String>{
+            if (vendor.imageUrl.isNotEmpty) vendor.imageUrl,
+            ..._allDishes
+                .where((dish) => dish.vendorId == vendor.vendorId)
+                .map((dish) => dish.item.imageUrl)
+                .where((url) => url.isNotEmpty)
+          }.take(6).toList(),
+          following: snapshot.data ?? false,
+          onFollow: _followingBusy ||
+                  snapshot.connectionState == ConnectionState.waiting
+              ? null
+              : () => snapshot.hasError
+                  ? _retryPreviewFollow(vendor)
+                  : _togglePreviewFollow(vendor, snapshot.data ?? false),
+          onDirections: () => _previewDirections(vendor),
+          onViewMenu: () => _openVendorDetails(vendor,
+              dishId: _allDishes
+                  .where((dish) => dish.vendorId == vendor.vendorId)
+                  .firstOrNull
+                  ?.item
+                  .itemId),
+          onSelfCollect: vendor.isOpenNow && vendor.hasValidLocation
+              ? () => _previewSelfCollect(vendor)
+              : null,
+          onDetails: () => _openVendorDetails(vendor),
+          onClose: _closeStallPreview,
+          onExtentChanged: (extent) {
+            if ((_previewExtent.value - extent).abs() >= .015) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || _previewVendorId != vendor.vendorId) return;
+                _expectProgrammaticCameraMove();
+                _previewExtent.value = extent;
+              });
+            }
+          },
+        ),
+      );
+
+  void _retryPreviewFollow(VendorModel vendor) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) return;
+    setState(() => _previewFollowStream =
+        _followService.isFollowing(user.uid, vendor.vendorId));
+    _previewMessage('Could not load following. Retrying…');
+  }
+
+  void _previewMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<bool> _requireCustomerForPreview() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      final signIn = await showDialog<bool>(
+          context: context,
+          builder: (dialog) => AlertDialog(
+                title: const Text('Sign in to continue'),
+                content: const Text(
+                    'Use your customer account to follow stalls or book self-collect.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialog, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(dialog, true),
+                      child: const Text('Sign in'))
+                ],
+              ));
+      if (mounted && signIn == true) {
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      }
+      return false;
+    }
+    if (!user.emailVerified) {
+      _previewMessage('Verify your email to continue.');
+      return false;
+    }
+    final profile = await _authService.getUserData(user.uid);
+    if (!mounted) return false;
+    if (profile?.role != 'customer') {
+      _previewMessage(
+          'Only customer accounts can follow stalls or book self-collect.');
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _togglePreviewFollow(VendorModel vendor, bool following) async {
+    if (_followingBusy) return;
+    setState(() => _followingBusy = true);
+    try {
+      if (!await _requireCustomerForPreview() || !mounted) return;
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      if (following) {
+        await _followService.unfollowVendor(uid, vendor.vendorId);
+      } else {
+        await _followService.followVendor(uid, vendor.vendorId);
+      }
+    } catch (_) {
+      _previewMessage('Could not update following. Please retry.');
+    } finally {
+      if (mounted) setState(() => _followingBusy = false);
+    }
+  }
+
+  Future<void> _previewDirections(VendorModel vendor) async {
+    try {
+      final launched = await launchUrl(
+          Uri.https('www.google.com', '/maps/dir/', {
+            'api': '1',
+            'destination': '${vendor.latitude},${vendor.longitude}',
+          }),
+          mode: LaunchMode.externalApplication);
+      if (!launched) {
+        _previewMessage('Could not open directions. Please retry.');
+      }
+    } catch (_) {
+      _previewMessage('Could not open directions. Please retry.');
+    }
+  }
+
+  Future<void> _previewSelfCollect(VendorModel vendor) async {
+    try {
+      if (!await _requireCustomerForPreview() || !mounted) return;
+      Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => DemoOrderCartScreen(vendor: vendor)));
+    } catch (_) {
+      _previewMessage('Could not open self-collect. Please retry.');
+    }
+  }
 
   String? _distanceTo(VendorModel vendor) {
     final position = _searchCenter ?? _customerPosition;

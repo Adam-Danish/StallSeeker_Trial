@@ -1,0 +1,1046 @@
+diff --git a/lib/features/customer/home/customer_home_screen.dart b/lib/features/customer/home/customer_home_screen.dart
+--- a/lib/features/customer/home/customer_home_screen.dart
++++ b/lib/features/customer/home/customer_home_screen.dart
+@@ -1490,20 +1490,15 @@
+         return LayoutBuilder(builder: (context, constraints) {
+           final navClearance = MediaQuery.paddingOf(context).bottom + 12;
+           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+-          final splitLayout = constraints.maxWidth >= 500 &&
+-              constraints.maxWidth > constraints.maxHeight * 1.4;
+-          final overlayWidth = splitLayout
+-              ? constraints.maxWidth * .48 - 12
+-              : constraints.maxWidth - 24;
++          final geometry = DiscoveryMapGeometry(constraints.biggest);
++          final overlayWidth = geometry.overlayWidth;
+           final headerHeight = math.max(54.0, 32 * textScale + 14);
+           final searchTop = 10 + headerHeight + 8;
+           final searchHeight = math.max(50.0, 16 * textScale + 28);
+           final filterTop = searchTop + searchHeight + 8;
+           final headerBottom =
+               filterTop + math.max(48.0, 14 * textScale + 26) + 10;
+-          final panelWidth = splitLayout
+-              ? math.min(560.0, constraints.maxWidth * .49)
+-              : constraints.maxWidth;
++          final panelWidth = geometry.panelWidth;
+           final desiredCardHeight = showingDishResults
+               ? 160.0 * textScale
+               : StallMapCard.preferredHeight(
+@@ -1732,9 +1727,8 @@
+                 if (preview == null) ...[
+                   if (_showSearchArea)
+                     Positioned(
+-                      left:
+-                          splitLayout ? constraints.maxWidth - panelWidth : 12,
+-                      right: 12,
++                      left: geometry.panelLeft + 12,
++                      right: geometry.panelLeft + 12,
+                       bottom: navClearance + panelHeight + 14,
+                       child: Center(
+                           child: ElevatedButton(
+@@ -1750,8 +1744,7 @@
+                       )),
+                     ),
+                   Positioned(
+-                    left: splitLayout ? null : 0,
+-                    right: splitLayout ? 0 : null,
++                    left: geometry.panelLeft,
+                     bottom: navClearance + 8,
+                     width: panelWidth,
+                     height: panelHeight,
+@@ -1833,23 +1826,16 @@
+                                         _selectVendor(onScreenVendors[index]);
+                                       }
+                                     },
+-                                    itemBuilder: (_, index) => showingDishResults
+-                                        ? _dishCard(
+-                                            cards[index],
+-                                            filteredVendorById[
+-                                                cards[index].vendorId]!)
+-                                        : StallMapCard(
+-                                            vendor: onScreenVendors[index],
+-                                            rating: _ratings[
+-                                                onScreenVendors[index]
+-                                                    .vendorId],
+-                                            ratingUnavailable: _ratingErrors
+-                                                .contains(onScreenVendors[index]
+-                                                    .vendorId),
+-                                            distance: _distanceTo(
+-                                                onScreenVendors[index]),
+-                                            onTap: () => _openStallPreview(
+-                                                onScreenVendors[index])),
++                                    itemBuilder: (_, index) =>
++                                        showingDishResults
++                                            ? _dishCard(
++                                                cards[index],
++                                                filteredVendorById[
++                                                    cards[index].vendorId]!)
++                                            : StallMapCard(
++                                                vendor: onScreenVendors[index],
++                                                onTap: () => _openStallPreview(
++                                                    onScreenVendors[index])),
+                                   ),
+                       ),
+                     ]),
+@@ -1857,7 +1843,8 @@
+                 ],
+                 if (preview != null)
+                   Positioned.fill(
+-                      left: splitLayout ? constraints.maxWidth - panelWidth : 0,
++                      left: geometry.panelLeft,
++                      right: geometry.panelLeft,
+                       bottom: navClearance,
+                       child: _buildStallPreview(preview)),
+                 if (showSuggestions && preview == null)
+@@ -1922,23 +1909,30 @@
+           MenuItemButton(
+               onPressed: _chooseOpeningTime,
+               child: Text(_openingTime?.label ?? 'Open at…')),
+-          SubmenuButton(menuChildren: [
+-            for (final radius in [5.0, 10.0, 25.0, 50.0])
+-              MenuItemButton(
+-                  onPressed: () => _setSearchRadius(radius),
+-                  leadingIcon:
+-                      Icon(_searchRadiusKm == radius ? Icons.check : null),
+-                  child: Text('Within ${radius.toStringAsFixed(0)} km')),
+-          ], child: Text('Distance: ${_searchRadiusKm.toStringAsFixed(0)} km')),
+-          SubmenuButton(menuChildren: [
+-            for (final status in ['All', 'Open', 'Closed'])
+-              MenuItemButton(
+-                  onPressed: () => setState(() {
+-                        _statusFilter = status;
+-                        _openingTime = null;
+-                      }),
+-                  child: Text(status == 'All' ? 'All stalls' : status)),
+-          ], child: const Text('Stall status')),
++          SubmenuButton(
++              menuStyle: discoveryMenuStyle,
++              menuChildren: [
++                for (final radius in [5.0, 10.0, 25.0, 50.0])
++                  DiscoveryMenuChoice(
++                      label: 'Within ${radius.toStringAsFixed(0)} km',
++                      selected: _searchRadiusKm == radius,
++                      onPressed: () => _setSearchRadius(radius)),
++              ],
++              child:
++                  Text('Distance: ${_searchRadiusKm.toStringAsFixed(0)} km')),
++          SubmenuButton(
++              menuStyle: discoveryMenuStyle,
++              menuChildren: [
++                for (final status in ['All', 'Open', 'Closed'])
++                  DiscoveryMenuChoice(
++                      label: status == 'All' ? 'All stalls' : status,
++                      selected: _statusFilter == status && _openingTime == null,
++                      onPressed: () => setState(() {
++                            _statusFilter = status;
++                            _openingTime = null;
++                          })),
++              ],
++              child: const Text('Stall status')),
+           if (_canSaveSearch) ...[
+             MenuItemButton(
+                 onPressed: _saveCurrentSearch,
+diff --git a/lib/features/customer/home/discovery_map_widgets.dart b/lib/features/customer/home/discovery_map_widgets.dart
+--- a/lib/features/customer/home/discovery_map_widgets.dart
++++ b/lib/features/customer/home/discovery_map_widgets.dart
+@@ -1,39 +1,79 @@
++import 'dart:math' as math;
+ import 'package:flutter/material.dart';
+-
+ import '../../../core/constants/app_colors.dart';
+ import '../../../core/constants/stall_categories.dart';
+ import '../../../core/models/vendor_model.dart';
++import '../../../core/models/stall_schedule.dart';
+ import 'discovery_options.dart';
+ 
++/// One menu style, inherited by category, filters, more options and submenus.
++const discoveryMenuStyle = MenuStyle(
++  backgroundColor: WidgetStatePropertyAll(Colors.white),
++  surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
++  shadowColor: WidgetStatePropertyAll(Color(0x26000000)),
++  elevation: WidgetStatePropertyAll(8),
++  padding: WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 6)),
++  shape: WidgetStatePropertyAll(RoundedRectangleBorder(
++      borderRadius: BorderRadius.all(Radius.circular(20)))),
++);
++
++class DiscoveryMenuChoice extends StatelessWidget {
++  const DiscoveryMenuChoice(
++      {super.key,
++      required this.label,
++      required this.selected,
++      required this.onPressed,
++      this.keepOpen = false});
++  final String label;
++  final bool selected, keepOpen;
++  final VoidCallback onPressed;
++  @override
++  Widget build(BuildContext context) => Semantics(
++        checked: selected,
++        child: MenuItemButton(
++          leadingIcon: SizedBox(
++              width: 20,
++              child: selected
++                  ? const Icon(Icons.check_rounded,
++                      size: 20, color: AppColors.primary)
++                  : null),
++          closeOnActivate: !keepOpen,
++          onPressed: onPressed,
++          child: Text(label),
++        ),
++      );
++}
++
+ class DiscoveryMapFilters extends StatelessWidget {
+-  const DiscoveryMapFilters({
+-    super.key,
+-    required this.category,
+-    required this.openNow,
+-    required this.sort,
+-    required this.availableOnly,
+-    required this.selfCollectOnly,
+-    required this.recentOnly,
+-    required this.onCategory,
+-    required this.onOpenNow,
+-    required this.onSort,
+-    required this.onAvailable,
+-    required this.onSelfCollect,
+-    required this.onRecent,
+-    required this.onReset,
+-    required this.moreItems,
+-    this.hasExtraFilters = false,
+-  });
+-
++  const DiscoveryMapFilters(
++      {super.key,
++      required this.category,
++      required this.openNow,
++      required this.sort,
++      required this.availableOnly,
++      required this.selfCollectOnly,
++      required this.recentOnly,
++      required this.onCategory,
++      required this.onOpenNow,
++      required this.onSort,
++      required this.onAvailable,
++      required this.onSelfCollect,
++      required this.onRecent,
++      required this.onReset,
++      required this.moreItems,
++      this.hasExtraFilters = false});
+   final String? category;
+-  final bool openNow, availableOnly, selfCollectOnly, recentOnly;
++  final bool openNow,
++      availableOnly,
++      selfCollectOnly,
++      recentOnly,
++      hasExtraFilters;
+   final DiscoverySort sort;
+   final ValueChanged<String?> onCategory;
+   final ValueChanged<bool> onOpenNow, onAvailable, onSelfCollect, onRecent;
+   final ValueChanged<DiscoverySort> onSort;
+   final VoidCallback onReset;
+   final List<Widget> moreItems;
+-  final bool hasExtraFilters;
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -43,131 +83,225 @@
+         availableOnly ||
+         selfCollectOnly ||
+         recentOnly;
+-    final style = MenuStyle(
+-      backgroundColor: const WidgetStatePropertyAll(AppColors.cardColor),
+-      shape: WidgetStatePropertyAll(
+-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
++    final rowStyle = ButtonStyle(
++      minimumSize: const WidgetStatePropertyAll(Size(220, 48)),
++      padding:
++          const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
++      textStyle: WidgetStatePropertyAll(Theme.of(context)
++          .textTheme
++          .bodyMedium
++          ?.copyWith(fontSize: 14, height: 1.3)),
++      foregroundColor: const WidgetStatePropertyAll(AppColors.textDark),
++      backgroundColor: WidgetStateProperty.resolveWith((states) =>
++          states.contains(WidgetState.hovered) ||
++                  states.contains(WidgetState.focused)
++              ? AppColors.mint
++              : Colors.white),
++      shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+     );
+-    return Row(children: [
+-      Flexible(
+-        fit: FlexFit.loose,
+-        child: Material(
+-          color: AppColors.cardColor,
+-          borderRadius: BorderRadius.circular(28),
+-          elevation: 2,
+-          child: PopupMenuButton<String>(
+-            tooltip: 'Choose stall category',
+-            initialValue: category ?? 'All stalls',
+-            shape:
+-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+-            onSelected: (value) =>
+-                onCategory(value == 'All stalls' ? null : value),
+-            itemBuilder: (_) => [
+-              for (final value in ['All stalls', ...stallCategories])
+-                CheckedPopupMenuItem(
+-                  value: value,
+-                  checked: value == (category ?? 'All stalls'),
+-                  child: Text(value),
++    return MenuTheme(
++      data: const MenuThemeData(style: discoveryMenuStyle),
++      child: MenuButtonTheme(
++        data: MenuButtonThemeData(style: rowStyle),
++        child: Row(children: [
++          Flexible(
++            fit: FlexFit.loose,
++            child: Material(
++              color: AppColors.cardColor,
++              borderRadius: BorderRadius.circular(28),
++              elevation: 2,
++              child: MenuAnchor(
++                style: discoveryMenuStyle,
++                menuChildren: [
++                  for (final value in ['All stalls', ...stallCategories])
++                    DiscoveryMenuChoice(
++                        label: value,
++                        selected: value == (category ?? 'All stalls'),
++                        onPressed: () =>
++                            onCategory(value == 'All stalls' ? null : value)),
++                ],
++                builder: (_, controller, __) => Tooltip(
++                  message: 'Choose stall category',
++                  child: TextButton(
++                    style: TextButton.styleFrom(
++                        minimumSize: const Size(0, 48),
++                        foregroundColor: AppColors.textDark,
++                        shape: const StadiumBorder(),
++                        padding: const EdgeInsets.symmetric(horizontal: 18)),
++                    onPressed: () => controller.isOpen
++                        ? controller.close()
++                        : controller.open(),
++                    child: Row(mainAxisSize: MainAxisSize.min, children: [
++                      Flexible(
++                          child: Text(category ?? 'All stalls',
++                              maxLines: 1, overflow: TextOverflow.ellipsis)),
++                      const SizedBox(width: 8),
++                      const Icon(Icons.expand_more_rounded, size: 20),
++                    ]),
++                  ),
+                 ),
+-            ],
+-            child: Padding(
+-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+-              child: Row(mainAxisSize: MainAxisSize.min, children: [
+-                Flexible(
+-                    child: Text(category ?? 'All stalls',
+-                        maxLines: 1, overflow: TextOverflow.ellipsis)),
+-                const SizedBox(width: 8),
+-                const Icon(Icons.expand_more_rounded, size: 20),
+-              ]),
++              ),
+             ),
+           ),
+-        ),
+-      ),
+-      const SizedBox(width: 8),
+-      Material(
+-        color: AppColors.cardColor,
+-        borderRadius: BorderRadius.circular(28),
+-        elevation: 2,
+-        child: Row(mainAxisSize: MainAxisSize.min, children: [
+-          MenuAnchor(
+-            style: style,
+-            menuChildren: moreItems,
+-            builder: (_, controller, __) => IconButton(
+-              tooltip: 'More map options',
+-              onPressed: () =>
+-                  controller.isOpen ? controller.close() : controller.open(),
+-              icon: const Icon(Icons.more_horiz),
+-            ),
+-          ),
+-          MenuAnchor(
+-            style: style,
+-            menuChildren: [
+-              Semantics(
+-                checked: openNow,
+-                child: MenuItemButton(
+-                  leadingIcon: Icon(openNow ? Icons.check_rounded : null),
+-                  closeOnActivate: false,
+-                  onPressed: () => onOpenNow(!openNow),
+-                  child: const Text('Open now'),
+-                ),
+-              ),
+-              const Divider(height: 1),
+-              Semantics(
+-                checked: sort == DiscoverySort.rating,
+-                child: MenuItemButton(
+-                  leadingIcon: Icon(sort == DiscoverySort.rating
+-                      ? Icons.check_rounded
+-                      : null),
+-                  closeOnActivate: false,
+-                  onPressed: () => onSort(sort == DiscoverySort.rating
+-                      ? DiscoverySort.distance
+-                      : DiscoverySort.rating),
+-                  child: const Text('Top rated'),
+-                ),
+-              ),
+-              const Divider(height: 1),
+-              CheckboxMenuButton(
+-                  value: availableOnly,
+-                  closeOnActivate: false,
+-                  onChanged: (value) => onAvailable(value ?? false),
+-                  child: const Text('Available dishes')),
+-              CheckboxMenuButton(
+-                  value: selfCollectOnly,
+-                  closeOnActivate: false,
+-                  onChanged: (value) => onSelfCollect(value ?? false),
+-                  child: const Text('Self-collect')),
+-              CheckboxMenuButton(
+-                  value: recentOnly,
+-                  closeOnActivate: false,
+-                  onChanged: (value) => onRecent(value ?? false),
+-                  child: const Text('Updated in 24h')),
+-              SubmenuButton(menuChildren: [
+-                for (final value in DiscoverySort.values)
+-                  MenuItemButton(
+-                      leadingIcon: Icon(sort == value ? Icons.check : null),
+-                      onPressed: () => onSort(value),
+-                      child: Text(value.label)),
+-              ], child: const Text('Sort results')),
+-              MenuItemButton(
+-                  onPressed: onReset, child: const Text('Reset filters')),
+-            ],
+-            builder: (_, controller, __) => IconButton.filledTonal(
+-              tooltip: 'Filter stalls',
+-              style: IconButton.styleFrom(
+-                backgroundColor: active ? AppColors.primary : AppColors.mint,
+-                foregroundColor:
+-                    active ? AppColors.cardColor : AppColors.primary,
+-                minimumSize: const Size(48, 48),
+-              ),
+-              onPressed: () =>
+-                  controller.isOpen ? controller.close() : controller.open(),
+-              icon: const Icon(Icons.filter_list_rounded),
+-            ),
++          const SizedBox(width: 8),
++          Material(
++            color: AppColors.cardColor,
++            borderRadius: BorderRadius.circular(28),
++            elevation: 2,
++            child: Row(mainAxisSize: MainAxisSize.min, children: [
++              MenuAnchor(
++                  style: discoveryMenuStyle,
++                  menuChildren: moreItems,
++                  builder: (_, controller, __) => IconButton(
++                      tooltip: 'More map options',
++                      icon: const Icon(Icons.more_horiz),
++                      onPressed: () => controller.isOpen
++                          ? controller.close()
++                          : controller.open())),
++              MenuAnchor(
++                  style: discoveryMenuStyle,
++                  menuChildren: [
++                    DiscoveryMenuChoice(
++                        label: 'Open now',
++                        selected: openNow,
++                        keepOpen: true,
++                        onPressed: () => onOpenNow(!openNow)),
++                    const Divider(height: 1),
++                    DiscoveryMenuChoice(
++                        label: 'Top rated',
++                        selected: sort == DiscoverySort.rating,
++                        keepOpen: true,
++                        onPressed: () => onSort(sort == DiscoverySort.rating
++                            ? DiscoverySort.distance
++                            : DiscoverySort.rating)),
++                    const Divider(height: 1),
++                    DiscoveryMenuChoice(
++                        label: 'Available dishes',
++                        selected: availableOnly,
++                        keepOpen: true,
++                        onPressed: () => onAvailable(!availableOnly)),
++                    DiscoveryMenuChoice(
++                        label: 'Self-collect',
++                        selected: selfCollectOnly,
++                        keepOpen: true,
++                        onPressed: () => onSelfCollect(!selfCollectOnly)),
++                    DiscoveryMenuChoice(
++                        label: 'Updated in 24h',
++                        selected: recentOnly,
++                        keepOpen: true,
++                        onPressed: () => onRecent(!recentOnly)),
++                    SubmenuButton(
++                        menuStyle: discoveryMenuStyle,
++                        menuChildren: [
++                          for (final value in DiscoverySort.values)
++                            DiscoveryMenuChoice(
++                                label: value.label,
++                                selected: sort == value,
++                                onPressed: () => onSort(value)),
++                        ],
++                        child: const Text('Sort results')),
++                    MenuItemButton(
++                        onPressed: onReset, child: const Text('Reset filters')),
++                  ],
++                  builder: (_, controller, __) => IconButton.filledTonal(
++                      tooltip: 'Filter stalls',
++                      icon: const Icon(Icons.filter_list_rounded),
++                      style: IconButton.styleFrom(
++                          minimumSize: const Size(48, 48),
++                          backgroundColor:
++                              active ? AppColors.primary : AppColors.mint,
++                          foregroundColor:
++                              active ? Colors.white : AppColors.primary),
++                      onPressed: () => controller.isOpen
++                          ? controller.close()
++                          : controller.open())),
++            ]),
+           ),
+         ]),
+       ),
+-    ]);
+-  }
++    );
++  }
++}
++
++/// Shared geometry: tablets keep the same full-width header and centered cards.
++class DiscoveryMapGeometry {
++  DiscoveryMapGeometry(Size size)
++      : overlayWidth = math.max(0.0, size.width - 24),
++        panelWidth =
++            size.width > size.height ? math.min(760.0, size.width) : size.width,
++        panelLeft = size.width > size.height
++            ? (size.width - math.min(760.0, size.width)) / 2
++            : 0;
++  final double overlayWidth, panelWidth, panelLeft;
++}
++
++/// Use actual hours when available; never invent an opening time.
++String stallCardOpeningText(VendorModel vendor, {DateTime? now}) {
++  final instant = (now ?? DateTime.now()).toUtc();
++  final local = malaysiaTime(instant);
++  final today = DateTime.utc(local.year, local.month, local.day);
++  final closedBySchedule =
++      vendor.temporaryClosures.any((c) => c.contains(instant));
++  final open = vendor.isOpen && !closedBySchedule;
++  DateTime? next;
++  for (var offset = -1; offset <= 7; offset++) {
++    final day = today.add(Duration(days: offset));
++    for (final interval
++        in vendor.weeklyHours[day.weekday] ?? <StallHoursInterval>[]) {
++      final midnight = malaysiaInstant(day.year, day.month, day.day, 0, 0);
++      var start = midnight.add(Duration(minutes: interval.openMinute));
++      var end = midnight.add(Duration(
++          minutes: interval.closeMinute +
++              (interval.closeMinute < interval.openMinute ? 1440 : 0)));
++      if (open && !instant.isBefore(start) && instant.isBefore(end)) {
++        for (final closure in vendor.temporaryClosures) {
++          if (closure.start.isAfter(instant) && closure.start.isBefore(end)) {
++            end = closure.start;
++          }
++        }
++        final close = malaysiaTime(end);
++        return 'Closes ${formatStallTime(close.hour * 60 + close.minute).replaceFirst(':00', '')}';
++      }
++      if (!open) {
++        if (closedBySchedule &&
++            start.isBefore(instant) &&
++            end.isAfter(instant)) {
++          start = instant;
++        }
++        final closures = [...vendor.temporaryClosures]
++          ..sort((a, b) => a.start.compareTo(b.start));
++        for (final closure in closures) {
++          if (closure.contains(start)) start = closure.end;
++        }
++        if (start.isAfter(instant) &&
++            start.isBefore(end) &&
++            (next == null || start.isBefore(next))) {
++          next = start;
++        }
++      }
++    }
++  }
++  if (!open && next != null) {
++    final opening = malaysiaTime(next);
++    final days = DateTime.utc(opening.year, opening.month, opening.day)
++        .difference(today)
++        .inDays;
++    if (days == 0) {
++      return 'Opens ${formatStallTime(opening.hour * 60 + opening.minute).replaceFirst(':00', '')}';
++    }
++    if (days == 1) return 'Opens tomorrow';
++    const weekdays = [
++      'Monday',
++      'Tuesday',
++      'Wednesday',
++      'Thursday',
++      'Friday',
++      'Saturday',
++      'Sunday'
++    ];
++    return 'Opens ${weekdays[opening.weekday - 1]}';
++  }
++  return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
+ }
+ 
+ /// The controller lives with the carousel so sheet/map rebuilds retain its page.
+@@ -242,132 +376,108 @@
+           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+           child: KeyedSubtree(
+               key: ValueKey(widget.ids[index]),
+-              child: widget.itemBuilder(context, index)),
++              child: Align(
++                  alignment: Alignment.bottomCenter,
++                  child: widget.itemBuilder(context, index))),
+         ),
+       );
+ }
+ 
+ class StallMapCard extends StatelessWidget {
+-  const StallMapCard(
+-      {super.key,
+-      required this.vendor,
+-      required this.rating,
+-      required this.distance,
+-      required this.onTap,
+-      this.ratingUnavailable = false});
+-
++  const StallMapCard({super.key, required this.vendor, required this.onTap});
+   final VendorModel vendor;
+-  final StallRatingSummary? rating;
+-  final bool ratingUnavailable;
+-  final String? distance;
+   final VoidCallback onTap;
+ 
+-  static String _description(VendorModel vendor) =>
+-      vendor.description.trim().isNotEmpty
+-          ? vendor.description.trim()
+-          : vendor.hoursToday.isNotEmpty
+-              ? 'Today: ${vendor.hoursToday}'
+-              : 'Explore the menu and details for ${vendor.stallName}.';
+-
+-  static double _titleSize(double width) => width >= 600 ? 22 : 18;
+-  static double _metaSize(double width) => width >= 600 ? 16 : 13;
+-  static double _bodySize(double width) => width >= 600 ? 17 : 14;
+-  static double _photoSize(double width) => width >= 600 ? 80 : 64;
+-
+-  /// PageView requires a bounded height. Measure the real text rather than
+-  /// stretching a short description inside a fixed-height card.
++  // Reference proportions at 456px: 76px thumbnail and 20px text.
++  static double _scale(double width) => (width / 456).clamp(.85, 1.25);
++
+   static double preferredHeight(BuildContext context, double carouselWidth,
+       Iterable<VendorModel> vendors) {
+     final width = carouselWidth * .94 - 10;
+-    final innerWidth = (width - 32).clamp(1.0, double.infinity);
++    final scale = _scale(width);
++    final padding = 14 * scale;
+     final inherited = DefaultTextStyle.of(context).style;
+-    double measure(String text, TextStyle style, {int maxLines = 1}) {
+-      final painter = TextPainter(
+-        text: TextSpan(text: text, style: inherited.merge(style)),
++    final painter = TextPainter(
+         textDirection: Directionality.of(context),
+         textScaler: MediaQuery.textScalerOf(context),
+-        maxLines: maxLines,
+-        ellipsis: '…',
+-      )..layout(maxWidth: innerWidth);
+-      final height = painter.height;
+-      painter.dispose();
+-      return height;
++        maxLines: 3,
++        ellipsis: '…');
++    double measure(String text, TextStyle style) {
++      painter.text = TextSpan(text: text, style: inherited.merge(style));
++      painter.layout(maxWidth: math.max(1, width - 2 * padding));
++      return painter.height;
+     }
+ 
+-    final titleHeight = measure(
+-        'Ag',
+-        TextStyle(
+-            fontSize: _titleSize(width),
+-            height: 1.2,
+-            fontWeight: FontWeight.w700));
+-    final metaHeight =
+-        measure('Ag', TextStyle(fontSize: _metaSize(width), height: 1.25));
+-    final textHeader = titleHeight + metaHeight * 2 + 6;
+-    final headerHeight =
+-        textHeader > _photoSize(width) ? textHeader : _photoSize(width);
+-    var descriptionHeight = 0.0;
++    final line = measure('Ag', TextStyle(fontSize: 20 * scale, height: 1.3));
++    final header = math.max(76 * scale, line * 3 + 4 * scale);
++    var body = 0.0;
+     for (final vendor in vendors) {
+-      final height = measure(_description(vendor),
+-          TextStyle(fontSize: _bodySize(width), height: 1.4),
+-          maxLines: 2);
+-      if (height > descriptionHeight) descriptionHeight = height;
++      if (vendor.description.trim().isEmpty) continue;
++      body = math.max(
++          body,
++          measure(vendor.description.trim(),
++              TextStyle(fontSize: 20 * scale, height: 1.4)));
+     }
+-    // Includes the carousel's five-pixel top and bottom shadow clearance.
+-    return (32 + headerHeight + 12 + descriptionHeight + 10).ceilToDouble();
+-  }
+-
+-  String get _ratingLabel => ratingUnavailable
+-      ? 'Rating unavailable'
+-      : rating == null
+-          ? 'Loading rating…'
+-          : rating!.count == 0
+-              ? 'No reviews yet'
+-              : rating!.average.toStringAsFixed(1);
++    painter.dispose();
++    return (padding * 2 +
++            2 * scale +
++            header +
++            (body > 0 ? 12 * scale + body : 0) +
++            10)
++        .ceilToDouble();
++  }
+ 
+   @override
+   Widget build(BuildContext context) =>
+       LayoutBuilder(builder: (context, constraints) {
+-        final width = constraints.maxWidth;
+-        final metaStyle = TextStyle(fontSize: _metaSize(width), height: 1.25);
++        final scale = _scale(constraints.maxWidth);
++        final meta = TextStyle(
++            fontSize: 20 * scale, height: 1.3, color: const Color(0xFF222222));
++        final hours = stallCardOpeningText(vendor);
++        Widget placeholder() => const ColoredBox(
++            color: AppColors.mint,
++            child: Center(
++                child:
++                    Icon(Icons.storefront_rounded, color: AppColors.primary)));
+         return Material(
+           key: const ValueKey('stall-map-card-surface'),
+-          color: AppColors.cardColor,
+-          borderRadius: BorderRadius.circular(23),
+-          elevation: 4,
+-          shadowColor: const Color(0x22000000),
++          color: Colors.white,
++          borderRadius: BorderRadius.circular(28 * scale),
++          elevation: 2,
++          shadowColor: const Color(0x14000000),
+           clipBehavior: Clip.antiAlias,
+           child: InkWell(
+             onTap: onTap,
+             child: Padding(
+-              padding: const EdgeInsets.all(16),
++              padding: EdgeInsets.fromLTRB(
++                  14 * scale, 16 * scale, 14 * scale, 14 * scale),
+               child: SingleChildScrollView(
+                 child: Column(
++                    mainAxisSize: MainAxisSize.min,
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Row(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           children: [
+                             ClipRRect(
+-                              borderRadius: BorderRadius.circular(15),
++                              borderRadius: BorderRadius.circular(16 * scale),
+                               child: SizedBox(
+-                                width: _photoSize(width),
+-                                height: _photoSize(width),
++                                key: const ValueKey('stall-card-thumbnail'),
++                                width: 76 * scale,
++                                height: 76 * scale,
+                                 child: vendor.imageUrl.isEmpty
+-                                    ? const ColoredBox(
+-                                        color: AppColors.mint,
+-                                        child: Icon(Icons.storefront_rounded,
+-                                            color: AppColors.primary))
++                                    ? placeholder()
+                                     : Image.network(vendor.imageUrl,
+                                         fit: BoxFit.cover,
++                                        loadingBuilder: (_, child, progress) =>
++                                            progress == null
++                                                ? child
++                                                : placeholder(),
+                                         errorBuilder: (_, __, ___) =>
+-                                            const ColoredBox(
+-                                                color: AppColors.mint,
+-                                                child: Icon(
+-                                                    Icons.storefront_rounded,
+-                                                    color: AppColors.primary))),
++                                            placeholder()),
+                               ),
+                             ),
+-                            const SizedBox(width: 12),
++                            SizedBox(width: 16 * scale),
+                             Expanded(
+                                 child: Column(
+                                     crossAxisAlignment:
+@@ -376,37 +486,16 @@
+                                   Text(vendor.stallName,
+                                       maxLines: 1,
+                                       overflow: TextOverflow.ellipsis,
+-                                      style: TextStyle(
+-                                          fontSize: _titleSize(width),
+-                                          height: 1.2,
+-                                          fontWeight: FontWeight.w700)),
+-                                  const SizedBox(height: 3),
+-                                  Row(children: [
+-                                    Icon(Icons.star_rounded,
+-                                        size: _metaSize(width) + 2,
+-                                        color: const Color(0xFF946000)),
+-                                    const SizedBox(width: 4),
+-                                    Flexible(
+-                                        child: Text(_ratingLabel,
+-                                            key: const ValueKey(
+-                                                'stall-card-rating'),
+-                                            maxLines: 1,
+-                                            overflow: TextOverflow.ellipsis,
+-                                            style: metaStyle)),
+-                                    const SizedBox(
+-                                        width: 12,
+-                                        child: Center(
+-                                            child:
+-                                                Icon(Icons.circle, size: 3))),
+-                                    Flexible(
+-                                        child: Text(vendor.categoryLabel,
+-                                            key: const ValueKey(
+-                                                'stall-card-category'),
+-                                            maxLines: 1,
+-                                            overflow: TextOverflow.ellipsis,
+-                                            style: metaStyle)),
+-                                  ]),
+-                                  const SizedBox(height: 3),
++                                      style: meta.copyWith(
++                                          fontWeight: FontWeight.w600)),
++                                  SizedBox(height: 2 * scale),
++                                  Text(vendor.categoryLabel,
++                                      key:
++                                          const ValueKey('stall-card-category'),
++                                      maxLines: 1,
++                                      overflow: TextOverflow.ellipsis,
++                                      style: meta),
++                                  SizedBox(height: 2 * scale),
+                                   Text.rich(
+                                       TextSpan(children: [
+                                         TextSpan(
+@@ -415,25 +504,28 @@
+                                                 : 'Closed',
+                                             style: TextStyle(
+                                                 color: vendor.isOpenNow
+-                                                    ? AppColors.openGreen
+-                                                    : AppColors.closedRed)),
+-                                        if (distance != null)
+-                                          TextSpan(text: ' · $distance'),
++                                                    ? const Color(0xFF4A984D)
++                                                    : const Color(0xFFD56C66))),
++                                        if (hours.isNotEmpty)
++                                          TextSpan(text: ' · $hours'),
+                                       ]),
++                                      key: const ValueKey('stall-card-status'),
+                                       maxLines: 1,
+                                       overflow: TextOverflow.ellipsis,
+-                                      style: metaStyle),
++                                      style: meta),
+                                 ])),
+                           ]),
+-                      const SizedBox(height: 12),
+-                      Text(_description(vendor),
+-                          key: const ValueKey('stall-card-description'),
+-                          maxLines: 2,
+-                          overflow: TextOverflow.ellipsis,
+-                          style: TextStyle(
+-                              fontSize: _bodySize(width),
+-                              height: 1.4,
+-                              color: AppColors.textMuted)),
++                      if (vendor.description.trim().isNotEmpty) ...[
++                        SizedBox(height: 12 * scale),
++                        Text(vendor.description.trim(),
++                            key: const ValueKey('stall-card-description'),
++                            maxLines: 3,
++                            overflow: TextOverflow.ellipsis,
++                            style: TextStyle(
++                                fontSize: 20 * scale,
++                                height: 1.4,
++                                color: const Color(0xFF696969))),
++                      ],
+                     ]),
+               ),
+             ),
+diff --git a/test/discovery_map_widgets_test.dart b/test/discovery_map_widgets_test.dart
+--- a/test/discovery_map_widgets_test.dart
++++ b/test/discovery_map_widgets_test.dart
+@@ -6,10 +6,105 @@
+ import 'package:stallseeker/features/customer/home/stall_preview_sheet.dart';
+ import 'package:stallseeker/features/customer/home/stall_map_marker.dart';
+ import 'package:google_maps_flutter/google_maps_flutter.dart';
++import 'package:stallseeker/core/models/stall_schedule.dart';
+ 
+ void main() {
++  test('landscape tablets retain a full header and centered carousel', () {
++    for (final size in [
++      const Size(1194, 834),
++      const Size(1280, 600),
++      const Size(834, 1194)
++    ]) {
++      final geometry = DiscoveryMapGeometry(size);
++      expect(geometry.overlayWidth, size.width - 24);
++      expect(geometry.panelLeft + geometry.panelWidth / 2,
++          closeTo(size.width / 2, .01));
++    }
++  });
++
++  test('card closing time supports an overnight schedule', () {
++    final vendor = _vendor().copyWith(weeklyHours: {
++      1: [const StallHoursInterval(22 * 60, 2 * 60)]
++    });
++    expect(
++        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 3, 1, 0)),
++        'Closes 2 AM');
++  });
++
++  test('closed card shows the next scheduled opening day', () {
++    final vendor = _vendor().copyWith(isOpen: false, weeklyHours: {
++      6: [const StallHoursInterval(10 * 60, 18 * 60)]
++    });
++    expect(
++        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 2, 11, 0)),
++        'Opens Saturday');
++  });
++
++  test('temporary closure is included when finding the next opening', () {
++    final vendor = _vendor().copyWith(
++      weeklyHours: {
++        1: [const StallHoursInterval(10 * 60, 18 * 60)]
++      },
++      temporaryClosures: [
++        TemporaryClosure(malaysiaInstant(2026, 11, 2, 11, 0),
++            malaysiaInstant(2026, 11, 2, 12, 0))
++      ],
++    );
++    expect(
++        stallCardOpeningText(vendor, now: malaysiaInstant(2026, 11, 2, 11, 30)),
++        'Opens 12 PM');
++  });
++
+   testWidgets(
+-      'tablet card uses its content height and keeps rating next to category',
++      'category, filter and nested sort use identical dropdown surfaces',
++      (tester) async {
++    await tester.pumpWidget(MaterialApp(
++        home: Scaffold(
++            body: DiscoveryMapFilters(
++      category: null,
++      openNow: true,
++      sort: DiscoverySort.distance,
++      availableOnly: false,
++      selfCollectOnly: false,
++      recentOnly: false,
++      onCategory: (_) {},
++      onOpenNow: (_) {},
++      onSort: (_) {},
++      onAvailable: (_) {},
++      onSelfCollect: (_) {},
++      onRecent: (_) {},
++      onReset: () {},
++      moreItems: const [],
++    ))));
++    Material surfaceFor(String text) => tester.widget<Material>(find
++        .ancestor(
++            of: find.text(text),
++            matching: find
++                .byWidgetPredicate((w) => w is Material && w.elevation == 8))
++        .first);
++    void checkSurface(Material surface) {
++      expect(surface.color, Colors.white);
++      expect(surface.surfaceTintColor, Colors.transparent);
++      expect((surface.shape as RoundedRectangleBorder).borderRadius,
++          BorderRadius.circular(20));
++    }
++
++    await tester.tap(find.byTooltip('Filter stalls'));
++    await tester.pumpAndSettle();
++    checkSurface(surfaceFor('Open now'));
++    await tester.tap(find.text('Sort results'));
++    await tester.pumpAndSettle();
++    checkSurface(surfaceFor(DiscoverySort.distance.label));
++    expect(find.byType(Checkbox), findsNothing);
++    await tester.tapAt(const Offset(700, 550));
++    await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Choose stall category'));
++    await tester.pumpAndSettle();
++    checkSurface(surfaceFor('Beverages'));
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('tablet card matches the reference hierarchy and content height',
+       (tester) async {
+     tester.view.physicalSize = const Size(834, 1194);
+     tester.view.devicePixelRatio = 1;
+@@ -21,11 +116,7 @@
+       builder: (context) => SizedBox(
+         width: 834 * .94 - 10,
+         height: StallMapCard.preferredHeight(context, 834, [_vendor()]) - 10,
+-        child: StallMapCard(
+-            vendor: _vendor(),
+-            rating: const StallRatingSummary(4.8, 4),
+-            distance: '229 m away',
+-            onTap: () {}),
++        child: StallMapCard(vendor: _vendor(), onTap: () {}),
+       ),
+     ))));
+     await tester.pumpAndSettle();
+@@ -33,15 +124,25 @@
+         tester.getRect(find.byKey(const ValueKey('stall-map-card-surface')));
+     final description =
+         tester.getRect(find.byKey(const ValueKey('stall-card-description')));
+-    final rating =
+-        tester.getRect(find.byKey(const ValueKey('stall-card-rating')));
++    final photo =
++        tester.getRect(find.byKey(const ValueKey('stall-card-thumbnail')));
++    final title = tester.getRect(find.text('Adam stalls'));
+     final category =
+         tester.getRect(find.byKey(const ValueKey('stall-card-category')));
++    final status =
++        tester.getRect(find.byKey(const ValueKey('stall-card-status')));
+     expect(surface.width, greaterThan(750));
+-    expect(surface.bottom - description.bottom, inInclusiveRange(14, 19));
+-    expect(category.left - rating.right, lessThan(24));
+-    expect(tester.widget<Text>(find.text('Adam stalls')).style!.fontSize,
+-        greaterThanOrEqualTo(20));
++    expect(surface.bottom - description.bottom, inInclusiveRange(16, 20));
++    expect(title.top, closeTo(photo.top, 1));
++    expect(category.top, greaterThan(title.bottom));
++    expect(status.top, greaterThan(category.bottom));
++    expect(description.left, closeTo(photo.left, 1));
++    expect(description.top, greaterThan(photo.bottom));
++    expect(
++        tester
++            .widget<Text>(find.byKey(const ValueKey('stall-card-description')))
++            .maxLines,
++        3);
+     expect(tester.takeException(), isNull);
+   });
+ 
+@@ -64,7 +165,7 @@
+       onReset: () {},
+       moreItems: const [],
+     ))));
+-    expect(tester.getSize(find.byType(PopupMenuButton<String>)).width,
++    expect(tester.getSize(find.byTooltip('Choose stall category')).width,
+         lessThan(250));
+     expect(tester.takeException(), isNull);
+   });
+@@ -175,8 +276,6 @@
+               height: 220,
+               child: StallMapCard(
+                 vendor: _vendor(),
+-                rating: const StallRatingSummary(4.8, 4),
+-                distance: '229 m away',
+                 onTap: () {},
+               ))),
+     )));
