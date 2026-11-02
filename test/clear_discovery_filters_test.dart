@@ -12,6 +12,7 @@ import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platf
 import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
+import 'package:stallseeker/core/constants/app_colors.dart';
 import 'package:stallseeker/features/customer/home/discovery_map_widgets.dart';
 import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
 import 'package:stallseeker/features/customer/home/discovery_options.dart';
@@ -203,6 +204,19 @@ void main() {
     expect(maps.cameraMoves, isEmpty);
     await tester.tap(find.text('Nasi Stall 2'));
     await tester.pumpAndSettle();
+    final selectedCard = find.byWidgetPredicate((widget) =>
+        widget is StallMapCard && widget.vendor.vendorId == 'stall2');
+    final selectedSurface = tester.widget<Material>(find.descendant(
+        of: selectedCard,
+        matching: find.byKey(const ValueKey('stall-map-card-surface'))));
+    expect((selectedSurface.shape! as RoundedRectangleBorder).side.color,
+        AppColors.primary);
+    final selectedSize = tester.getSize(selectedCard);
+    await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
+        const Offset(160, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<StallMapCard>(selectedCard).selected, isTrue);
+    expect(tester.getSize(selectedCard), selectedSize);
     expect(maps.cameraMoves, hasLength(1));
     expect(
         map()

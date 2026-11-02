@@ -526,9 +526,14 @@ class _StallCardCarouselState extends State<StallCardCarousel> {
 }
 
 class StallMapCard extends StatelessWidget {
-  const StallMapCard({super.key, required this.vendor, required this.onTap});
+  const StallMapCard(
+      {super.key,
+      required this.vendor,
+      required this.onTap,
+      this.selected = false});
   final VendorModel vendor;
   final VoidCallback onTap;
+  final bool selected;
 
   // Flutter uses logical pixels. Keep the reference layout compact instead of
   // enlarging screenshot pixels again on a tablet's wider viewport.
@@ -586,7 +591,12 @@ class StallMapCard extends StatelessWidget {
         return Material(
           key: const ValueKey('stall-map-card-surface'),
           color: Colors.white,
-          borderRadius: BorderRadius.circular(23),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(23),
+            side: BorderSide(
+                width: 2,
+                color: selected ? AppColors.primary : Colors.transparent),
+          ),
           elevation: 2,
           shadowColor: const Color(0x14000000),
           clipBehavior: Clip.antiAlias,

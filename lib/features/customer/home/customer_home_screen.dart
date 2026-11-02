@@ -1871,6 +1871,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                                     cards[index].vendorId]!)
                                             : StallMapCard(
                                                 vendor: onScreenVendors[index],
+                                                selected: onScreenVendors[index]
+                                                        .vendorId ==
+                                                    _selectedVendorId,
                                                 onTap: () {
                                                   final vendor =
                                                       onScreenVendors[index];
