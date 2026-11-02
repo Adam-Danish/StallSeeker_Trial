@@ -9,6 +9,45 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stallseeker/core/models/stall_schedule.dart';
 
 void main() {
+  for (final width in [320.0, 390.0, 1280.0]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+          'results actions fit and search is centered at $width / $scale',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        var searched = false;
+        var opened = false;
+        await tester.pumpWidget(MaterialApp(
+            home: MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+              body: Builder(
+                  builder: (context) => SizedBox(
+                        height: DiscoveryResultsHeader.heightFor(context, width,
+                            showSearchHere: true),
+                        child: DiscoveryResultsHeader(
+                            countLabel: '5 stalls nearby',
+                            onViewAll: () => opened = true,
+                            onSearchHere: () => searched = true),
+                      ))),
+        )));
+        final search = find.byKey(const ValueKey('search-here'));
+        final action = find.byKey(const ValueKey('view-all-stalls'));
+        expect(tester.getCenter(search).dx, closeTo(width / 2, .01));
+        final label = tester.getRect(find.text('View all'));
+        expect(tester.getRect(action).contains(label.topLeft), isTrue);
+        expect(tester.getRect(action).contains(label.bottomRight), isTrue);
+        expect(label.right, lessThan(width));
+        await tester.tap(search);
+        await tester.tap(action);
+        expect(searched && opened, isTrue);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
   for (final width in [390.0, 1280.0]) {
     testWidgets(
         'last card stops at the right edge without empty space at $width',
@@ -28,7 +67,6 @@ void main() {
               ids: ids,
               selectedId: selected,
               cardsPerPage: width >= 600 ? 3 : 1,
-              onSelected: (index) => setState(() => selected = ids[index]),
               itemBuilder: (_, index) => Center(child: Text(ids[index])),
             )),
       ))));
@@ -39,7 +77,7 @@ void main() {
       expect(controller.offset, controller.position.maxScrollExtent);
       expect(tester.getTopRight(find.byKey(const ValueKey('e'))).dx,
           closeTo(width - 12, .01));
-      expect(selected, 'e');
+      expect(selected, 'a');
       await tester.drag(strip, const Offset(-200, 0));
       await tester.pumpAndSettle();
       expect(controller.offset, controller.position.maxScrollExtent);
@@ -68,7 +106,6 @@ void main() {
             child: StallCardCarousel(
               ids: ids,
               selectedId: selected,
-              onSelected: (index) => setState(() => selected = ids[index]),
               itemBuilder: (_, index) => Center(child: Text(ids[index])),
             ));
       },
@@ -83,7 +120,7 @@ void main() {
         .widget<ListView>(find.byKey(const ValueKey('stall-card-carousel')))
         .controller!;
     final stoppedOffset = controller.offset;
-    expect(selected, 'b');
+    expect(selected, 'a');
     expect(stoppedOffset, greaterThan(180));
     expect(stoppedOffset, lessThan(300));
     update(() {});
@@ -103,7 +140,6 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final ids = ['a', 'b', 'c', 'd', 'e', 'f'];
-    final moves = <int>[];
     var selected = 'a';
     var columns = 3;
     late StateSetter update;
@@ -116,10 +152,6 @@ void main() {
               ids: ids,
               selectedId: selected,
               cardsPerPage: columns,
-              onSelected: (index) {
-                moves.add(index);
-                setState(() => selected = ids[index]);
-              },
               itemBuilder: (_, index) =>
                   Center(child: Text('Card ${ids[index]}')),
             ));
@@ -132,14 +164,13 @@ void main() {
     await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
         const Offset(-1100, 0));
     await tester.pumpAndSettle();
-    expect(moves, hasLength(1));
-    expect(selected, ids[moves.single]);
+    expect(selected, 'a');
     update(() => selected = 'c');
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(834, 1194);
     update(() => columns = 2);
     await tester.pumpAndSettle();
-    expect(moves, hasLength(1));
+    expect(selected, 'c');
     expect(tester.getCenter(find.text('Card c')).dx, inInclusiveRange(0, 834));
     expect(tester.takeException(), isNull);
   });
@@ -337,9 +368,8 @@ void main() {
     expect(light.imagePixelRatio, 3);
   });
   testWidgets(
-      'swipe selects the next card; marker selection does not emit intermediate pages',
+      'scroll preserves selection; explicit marker selection reveals its card',
       (tester) async {
-    final moves = <int>[];
     var selected = 'a';
     var ids = ['a', 'b', 'c'];
     late StateSetter update;
@@ -351,10 +381,6 @@ void main() {
             child: StallCardCarousel(
               ids: ids,
               selectedId: selected,
-              onSelected: (index) {
-                moves.add(index);
-                setState(() => selected = ids[index]);
-              },
               itemBuilder: (_, index) => Center(child: Text(ids[index])),
             ));
       },
@@ -362,11 +388,10 @@ void main() {
     await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
         const Offset(-750, 0));
     await tester.pumpAndSettle();
-    expect(moves, [1]);
-    expect(selected, 'b');
+    expect(selected, 'a');
     update(() => selected = 'c');
     await tester.pumpAndSettle();
-    expect(moves, [1]);
+    expect(selected, 'c');
     final controller = tester
         .widget<ListView>(find.byKey(const ValueKey('stall-card-carousel')))
         .controller!;
@@ -375,7 +400,7 @@ void main() {
       ids = ['c'];
     });
     await tester.pumpAndSettle();
-    expect(moves, [1]);
+    expect(selected, 'c');
     expect(tester.takeException(), isNull);
   });
 

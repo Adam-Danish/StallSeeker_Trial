@@ -11,7 +11,7 @@ import 'features/splash/splash_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // The app's background is light (white/cream), so the status bar's
@@ -28,12 +28,13 @@ void main() async {
   );
 
   try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
+    // Initialize before querying apps: the web SDK is loaded by this call.
+    // Reading Firebase.apps first relies on browser-specific TypeError text.
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (e) {
+    debugPrint('StallSeeker startup failed: $e');
     runApp(MaterialApp(
         home: Scaffold(
             body: Center(
@@ -43,6 +44,10 @@ void main() async {
         const Text(
             'StallSeeker could not start. Check your connection and retry.'),
         TextButton(onPressed: main, child: const Text('Retry')),
+        ExpansionTile(
+          title: const Text('Error details'),
+          children: [SelectableText(e.toString())],
+        ),
       ]),
     )))));
     return;

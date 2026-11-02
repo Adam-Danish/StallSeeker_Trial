@@ -46,6 +46,13 @@
   <div id="web-startup" role="status" style="font:16px system-ui,sans-serif;text-align:center;padding:25vh 24px;color:#4b403b">Loading StallSeeker…</div>
   <script src="maps-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@googlemaps/markerclusterer@2.5.3/dist/index.umd.min.js"></script>
-  <script src="maps-bootstrap.js"></script>
+  <script>
+    // Flutter supplies a new build identifier for each release build.
+    window.stallSeekerRelease = {{flutter_service_worker_version}};
+    const mapsLoader = document.createElement('script');
+    mapsLoader.src = 'maps-bootstrap.js?v=' +
+        encodeURIComponent(window.stallSeekerRelease || Date.now());
+    document.body.appendChild(mapsLoader);
+  </script>
 </body>
 </html>

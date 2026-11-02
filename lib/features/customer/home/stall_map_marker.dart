@@ -58,10 +58,9 @@ class StallMapMarkerCache {
           Paint()
             ..color = AppColors.primary
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 2);
+            ..strokeWidth = 3);
     }
-    canvas.drawCircle(center, 20,
-        Paint()..color = selected ? AppColors.primary : AppColors.cardColor);
+    canvas.drawCircle(center, 20, Paint()..color = AppColors.cardColor);
     final glyph = stallCategoryIcon(category);
     final painter = TextPainter(
       text: TextSpan(
@@ -70,7 +69,7 @@ class StallMapMarkerCache {
           fontSize: 24,
           fontFamily: glyph.fontFamily,
           package: glyph.fontPackage,
-          color: selected ? AppColors.cardColor : AppColors.primary,
+          color: AppColors.primary,
         ),
       ),
       textDirection: TextDirection.ltr,

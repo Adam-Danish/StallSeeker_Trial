@@ -71,6 +71,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
   // NEW: Track the visible map area to filter vendors
   LatLngBounds? _visibleBounds;
+  LatLngBounds? _searchedBounds;
   LatLngBounds? _pendingBounds;
   LatLng? _mapCenter;
   CameraPosition? _lastCameraPosition;
@@ -150,7 +151,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   CameraPosition? _previewCamera;
   Stream<bool>? _previewFollowStream;
   bool _followingBusy = false;
-  bool _searchBoundsActive = false;
   int _cameraRequest = 0;
 
   static const CameraPosition _defaultPosition = CameraPosition(
@@ -420,7 +420,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       _customerPosition = selection.coordinates;
       _searchCenter = selection.coordinates;
       _visibleBounds = null;
-      _searchBoundsActive = false;
+      _searchedBounds = null;
       _previewVendorId = null;
       _selectedDishId = null;
       _showSearchArea = false;
@@ -537,7 +537,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     setState(() {
       _searchRadiusKm = radius;
       _visibleBounds = null;
-      _searchBoundsActive = false;
+      _searchedBounds = null;
       _showSearchArea = false;
     });
     final center = _searchCenter ?? _customerPosition;
@@ -680,8 +680,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     }
   }
 
-  // Camera movement never rewrites the searched area or carousel membership.
-  // Only Search here commits new bounds; this keeps the next card reachable.
+  // Cards follow the visible viewport. Scrolling cards never moves this camera.
   void _updateVisibleBounds() async {
     final controller = _mapController;
     if (controller == null) return;
@@ -693,9 +692,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       if (!mounted || request != _boundsRequest) return;
       setState(() {
         _pendingBounds = bounds;
-        _visibleBounds ??= bounds;
+        _visibleBounds = bounds;
+        _searchedBounds ??= bounds;
         if (movedByUser) {
-          final previous = _visibleBounds!;
+          final previous = _searchedBounds!;
           _showSearchArea =
               (previous.southwest.latitude - bounds.southwest.latitude).abs() >
                       .0001 ||
@@ -722,7 +722,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     if (_pendingBounds == null || _mapCenter == null) return;
     setState(() {
       _visibleBounds = _pendingBounds;
-      _searchBoundsActive = true;
+      _searchedBounds = _pendingBounds;
       _selectedDishId = null;
       _searchCenter = _mapCenter;
       _showSearchArea = false;
@@ -1379,7 +1379,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                       filters['openingEnd'] as int));
       _selectedVendorId = null;
       _visibleBounds = null;
-      _searchBoundsActive = false;
+      _searchedBounds = null;
       if (_listOnly) _mapController = null;
     });
     if (!_listOnly && _searchCenter != null && _mapController != null) {
@@ -1483,19 +1483,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
         final showSuggestions = _searchFocus.hasFocus && suggestions.isNotEmpty;
         final showingDishResults = query.isNotEmpty && dishResults.isNotEmpty;
 
-        // Freeze a committed search area while card swipes move the camera.
+        // Cards include only eligible stalls currently visible on the map.
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
 
-        if (_searchBoundsActive && _visibleBounds != null) {
-          final southWest = _visibleBounds!.southwest;
-          final northEast = _visibleBounds!.northeast;
-
-          onScreenVendors = onScreenVendors.where((v) {
-            return v.latitude >= southWest.latitude &&
-                v.latitude <= northEast.latitude &&
-                v.longitude >= southWest.longitude &&
-                v.longitude <= northEast.longitude;
-          }).toList();
+        if (!_listOnly && _visibleBounds != null) {
+          onScreenVendors = onScreenVendors
+              .where((v) =>
+                  _visibleBounds!.contains(LatLng(v.latitude, v.longitude)))
+              .toList();
         }
 
         onScreenVendors.sort((a, b) => compareDiscoveryVendors(a, b,
@@ -1507,7 +1502,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
         if (!onScreenVendors
             .any((vendor) => vendor.vendorId == _selectedVendorId)) {
-          _selectedVendorId = onScreenVendors.firstOrNull?.vendorId;
+          if (!filteredVendorById.containsKey(_selectedVendorId)) {
+            _selectedVendorId = null;
+          }
         }
         if (_previewVendorId != null &&
             !onScreenVendors
@@ -1516,7 +1513,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           _previewCamera = null;
         }
 
-        final markers = onScreenVendors
+        final markers = filteredVendors
             .where((vendor) =>
                 _markerIcons.containsKey((_markerCategory(vendor), false)))
             .map(
@@ -1564,8 +1561,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
           final geometry = DiscoveryMapGeometry(constraints.biggest);
           final overlayWidth = geometry.overlayWidth;
-          const headerToSearchGap = 12.0;
-          const searchToFiltersGap = 12.0;
+          const headerToSearchGap = 6.0;
+          const searchToFiltersGap = 6.0;
           final headerHeight = math.max(52.0, 32 * textScale + 14);
           final searchTop = 10 + headerHeight + headerToSearchGap;
           final searchHeight = math.max(52.0, 16 * textScale + 28);
@@ -1583,7 +1580,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               desiredCardHeight,
               math.max(100.0,
                   constraints.maxHeight - headerBottom - navClearance - 56));
-          final panelHeight = cardHeight + 36;
+          final panelHeight = cardHeight +
+              DiscoveryResultsHeader.heightFor(context, panelWidth,
+                  showSearchHere: _showSearchArea);
           final preview = onScreenVendors
               .where((vendor) => vendor.vendorId == _previewVendorId)
               .firstOrNull;
@@ -1810,52 +1809,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                     width: panelWidth,
                     height: panelHeight,
                     child: Column(children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        child: Row(children: [
-                          Expanded(
-                              child: Text(
-                                  '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600))),
-                          if (_showSearchArea) ...[
-                            SizedBox(
-                              height: 30,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.cardColor,
-                                  foregroundColor: AppColors.textDark,
-                                  elevation: 3,
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12),
-                                  minimumSize: const Size(0, 30),
-                                  textStyle: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                                onPressed: _searchThisArea,
-                                child: const Text('Search here'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          SizedBox(
-                              height: 30,
-                              child: TextButton(
-                                onPressed: snapshot.hasError
-                                    ? () => setState(
-                                        () => _vendors = _watchVendors())
-                                    : () => showingDishResults
-                                        ? _showAllDishes(
-                                            cards, filteredVendorById)
-                                        : _showAllStalls(onScreenVendors),
-                                child: Text(
-                                    snapshot.hasError ? 'Retry' : 'View all'),
-                              )),
-                        ]),
+                      DiscoveryResultsHeader(
+                        countLabel:
+                            '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                        actionLabel: snapshot.hasError ? 'Retry' : 'View all',
+                        onViewAll: snapshot.hasError
+                            ? () => setState(() => _vendors = _watchVendors())
+                            : () => showingDishResults
+                                ? _showAllDishes(cards, filteredVendorById)
+                                : _showAllStalls(onScreenVendors),
+                        onSearchHere: _showSearchArea ? _searchThisArea : null,
                       ),
                       Expanded(
                         child: searching
@@ -1900,16 +1863,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                     selectedId: selectedCard,
                                     viewportFraction: geometry.viewportFraction,
                                     cardsPerPage: geometry.cardsPerPage,
-                                    onSelected: (index) {
-                                      if (showingDishResults) {
-                                        final dish = cards[index];
-                                        _selectedDishId = ids[index];
-                                        _selectVendor(
-                                            filteredVendorById[dish.vendorId]!);
-                                      } else {
-                                        _selectVendor(onScreenVendors[index]);
-                                      }
-                                    },
                                     itemBuilder: (_, index) =>
                                         showingDishResults
                                             ? _dishCard(

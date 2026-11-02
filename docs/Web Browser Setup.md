@@ -45,7 +45,17 @@ domains and local port 7357; existing Storage security rules still apply.
   using actual device coordinates. Manual search never turns off GPS display
   and does not add a search-location pin.
 - Stall cards scroll continuously and retain partial positions. The final
-  card stops at the right edge. Marker selection brings a card into view.
+  card stops at the right edge. Scrolling never selects a stall or moves the
+  map. Tapping a card focuses its stall and outlines the category marker;
+  marker selection brings a card into view. Cards follow the visible viewport.
+- Search here is centered above the cards. Results actions reserve enough
+  height for full labels, and the top header/search/filter gaps are 6 pixels.
+- Firebase initializes before querying apps, avoiding a browser-dependent
+  pre-initialization error. Startup failures offer Retry and expandable error
+  details. Hosting revalidates entry scripts, and the Maps/Flutter loaders and
+  compiled app use build-specific URLs so existing tabs bypass older cached
+  releases. The custom Flutter bootstrap does not register an offline worker;
+  the separate Firebase messaging worker still handles notifications.
 - Location permission requires HTTPS, except on localhost. Browsers can
   provide less precise coordinates than phone GPS. A fresh browser asks for
   location when the customer clicks My location; existing grants are reused.
@@ -78,8 +88,12 @@ selection, photos, card scrolling, filtering, pin selection and the login
 dialog. Google-account login, vendor editing/uploads, checkout and actual
 push delivery also need account/device testing with the appropriate accounts.
 
-On 2 November 2026, the release web build and analyzer passed, all 145 Flutter
+On 2 November 2026, the release web build and analyzer passed, all 153 Flutter
 tests and 38 backend/schedule tests passed, and browser smoke checks verified
 guest browsing, Maps/clusters, public photos, address suggestions and selection,
 the left-aligned login Cancel button, and card scrolling at phone width. The
 last-card edge behavior is also covered by phone and tablet widget tests.
+Regression tests also cover passive card scrolling, explicit tap focus, viewport
+membership, centered results actions at phone/desktop widths and enlarged text,
+and initialization before inspecting Firebase apps. Real iPhone startup still
+requires a device check; a phone-width Chromium check does not validate Safari.

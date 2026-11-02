@@ -1,7 +1,8 @@
 // Load Google Maps once for both maps and Places, before Flutter creates a map.
 window.initMap = function () {
   const flutterScript = document.createElement('script');
-  flutterScript.src = 'flutter_bootstrap.js';
+  flutterScript.src = 'flutter_bootstrap.js?v=' +
+      encodeURIComponent(window.stallSeekerRelease || Date.now());
   document.body.appendChild(flutterScript);
 };
 window.addEventListener('flutter-first-frame', function () {

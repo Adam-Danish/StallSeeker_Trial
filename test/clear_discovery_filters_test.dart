@@ -30,6 +30,15 @@ class _SignedOutAuth extends FirebaseAuthPlatform {
 }
 
 class _DiscoveryFirestore extends FirebaseFirestorePlatform {
+  List<Map<String, Object>> vendors = const [
+    {
+      'stallName': 'Nasi Stall',
+      'category': 'Rice',
+      'latitude': 3.139,
+      'longitude': 101.6869,
+      'isOpen': false
+    },
+  ];
   @override
   FirebaseFirestorePlatform delegateFor(
           {required FirebaseApp app, required String databaseId}) =>
@@ -56,18 +65,14 @@ class _Collection extends CollectionReferencePlatform {
           required ListenSource listenSource}) =>
       Stream.value(QuerySnapshotPlatform([
         if (path == 'vendors')
-          DocumentSnapshotPlatform(
-              firestore,
-              'vendors/stall',
-              {
-                'stallName': 'Nasi Stall',
-                'category': 'Rice',
-                'latitude': 3.139,
-                'longitude': 101.6869,
-                'isOpen': false,
-              },
-              PigeonSnapshotMetadata(
-                  hasPendingWrites: false, isFromCache: true)),
+          for (final entry
+              in (firestore as _DiscoveryFirestore).vendors.indexed)
+            DocumentSnapshotPlatform(
+                firestore,
+                'vendors/stall${entry.$1 == 0 ? '' : entry.$1}',
+                entry.$2,
+                PigeonSnapshotMetadata(
+                    hasPendingWrites: false, isFromCache: true)),
       ], [], SnapshotMetadataPlatform(false, true)));
 }
 
@@ -90,6 +95,49 @@ class _NoLocation extends GeolocatorPlatform {
   Future<bool> isLocationServiceEnabled() async => false;
 }
 
+class _InteractiveMaps extends MethodChannelGoogleMapsFlutter {
+  final created = <int>{};
+  final cameraMoves = <CameraUpdate>[];
+  LatLngBounds bounds = LatLngBounds(
+    southwest: const LatLng(3.138, 101.68),
+    northeast: const LatLng(3.142, 101.69),
+  );
+  @override
+  Future<void> init(int mapId) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            ensureChannelInitialized(mapId), (_) async => null);
+    return super.init(mapId);
+  }
+
+  @override
+  Future<LatLngBounds> getVisibleRegion({required int mapId}) async => bounds;
+  @override
+  Future<double> getZoomLevel({required int mapId}) async => 16;
+  @override
+  Future<void> animateCamera(CameraUpdate cameraUpdate,
+      {required int mapId}) async {
+    cameraMoves.add(cameraUpdate);
+  }
+
+  @override
+  Future<void> updateGroundOverlays(GroundOverlayUpdates updates,
+      {required int mapId}) async {}
+
+  @override
+  Widget buildViewWithConfiguration(
+      int creationId, PlatformViewCreatedCallback onPlatformViewCreated,
+      {required MapWidgetConfiguration widgetConfiguration,
+      MapConfiguration mapConfiguration = const MapConfiguration(),
+      MapObjects mapObjects = const MapObjects()}) {
+    if (created.add(creationId)) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => onPlatformViewCreated(creationId));
+    }
+    return const SizedBox.expand();
+  }
+}
+
 class _AllowedLocation extends _NoLocation {
   @override
   Future<LocationPermission> checkPermission() async =>
@@ -97,18 +145,92 @@ class _AllowedLocation extends _NoLocation {
 }
 
 void main() {
+  final firestore = _DiscoveryFirestore();
   TestWidgetsFlutterBinding.ensureInitialized();
   setupFirebaseCoreMocks();
   setUpAll(() async {
     await Firebase.initializeApp();
     FirebaseAuthPlatform.instance = _SignedOutAuth();
-    FirebaseFirestorePlatform.instance = _DiscoveryFirestore();
+    FirebaseFirestorePlatform.instance = firestore;
     GoogleMapsFlutterPlatform.instance = _PlaceholderMaps();
     GeolocatorPlatform.instance = _NoLocation();
   });
   setUp(() => SharedPreferences.setMockInitialValues({
         'guest_search_history_v1': ['Previous search'],
       }));
+
+  testWidgets(
+      'cards follow viewport; scrolling leaves markers and camera unchanged; tapping focuses',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final maps = _InteractiveMaps();
+    GoogleMapsFlutterPlatform.instance = maps;
+    final originalVendors = firestore.vendors;
+    firestore.vendors = [
+      for (var i = 0; i < 4; i++)
+        {
+          'stallName': 'Nasi Stall $i',
+          'category': 'Rice',
+          'latitude': i == 3 ? 3.16 : 3.139 + i * .001,
+          'longitude': 101.6869,
+          'isOpen': false
+        },
+    ];
+    addTearDown(() {
+      GoogleMapsFlutterPlatform.instance = _PlaceholderMaps();
+      firestore.vendors = originalVendors;
+    });
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pumpAndSettle();
+    GoogleMap map() => tester.widget<GoogleMap>(find.byType(GoogleMap));
+    final before = map();
+    expect(before.markers.length, 4);
+    expect(tester.widget<StallCardCarousel>(find.byType(StallCardCarousel)).ids,
+        ['stall', 'stall1', 'stall2']);
+    expect(find.text('3 stalls nearby'), findsOneWidget);
+    await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
+        const Offset(-1200, 0));
+    await tester.pumpAndSettle();
+    expect(map().markers, unorderedEquals(before.markers));
+    expect(map().initialCameraPosition, before.initialCameraPosition);
+    expect(maps.cameraMoves, isEmpty);
+    await tester.tap(find.text('Nasi Stall 2'));
+    await tester.pumpAndSettle();
+    expect(maps.cameraMoves, hasLength(1));
+    expect(
+        map()
+            .markers
+            .firstWhere((m) => m.markerId.value == 'stall2')
+            .clusterManagerId,
+        isNull);
+    // Finish the explicit focus, then simulate a user pan to a different stall.
+    map().onCameraIdle!();
+    await tester.pumpAndSettle();
+    maps.bounds = LatLngBounds(
+        southwest: const LatLng(3.159, 101.68),
+        northeast: const LatLng(3.161, 101.69));
+    map().onCameraMoveStarted!();
+    map().onCameraMove!(
+        const CameraPosition(target: LatLng(3.16, 101.6869), zoom: 16));
+    map().onCameraIdle!();
+    await tester.pumpAndSettle();
+    expect(tester.widget<StallCardCarousel>(find.byType(StallCardCarousel)).ids,
+        ['stall3']);
+    expect(find.text('1 stalls nearby'), findsOneWidget);
+    expect(find.text('Search here'), findsOneWidget);
+    expect(map().markers.map((m) => m.markerId),
+        unorderedEquals(before.markers.map((m) => m.markerId)));
+    expect(maps.cameraMoves, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
       'manual search keeps the GPS layer enabled and adds no search pin',

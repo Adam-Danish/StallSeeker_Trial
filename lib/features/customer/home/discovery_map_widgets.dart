@@ -310,13 +310,124 @@ String stallCardOpeningText(VendorModel vendor, {DateTime? now}) {
   return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
 }
 
-/// Retain fractional scroll positions when map selection rebuilds the cards.
+/// Space for full action labels and a Search here button centered on the map.
+class DiscoveryResultsHeader extends StatelessWidget {
+  const DiscoveryResultsHeader(
+      {super.key,
+      required this.countLabel,
+      required this.onViewAll,
+      this.actionLabel = 'View all',
+      this.onSearchHere});
+
+  final String countLabel, actionLabel;
+  final VoidCallback onViewAll;
+  final VoidCallback? onSearchHere;
+  static const _actionStyle = TextStyle(fontSize: 14, height: 1.2);
+
+  static double _textWidth(BuildContext context, String value) {
+    final painter = TextPainter(
+      text: TextSpan(
+          text: value,
+          style: DefaultTextStyle.of(context).style.merge(_actionStyle)),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
+  static double _rowHeight(BuildContext context) =>
+      math.max(44.0, MediaQuery.textScalerOf(context).scale(14) * 1.2 + 16);
+
+  static bool _needsTwoRows(BuildContext context, double width) {
+    final searchWidth = _textWidth(context, 'Search here') + 32;
+    final sideWidth = math.max(_textWidth(context, '999 stalls nearby'),
+        _textWidth(context, 'View all') + 24);
+    return width - 36 < searchWidth + sideWidth * 2 + 16;
+  }
+
+  static double heightFor(BuildContext context, double width,
+          {required bool showSearchHere}) =>
+      _rowHeight(context) *
+          (showSearchHere && _needsTwoRows(context, width) ? 2 : 1) +
+      (showSearchHere && _needsTwoRows(context, width) ? 4 : 0);
+
+  @override
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final rowHeight = _rowHeight(context);
+        final separateSearch = onSearchHere != null &&
+            _needsTwoRows(context, constraints.maxWidth);
+        final searchWidth = _textWidth(context, 'Search here') + 32;
+        Widget search() => SizedBox(
+              height: rowHeight,
+              width: searchWidth,
+              child: ElevatedButton(
+                key: const ValueKey('search-here'),
+                onPressed: onSearchHere,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cardColor,
+                  foregroundColor: AppColors.textDark,
+                  elevation: 3,
+                  minimumSize: Size(0, rowHeight),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  textStyle: _actionStyle,
+                ),
+                child: const Text('Search here', maxLines: 1, softWrap: false),
+              ),
+            );
+        final count = Text(countLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600));
+        final viewAll = TextButton(
+          key: const ValueKey('view-all-stalls'),
+          onPressed: onViewAll,
+          style: TextButton.styleFrom(
+            minimumSize: Size(_textWidth(context, actionLabel) + 24, rowHeight),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            textStyle: _actionStyle,
+          ),
+          child: Text(actionLabel, maxLines: 1, softWrap: false),
+        );
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (separateSearch) ...[
+              Center(child: search()),
+              const SizedBox(height: 4)
+            ],
+            SizedBox(
+                height: rowHeight,
+                child: Row(children: [
+                  Expanded(
+                      child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: count)),
+                  if (onSearchHere != null && !separateSearch) search(),
+                  if (onSearchHere != null && !separateSearch)
+                    Expanded(
+                        child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: viewAll))
+                  else
+                    viewAll,
+                ])),
+          ]),
+        );
+      });
+}
+
+/// Scrolling is independent of marker selection; only explicit taps select.
 class StallCardCarousel extends StatefulWidget {
   const StallCardCarousel({
     super.key,
     required this.ids,
     required this.selectedId,
-    required this.onSelected,
     required this.itemBuilder,
     this.viewportFraction = .94,
     this.cardsPerPage = 1,
@@ -324,7 +435,6 @@ class StallCardCarousel extends StatefulWidget {
 
   final List<String> ids;
   final String? selectedId;
-  final ValueChanged<int> onSelected;
   final IndexedWidgetBuilder itemBuilder;
   final double viewportFraction;
   final int cardsPerPage;
@@ -339,18 +449,12 @@ class _StallCardCarouselState extends State<StallCardCarousel> {
   static const _cardGap = 10.0;
   double _viewportWidth = 0;
   double _cardWidth = 0;
-  bool _programmatic = false;
   bool _revealScheduled = false;
-  String? _scrollSelectedId;
 
   @override
   void didUpdateWidget(covariant StallCardCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
     final reordered = oldWidget.ids.join('\u0000') != widget.ids.join('\u0000');
-    if (!reordered && widget.selectedId == _scrollSelectedId) {
-      _scrollSelectedId = null;
-      return;
-    }
     if (oldWidget.selectedId != widget.selectedId || reordered) {
       _scheduleReveal();
     }
@@ -369,36 +473,9 @@ class _StallCardCarouselState extends State<StallCardCarousel> {
               index * (_cardWidth + _cardGap) +
               _cardWidth / 2 -
               _viewportWidth / 2;
-      _programmatic = true;
       _controller
           .jumpTo(offset.clamp(0.0, _controller.position.maxScrollExtent));
-      _programmatic = false;
     });
-  }
-
-  bool _onScrollEnd(ScrollEndNotification notification) {
-    if (notification.depth != 0 ||
-        _programmatic ||
-        _revealScheduled ||
-        widget.ids.isEmpty ||
-        !_controller.hasClients) {
-      return false;
-    }
-    final offset = _controller.offset;
-    final maximum = _controller.position.maxScrollExtent;
-    final index = offset <= .5
-        ? 0
-        : maximum > 0 && offset >= maximum - .5
-            ? widget.ids.length - 1
-            : ((offset + _viewportWidth / 2 - _edgePadding - _cardWidth / 2) /
-                    (_cardWidth + _cardGap))
-                .round()
-                .clamp(0, widget.ids.length - 1);
-    if (widget.ids[index] != widget.selectedId) {
-      _scrollSelectedId = widget.ids[index];
-      widget.onSelected(index);
-    }
-    return false;
   }
 
   @override
@@ -421,24 +498,20 @@ class _StallCardCarouselState extends State<StallCardCarousel> {
           _cardWidth = cardWidth;
           _scheduleReveal();
         }
-        return NotificationListener<ScrollEndNotification>(
-          onNotification: _onScrollEnd,
-          child: ScrollConfiguration(
-            behavior: const MaterialScrollBehavior().copyWith(
-                scrollbars: false,
-                dragDevices: PointerDeviceKind.values.toSet()),
-            child: ListView.separated(
-              key: const ValueKey('stall-card-carousel'),
-              controller: _controller,
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: _edgePadding, vertical: 5),
-              itemCount: widget.ids.length,
-              separatorBuilder: (_, __) => const SizedBox(width: _cardGap),
-              itemBuilder: (context, index) =>
-                  SizedBox(width: cardWidth, child: _card(context, index)),
-            ),
+        return ScrollConfiguration(
+          behavior: const MaterialScrollBehavior().copyWith(
+              scrollbars: false, dragDevices: PointerDeviceKind.values.toSet()),
+          child: ListView.separated(
+            key: const ValueKey('stall-card-carousel'),
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+                horizontal: _edgePadding, vertical: 5),
+            itemCount: widget.ids.length,
+            separatorBuilder: (_, __) => const SizedBox(width: _cardGap),
+            itemBuilder: (context, index) =>
+                SizedBox(width: cardWidth, child: _card(context, index)),
           ),
         );
       });

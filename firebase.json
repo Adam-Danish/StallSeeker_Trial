@@ -71,6 +71,10 @@
     "public": "build/web",
     "headers": [
       {
+        "source": "/",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
         "source": "/firebase-messaging-sw.js",
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },
@@ -80,6 +84,10 @@
       },
       {
         "source": "/maps-config.js",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
+        "source": "/{main.dart.js,flutter.js,flutter_bootstrap.js,maps-bootstrap.js}",
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       }
     ],
