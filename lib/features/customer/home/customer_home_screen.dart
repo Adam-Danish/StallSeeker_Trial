@@ -1467,21 +1467,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             )
             .toSet();
-        final searchPosition = _searchCenter ?? _customerPosition;
-        if (searchPosition != null) {
-          markers.add(Marker(
-            markerId: const MarkerId('customer-search-location'),
-            position: searchPosition,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueAzure),
-            infoWindow: InfoWindow(
-                title: 'Search location',
-                snippet: searchPosition == _customerPosition
-                    ? _customerLocationLabel ?? 'Selected location'
-                    : 'Selected map area'),
-          ));
-        }
-
         if (_listOnly) {
           return _buildDiscoveryList(snapshot, onScreenVendors, dishResults,
               filteredVendorById, showSuggestions ? suggestions : const []);
@@ -1492,10 +1477,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
           final geometry = DiscoveryMapGeometry(constraints.biggest);
           final overlayWidth = geometry.overlayWidth;
-          final headerHeight = math.max(54.0, 32 * textScale + 14);
-          final searchTop = 10 + headerHeight + 8;
-          final searchHeight = math.max(50.0, 16 * textScale + 28);
-          final filterTop = searchTop + searchHeight + 8;
+          const headerToSearchGap = 12.0;
+          const searchToFiltersGap = 12.0;
+          final headerHeight = math.max(52.0, 32 * textScale + 14);
+          final searchTop = 10 + headerHeight + headerToSearchGap;
+          final searchHeight = math.max(52.0, 16 * textScale + 28);
+          final filterTop = searchTop + searchHeight + searchToFiltersGap;
           final headerBottom =
               filterTop + math.max(48.0, 14 * textScale + 26) + 10;
           final panelWidth = geometry.panelWidth;
@@ -1615,11 +1602,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     top: 10,
                     left: 12,
                     width: overlayWidth,
+                    height: headerHeight,
                     child: _mapHeader()),
                 Positioned(
                     top: searchTop,
                     left: 12,
                     width: overlayWidth,
+                    height: searchHeight,
                     child: Material(
                       color: AppColors.cardColor,
                       elevation: 3,

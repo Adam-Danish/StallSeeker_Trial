@@ -30,7 +30,7 @@ void main() {
             ),
           ),
         ));
-        expect(find.text('Search location'), findsOneWidget);
+        expect(find.text('Search location'), findsNothing);
         expect(find.text('Other stalls'), findsOneWidget);
         expect(find.text('Selected stall'), findsOneWidget);
         expect(tester.getBottomLeft(find.byType(MapMarkerGuide)).dy,

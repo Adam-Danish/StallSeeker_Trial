@@ -4,12 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
 
-/// Matches the search pin and selected/unselected stall pins on the home map.
+/// Describes selected and unselected stall markers on the home map.
 class MapMarkerGuide extends StatelessWidget {
   const MapMarkerGuide({super.key});
 
   static const _entries = [
-    ('Search location', Color(0xFF0080FF)),
     ('Other stalls', Color(0xFFFF0000)),
     ('Selected stall', Color(0xFFFF8000)),
   ];
