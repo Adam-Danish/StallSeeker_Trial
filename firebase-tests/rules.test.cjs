@@ -72,6 +72,42 @@ beforeEach(async () => {
 
 after(async () => { if (env) await env.cleanup(); });
 
+for (const collectionName of ['_connection_test_', 'reports', 'stalls']) {
+  test(`retired ${collectionName} records deny all client reads and writes`, async () => {
+    const existingPath = `${collectionName}/existing`;
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), existingPath),
+          {vendorId: 'vendor-a', customerId: 'customer-a', value: 'private'});
+    });
+
+    const clients = [
+      env.unauthenticatedContext(),
+      env.authenticatedContext('guest-a', {
+        firebase: {sign_in_provider: 'anonymous'},
+      }),
+      client('customer-a', false),
+      client('customer-a'),
+      client('vendor-a'),
+    ];
+    for (const context of clients) {
+      const db = context.firestore();
+      await assertFails(getDoc(doc(db, existingPath)));
+      await assertFails(getDocs(collection(db, collectionName)));
+      await assertFails(setDoc(doc(db, collectionName, 'new'),
+          {vendorId: 'vendor-a', value: 'forged'}));
+      await assertFails(updateDoc(doc(db, existingPath), {value: 'changed'}));
+      await assertFails(deleteDoc(doc(db, existingPath)));
+    }
+
+    // Server-side account cleanup must still be able to remove legacy data.
+    await env.withSecurityRulesDisabled(async (context) => {
+      const record = doc(context.firestore(), existingPath);
+      assert.equal((await getDoc(record)).data().value, 'private');
+      await deleteDoc(record);
+    });
+  });
+}
+
 async function seedDish() {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), 'vendors/vendor-a'),

@@ -127,16 +127,18 @@ service cloud.firestore {
           && data.updatedAt == request.time;
     }
 
+    // Retired collections have no client-facing flows. Keep existing records
+    // accessible only to trusted server/Admin SDK operations (including cleanup).
     match /_connection_test_/{docId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
     match /reports/{reportId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
     match /stalls/{stallId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
     match /vendors/{vendorId} {
