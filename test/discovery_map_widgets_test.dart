@@ -9,6 +9,92 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stallseeker/core/models/stall_schedule.dart';
 
 void main() {
+  for (final width in [390.0, 1280.0]) {
+    testWidgets(
+        'last card stops at the right edge without empty space at $width',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const ids = ['a', 'b', 'c', 'd', 'e'];
+      var selected = 'a';
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: StatefulBuilder(
+        builder: (_, setState) => SizedBox(
+            height: 180,
+            child: StallCardCarousel(
+              ids: ids,
+              selectedId: selected,
+              cardsPerPage: width >= 600 ? 3 : 1,
+              onSelected: (index) => setState(() => selected = ids[index]),
+              itemBuilder: (_, index) => Center(child: Text(ids[index])),
+            )),
+      ))));
+      final strip = find.byKey(const ValueKey('stall-card-carousel'));
+      await tester.drag(strip, const Offset(-6000, 0));
+      await tester.pumpAndSettle();
+      final controller = tester.widget<ListView>(strip).controller!;
+      expect(controller.offset, controller.position.maxScrollExtent);
+      expect(tester.getTopRight(find.byKey(const ValueKey('e'))).dx,
+          closeTo(width - 12, .01));
+      expect(selected, 'e');
+      await tester.drag(strip, const Offset(-200, 0));
+      await tester.pumpAndSettle();
+      expect(controller.offset, controller.position.maxScrollExtent);
+      await tester.drag(strip, const Offset(180, 0));
+      await tester.pumpAndSettle();
+      expect(controller.offset, lessThan(controller.position.maxScrollExtent));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'free scrolling retains a half-visible card through selection rebuilds',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var selected = 'a';
+    late StateSetter update;
+    const ids = ['a', 'b', 'c', 'd'];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: StatefulBuilder(
+      builder: (_, setState) {
+        update = setState;
+        return SizedBox(
+            height: 180,
+            child: StallCardCarousel(
+              ids: ids,
+              selectedId: selected,
+              onSelected: (index) => setState(() => selected = ids[index]),
+              itemBuilder: (_, index) => Center(child: Text(ids[index])),
+            ));
+      },
+    ))));
+    final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('stall-card-carousel'))));
+    await gesture.moveBy(const Offset(-230, 0));
+    await tester.pump(const Duration(milliseconds: 300));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final controller = tester
+        .widget<ListView>(find.byKey(const ValueKey('stall-card-carousel')))
+        .controller!;
+    final stoppedOffset = controller.offset;
+    expect(selected, 'b');
+    expect(stoppedOffset, greaterThan(180));
+    expect(stoppedOffset, lessThan(300));
+    update(() {});
+    await tester.pumpAndSettle();
+    expect(controller.offset, closeTo(stoppedOffset, .001));
+    update(() => selected = 'd');
+    await tester.pumpAndSettle();
+    expect(controller.offset, controller.position.maxScrollExtent);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
       'tablet shows multiple compact cards and retains selection on rotation',
       (tester) async {
@@ -43,17 +129,18 @@ void main() {
       final center = tester.getCenter(find.text('Card $id'));
       expect(center.dx, inInclusiveRange(0, 1280));
     }
-    await tester.drag(find.byType(PageView), const Offset(-1100, 0));
+    await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
+        const Offset(-1100, 0));
     await tester.pumpAndSettle();
-    expect(moves, [3]);
-    expect(selected, 'd');
+    expect(moves, hasLength(1));
+    expect(selected, ids[moves.single]);
     update(() => selected = 'c');
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(834, 1194);
     update(() => columns = 2);
     await tester.pumpAndSettle();
-    expect(moves, [3]);
-    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 1);
+    expect(moves, hasLength(1));
+    expect(tester.getCenter(find.text('Card c')).dx, inInclusiveRange(0, 834));
     expect(tester.takeException(), isNull);
   });
 
@@ -272,14 +359,18 @@ void main() {
             ));
       },
     ))));
-    await tester.drag(find.byType(PageView), const Offset(-750, 0));
+    await tester.drag(find.byKey(const ValueKey('stall-card-carousel')),
+        const Offset(-750, 0));
     await tester.pumpAndSettle();
     expect(moves, [1]);
     expect(selected, 'b');
     update(() => selected = 'c');
     await tester.pumpAndSettle();
     expect(moves, [1]);
-    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 2);
+    final controller = tester
+        .widget<ListView>(find.byKey(const ValueKey('stall-card-carousel')))
+        .controller!;
+    expect(controller.offset, controller.position.maxScrollExtent);
     update(() {
       ids = ['c'];
     });

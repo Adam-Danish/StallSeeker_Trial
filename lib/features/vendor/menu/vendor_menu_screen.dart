@@ -1,6 +1,5 @@
 import '../../../core/widgets/app_back_button.dart';
 import '../../../core/widgets/app_page_app_bar.dart';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
@@ -266,7 +265,7 @@ class _MenuEditorState extends State<_MenuEditor> {
   late final TextEditingController _portion;
   late final TextEditingController _ingredients;
   late final String _itemId;
-  File? _image;
+  PickedPhoto? _image;
   bool _saving = false;
   String? _error;
   @override
@@ -398,7 +397,7 @@ class _MenuEditorState extends State<_MenuEditor> {
                     if (_image != null)
                       ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.file(_image!,
+                          child: Image.memory(_image!.bytes,
                               height: 140, fit: BoxFit.cover))
                     else if (widget.item?.imageUrl.isNotEmpty == true)
                       Image.network(widget.item!.imageUrl,

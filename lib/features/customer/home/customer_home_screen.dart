@@ -9,6 +9,8 @@ import '../notifications/customer_notifications_screen.dart';
 import 'dart:async'; // bawak time, future dan unawaited
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../../../core/widgets/map_overlay.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -49,7 +51,8 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+class _CustomerHomeScreenState extends State<CustomerHomeScreen>
+    with WidgetsBindingObserver {
   final _vendorService = VendorService(); // loads vendor
   final _authService = AuthService(); // loads customer info
   final _dishSearchService = DishSearchService();
@@ -124,6 +127,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String? _selectedVendorId;
   bool _isLocatingCustomer = true;
   bool _locationPermissionGranted = false;
+  LatLng? _gpsPosition;
+  BitmapDescriptor? _gpsDotIcon;
+  StreamSubscription<Position>? _gpsSubscription;
+  bool _checkingGps = false;
   String? _locationError;
   String? _category;
   String _statusFilter = 'All';
@@ -155,6 +162,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshGpsDisplay());
     _vendors = _watchVendors();
     unawaited(_loadMapMarkerIcons());
     _searchFocus.addListener(_onSearchFocusChanged);
@@ -195,6 +204,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 // bila customer leave app dia clean up
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _gpsSubscription?.cancel();
     _searchController.dispose();
     _searchFocus
       ..removeListener(_onSearchFocusChanged)
@@ -303,6 +314,49 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   bool _locationRequestActive = false;
   int _locationSelectionVersion = 0;
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_refreshGpsDisplay());
+  }
+
+  Future<void> _refreshGpsDisplay() async {
+    if (_checkingGps) return;
+    _checkingGps = true;
+    try {
+      final permission = await Geolocator.checkPermission();
+      final granted = permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
+      if (!mounted) return;
+      setState(() => _locationPermissionGranted = granted);
+      if (!granted) {
+        await _gpsSubscription?.cancel();
+        _gpsSubscription = null;
+        return;
+      }
+      // Native Google Maps draws its own GPS dot. The web implementation
+      // needs a dot sourced from real GPS, independently of the search area.
+      if (kIsWeb) {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings:
+              const LocationSettings(accuracy: LocationAccuracy.high),
+        ).timeout(const Duration(seconds: 12));
+        if (!mounted) return;
+        setState(
+            () => _gpsPosition = LatLng(position.latitude, position.longitude));
+        _gpsSubscription ??= Geolocator.getPositionStream().listen((position) {
+          if (mounted) {
+            setState(() =>
+                _gpsPosition = LatLng(position.latitude, position.longitude));
+          }
+        }, onError: (Object _) {});
+      }
+    } catch (_) {
+      // A temporary GPS failure must not change the selected search area.
+    } finally {
+      _checkingGps = false;
+    }
+  }
+
   Future<void> _initializeCustomerLocation() async {
     final selectionVersion = _locationSelectionVersion;
     // check kalau customer ada saved location, kalau takde baru call getcustomerlocation
@@ -329,6 +383,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
     }
     if (mounted && selectionVersion == _locationSelectionVersion) {
+      if (kIsWeb) {
+        // Browser permission prompts should follow a deliberate My location
+        // click. Reuse an existing grant without prompting on page load.
+        try {
+          final permission = await Geolocator.checkPermission()
+              .timeout(const Duration(seconds: 8));
+          if (!mounted || selectionVersion != _locationSelectionVersion) return;
+          if (permission != LocationPermission.whileInUse &&
+              permission != LocationPermission.always) {
+            setState(() => _isLocatingCustomer = false);
+            return;
+          }
+        } catch (_) {
+          if (mounted) setState(() => _isLocatingCustomer = false);
+          return;
+        }
+      }
       await _getCustomerLocation(); // get cust loc
     }
   }
@@ -354,7 +425,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       _selectedDishId = null;
       _showSearchArea = false;
       _customerLocationLabel = selection.label;
-      _locationPermissionGranted = !isManual;
       _locationError = null; // buang error
     });
     final controller = _mapController;
@@ -386,7 +456,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       setState(() {
         _isLocatingCustomer = true;
         _locationError = null;
-        _locationPermissionGranted = false;
       });
     }
     try {
@@ -418,6 +487,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return;
       }
       final coordinates = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _locationPermissionGranted = true;
+        _gpsPosition = coordinates;
+      });
+      unawaited(_refreshGpsDisplay());
       String label;
       try {
         label = await describeLocation(coordinates);
@@ -1467,13 +1541,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             )
             .toSet();
+        if (kIsWeb &&
+            _locationPermissionGranted &&
+            _gpsPosition != null &&
+            _gpsDotIcon != null) {
+          markers.add(Marker(
+            markerId: const MarkerId('current-gps-location'),
+            position: _gpsPosition!,
+            icon: _gpsDotIcon!,
+            anchor: const Offset(.5, .5),
+            zIndexInt: 3,
+            infoWindow: const InfoWindow(title: 'Your current location'),
+          ));
+        }
         if (_listOnly) {
           return _buildDiscoveryList(snapshot, onScreenVendors, dishResults,
               filteredVendorById, showSuggestions ? suggestions : const []);
         }
 
         return LayoutBuilder(builder: (context, constraints) {
-          final navClearance = MediaQuery.paddingOf(context).bottom + 12;
+          final navClearance = MediaQuery.paddingOf(context).bottom + 4;
           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
           final geometry = DiscoveryMapGeometry(constraints.biggest);
           final overlayWidth = geometry.overlayWidth;
@@ -1541,7 +1628,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   (_locationError != null ? 60 : 0);
               final mapTopInset =
                   math.min(headerBottom, constraints.maxHeight * .38);
-              return Stack(children: [
+              return Stack(
+                  children: [
                 Positioned.fill(
                     child: GoogleMap(
                   style: _mapStyle,
@@ -1716,27 +1804,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     ]),
                   ),
                 if (preview == null) ...[
-                  if (_showSearchArea)
-                    Positioned(
-                      left: geometry.panelLeft + 12,
-                      right: geometry.panelLeft + 12,
-                      bottom: navClearance + panelHeight + 14,
-                      child: Center(
-                          child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.cardColor,
-                            foregroundColor: AppColors.textDark,
-                            shape: const StadiumBorder(),
-                            elevation: 3,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 10)),
-                        onPressed: _searchThisArea,
-                        child: const Text('Search here'),
-                      )),
-                    ),
                   Positioned(
                     left: geometry.panelLeft,
-                    bottom: navClearance + 8,
+                    bottom: navClearance,
                     width: panelWidth,
                     height: panelHeight,
                     child: Column(children: [
@@ -1751,6 +1821,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                   style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600))),
+                          if (_showSearchArea) ...[
+                            SizedBox(
+                              height: 30,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.cardColor,
+                                  foregroundColor: AppColors.textDark,
+                                  elevation: 3,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  minimumSize: const Size(0, 30),
+                                  textStyle: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                onPressed: _searchThisArea,
+                                child: const Text('Search here'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           SizedBox(
                               height: 30,
                               child: TextButton(
@@ -1857,7 +1948,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           constraints: BoxConstraints(
                               maxHeight: constraints.maxHeight * .4),
                           child: _suggestionPanel(suggestions))),
-              ]);
+              ].map(interceptMapOverlay).toList());
             },
           );
         });
@@ -1950,6 +2041,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _loadMapMarkerIcons() async {
     try {
+      if (kIsWeb) _gpsDotIcon = await _markerCache.currentLocationDot();
       final entries = await Future.wait([
         for (final category in ['', ...stallCategories])
           for (final selected in [false, true])

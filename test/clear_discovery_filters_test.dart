@@ -12,9 +12,11 @@ import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platf
 import 'package:geolocator_platform_interface/geolocator_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
-import 'package:stallseeker/core/widgets/app_dropdown.dart';
+import 'package:stallseeker/features/customer/home/discovery_map_widgets.dart';
 import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
 import 'package:stallseeker/features/customer/home/discovery_options.dart';
+import 'package:stallseeker/features/customer/profile/customer_profile_screen.dart';
+import 'package:stallseeker/features/shared/manual_location_dialog.dart';
 
 class _SignedOutAuth extends FirebaseAuthPlatform {
   @override
@@ -88,6 +90,12 @@ class _NoLocation extends GeolocatorPlatform {
   Future<bool> isLocationServiceEnabled() async => false;
 }
 
+class _AllowedLocation extends _NoLocation {
+  @override
+  Future<LocationPermission> checkPermission() async =>
+      LocationPermission.whileInUse;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setupFirebaseCoreMocks();
@@ -102,6 +110,32 @@ void main() {
         'guest_search_history_v1': ['Previous search'],
       }));
 
+  testWidgets(
+      'manual search keeps the GPS layer enabled and adds no search pin',
+      (tester) async {
+    GeolocatorPlatform.instance = _AllowedLocation();
+    addTearDown(() => GeolocatorPlatform.instance = _NoLocation());
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+    await tester.pumpAndSettle();
+    expect(tester.widget<GoogleMap>(find.byType(GoogleMap)).myLocationEnabled,
+        isTrue);
+    final profile = tester.widget<CustomerProfileScreen>(
+        find.byType(CustomerProfileScreen, skipOffstage: false));
+    profile.onLocationChanged(
+        const LocationSelection(
+            coordinates: LatLng(3.14, 101.69), label: 'Manual search area'),
+        true);
+    await tester.pumpAndSettle();
+    final map = tester.widget<GoogleMap>(find.byType(GoogleMap));
+    expect(map.myLocationEnabled, isTrue);
+    expect(
+        map.markers.any(
+            (marker) => marker.markerId.value == 'customer-search-location'),
+        isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final width in [320.0, 960.0]) {
     testWidgets('clear all discovery filters in map and list views at $width',
         (tester) async {
@@ -113,57 +147,43 @@ void main() {
           theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
       await tester.pumpAndSettle();
 
-      AppDropdown<String> dropdown(String hint) =>
-          tester.widget<AppDropdown<String>>(find.byWidgetPredicate((widget) =>
-              widget is AppDropdown<String> && widget.hint == hint));
-      Finder chip(String label) => find.widgetWithText(InputChip, label);
+      DiscoveryMapFilters filters() =>
+          tester.widget<DiscoveryMapFilters>(find.byType(DiscoveryMapFilters));
+      Future<void> chooseMore(String label) async {
+        await tester.tap(find.byTooltip('More map options'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+      }
 
       for (final listView in [false, true]) {
         if (listView) {
-          final switchView = find.widgetWithText(ActionChip, 'List view');
-          await Scrollable.ensureVisible(tester.element(switchView),
-              alignment: .5);
-          await tester.tap(switchView);
-          await tester.pumpAndSettle();
+          await chooseMore('List view');
         }
         // Set several filters together, including a schedule and price range.
-        dropdown('Choose category').onChanged!('Drinks');
-        tester
-            .widget<AppDropdown<DiscoverySort>>(
-                find.byType(AppDropdown<DiscoverySort>))
-            .onChanged!(DiscoverySort.price);
-        for (final filter in [
-          'Available dishes',
-          'Self-collect',
-          'Updated in 24h'
-        ]) {
-          tester
-              .widget<FilterChip>(find.widgetWithText(FilterChip, filter))
-              .onSelected!(true);
-        }
+        filters().onCategory('Beverages');
+        filters().onSort(DiscoverySort.price);
+        filters().onAvailable(true);
+        filters().onSelfCollect(true);
+        filters().onRecent(true);
         await tester.pump();
-        await Scrollable.ensureVisible(tester.element(chip('Any price')),
-            alignment: .5);
-        await tester.tap(chip('Any price'));
-        await tester.pumpAndSettle();
+        await chooseMore('Any price');
         await tester.enterText(find.byType(TextFormField).first, '5');
         await tester.enterText(find.byType(TextFormField).last, '10');
         await tester.tap(find.text('Apply price range'));
         await tester.pumpAndSettle();
-        await Scrollable.ensureVisible(tester.element(chip('Open at…')),
-            alignment: .5);
-        await tester.tap(chip('Open at…'));
-        await tester.pumpAndSettle();
+        await chooseMore('Open at…');
         await tester.tap(find.text('Tomorrow morning'));
         await tester.pumpAndSettle();
         await tester.enterText(
             find.byType(TextField).first, 'No matching dish');
         await tester.pumpAndSettle();
-        expect(dropdown('Choose category').value, 'Drinks');
-        expect(dropdown('Choose stall status').displayText, 'Scheduled');
+        expect(filters().category, 'Beverages');
+        expect(filters().hasExtraFilters, isTrue);
 
-        // The reset stays visible even when the filter strip is scrolled.
-        await tester.tap(find.text('Clear filters'));
+        await tester.tap(find.byTooltip('Filter stalls'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Reset filters'));
         await tester.pumpAndSettle();
         expect(
             tester
@@ -171,36 +191,21 @@ void main() {
                 .controller!
                 .text,
             isEmpty);
-        expect(dropdown('Choose category').value, 'All');
-        expect(dropdown('Choose stall status').value, 'All');
-        expect(dropdown('Choose stall status').displayText, isNull);
-        expect(chip('Any price'), findsOneWidget);
-        expect(chip('Open at…'), findsOneWidget);
-        for (final filter in [
-          'Available dishes',
-          'Self-collect',
-          'Updated in 24h'
-        ]) {
-          expect(
-              tester
-                  .widget<FilterChip>(find.widgetWithText(FilterChip, filter))
-                  .selected,
-              isFalse);
-        }
-        expect(
-            tester
-                .widget<AppDropdown<DiscoverySort>>(
-                    find.byType(AppDropdown<DiscoverySort>))
-                .value,
-            DiscoverySort.price);
+        expect(filters().category, isNull);
+        expect(filters().openNow, isFalse);
+        expect(filters().availableOnly, isFalse);
+        expect(filters().selfCollectOnly, isFalse);
+        expect(filters().recentOnly, isFalse);
+        expect(filters().hasExtraFilters, isFalse);
+        expect(filters().sort, DiscoverySort.distance);
+        await tester.tap(find.byTooltip('More map options'));
+        await tester.pumpAndSettle();
+        expect(find.text('Any price'), findsOneWidget);
+        expect(find.text('Open at…'), findsOneWidget);
         expect(find.text(listView ? 'Map view' : 'List view'), findsOneWidget);
-        if (listView) {
-          expect(find.text('Nasi Stall'), findsOneWidget);
-        } else {
-          expect(
-              tester.widget<GoogleMap>(find.byType(GoogleMap)).markers.length,
-              1);
-        }
+        await tester.tap(find.byTooltip('More map options'));
+        await tester.pumpAndSettle();
+        expect(find.text('Nasi Stall'), findsOneWidget);
         final prefs = await SharedPreferences.getInstance();
         expect(prefs.getStringList('guest_search_history_v1'),
             ['Previous search']);

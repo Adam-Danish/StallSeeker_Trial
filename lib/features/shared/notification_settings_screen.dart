@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/notification_service.dart';
 import 'account_ui.dart';
@@ -16,6 +17,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     with WidgetsBindingObserver {
   bool _enabled = true;
   bool _busy = true;
+  bool _supported = true;
   AuthorizationStatus _systemStatus = AuthorizationStatus.notDetermined;
   String? _error;
 
@@ -49,6 +51,18 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       return;
     }
     try {
+      if (kIsWeb && !await FirebaseMessaging.instance.isSupported()) {
+        if (mounted) {
+          setState(() {
+            _supported = false;
+            _busy = false;
+            _enabled = false;
+            _error =
+                'This browser does not support push notifications. Your notification history is still available.';
+          });
+        }
+        return;
+      }
       final values = await Future.wait([
         NotificationService.instance.isEnabledForCurrentUser(),
         FirebaseMessaging.instance.getNotificationSettings(),
@@ -101,7 +115,9 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       return 'Quiet notifications allowed';
     }
     if (_systemStatus == AuthorizationStatus.denied) {
-      return 'Blocked in phone settings';
+      return kIsWeb
+          ? 'Blocked in browser settings'
+          : 'Blocked in phone settings';
     }
     return 'Permission not requested';
   }
@@ -120,7 +136,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 activeThumbColor: AppColors.primary,
                 value: _enabled,
-                onChanged: _busy ? null : _toggle,
+                onChanged: _busy || !_supported ? null : _toggle,
                 secondary: const Icon(Icons.notifications_active_outlined,
                     color: AppColors.primary),
                 title: const Text('Stall & dish notifications',
@@ -154,10 +170,18 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               ])),
           if (_systemStatus == AuthorizationStatus.denied) ...[
             const SizedBox(height: 12),
-            const Text(
-                'Allow notifications in your phone settings, then return to StallSeeker.',
+            Text(
+                kIsWeb
+                    ? 'Allow notifications in your browser site settings, then return to StallSeeker.'
+                    : 'Allow notifications in your phone settings, then return to StallSeeker.',
                 style: TextStyle(color: Color(0xFF707078), height: 1.4)),
           ],
+          if (kIsWeb && _systemStatus == AuthorizationStatus.notDetermined)
+            TextButton.icon(
+              onPressed: _busy ? null : () => _toggle(true),
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('Enable browser notifications'),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 16),
             AccountError(_error),

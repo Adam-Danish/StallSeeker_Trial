@@ -8,8 +8,9 @@ import '../../shared/delete_account_screen.dart';
 import '../../auth/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../shared/manual_location_dialog.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/vendor_service.dart';
@@ -26,7 +27,6 @@ class VendorProfileScreen extends StatefulWidget {
 
 class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _authService = AuthService();
-  final _geocoding = Geocoding();
 
   UserModel? _userModel;
   String _phoneNumber = '';
@@ -103,14 +103,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             const LocationSettings(accuracy: LocationAccuracy.high),
       ).timeout(const Duration(seconds: 12));
 
-      final placemarks = await _geocoding
-          .placemarkFromCoordinates(
-            position.latitude,
-            position.longitude,
-          )
-          .timeout(const Duration(seconds: 8));
       final address =
-          _formatPlacemark(placemarks.isNotEmpty ? placemarks.first : null);
+          await describeLocation(LatLng(position.latitude, position.longitude));
 
       if (mounted) {
         setState(() {
@@ -126,16 +120,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
         });
       }
     }
-  }
-
-  String _formatPlacemark(Placemark? p) {
-    if (p == null) {
-      return 'Location unavailable';
-    }
-    final parts = [p.subLocality, p.locality, p.administrativeArea]
-        .where((s) => s != null && s.isNotEmpty)
-        .toList();
-    return parts.isEmpty ? 'Location unavailable' : parts.join(', ');
   }
 
   Future<void> _editProfile() async {

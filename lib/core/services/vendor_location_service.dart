@@ -2,13 +2,16 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// Shares an open vendor's location, including while the app is backgrounded.
 /// Android keeps the stream alive with a visible foreground-service
 /// notification; iOS uses the location background mode.
-class VendorLocationService extends ChangeNotifier {
-  VendorLocationService._();
+class VendorLocationService extends ChangeNotifier with WidgetsBindingObserver {
+  VendorLocationService._() {
+    WidgetsBinding.instance.addObserver(this);
+  }
   static final instance = VendorLocationService._();
   StreamSubscription<Position>? _positionSubscription;
   Future<void> _writes = Future<void>.value();
@@ -19,6 +22,22 @@ class VendorLocationService extends ChangeNotifier {
 
   Future<void> _operations = Future<void>.value();
   int _request = 0;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (kIsWeb &&
+        (state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused)) {
+      unawaited(pause());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(pause());
+    super.dispose();
+  }
 
   Future<void> start(String vendorId) {
     final request = ++_request;
@@ -55,6 +74,10 @@ class VendorLocationService extends ChangeNotifier {
   }
 
   LocationSettings _locationSettings() {
+    if (kIsWeb) {
+      return const LocationSettings(
+          accuracy: LocationAccuracy.high, distanceFilter: 5);
+    }
     if (defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,

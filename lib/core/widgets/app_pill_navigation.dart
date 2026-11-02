@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../constants/app_colors.dart';
 
@@ -16,7 +18,9 @@ class AppPillNavigation extends StatelessWidget {
   final List<NavigationDestination> destinations;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
+  Widget build(BuildContext context) => PointerInterceptor(
+      intercepting: kIsWeb,
+      child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -88,5 +92,5 @@ class AppPillNavigation extends StatelessWidget {
             ),
           ),
         ),
-      );
+      ));
 }

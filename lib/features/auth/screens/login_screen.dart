@@ -203,8 +203,10 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
           Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: AppBackButton(
-                  label: 'Cancel', enabled: !_busy, onPressed: _close)),
+              child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AppBackButton(
+                      label: 'Cancel', enabled: !_busy, onPressed: _close))),
           Expanded(
               child: SingleChildScrollView(
             controller: widget.scrollController,

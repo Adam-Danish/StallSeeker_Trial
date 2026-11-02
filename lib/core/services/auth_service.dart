@@ -162,23 +162,21 @@ class AuthService {
 
   Future<String?> signInWithGoogle() async {
     try {
-      await _ensureGoogleSignInReady();
-
-      final GoogleSignInAccount googleUser = await _googleSignIn
-          .authenticate()
-          .timeout(const Duration(seconds: 25));
-
-      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await _auth
-          .signInWithCredential(credential)
-          .timeout(const Duration(
-              seconds:
-                  25)); // cancel google sign in kalau lebih 25 sec  xbuat apa2
+      final UserCredential userCredential;
+      if (kIsWeb) {
+        userCredential = await _auth.signInWithPopup(GoogleAuthProvider());
+      } else {
+        await _ensureGoogleSignInReady();
+        final googleUser = await _googleSignIn
+            .authenticate()
+            .timeout(const Duration(seconds: 25));
+        final credential = GoogleAuthProvider.credential(
+          idToken: googleUser.authentication.idToken,
+        );
+        userCredential = await _auth
+            .signInWithCredential(credential)
+            .timeout(const Duration(seconds: 25));
+      }
       final user = userCredential.user;
 
       if (user != null &&
@@ -206,6 +204,13 @@ class AuthService {
       }
       return e.description ?? "Google sign-in failed.";
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        return 'cancelled';
+      }
+      if (e.code == 'popup-blocked') {
+        return 'Allow pop-ups for StallSeeker, then try Google sign-in again.';
+      }
       if (e.code == 'account-exists-with-different-credential') {
         return "An account already exists with this email. Log in with your email and password instead.";
       }
@@ -285,7 +290,7 @@ class AuthService {
       debugPrint('Notification cleanup could not finish.');
     }
     try {
-      if (_googleSignInReady) {
+      if (!kIsWeb && _googleSignInReady) {
         await _googleSignIn.signOut();
       }
     } finally {
@@ -473,8 +478,7 @@ class AuthService {
       final updates = <String, dynamic>{'fullName': name};
       if (customerPhone != null) {
         final input = customerPhone.trim();
-        final normalized =
-            input.isEmpty ? null : normalizeVendorPhone(input);
+        final normalized = input.isEmpty ? null : normalizeVendorPhone(input);
         if (input.isNotEmpty && normalized == null) {
           return 'Enter a valid Malaysian phone number.';
         }
@@ -514,11 +518,15 @@ class AuthService {
         await user.reauthenticateWithCredential(EmailAuthProvider.credential(
             email: user.email!, password: currentPassword));
       } else if (providers.contains('google.com')) {
-        await _ensureGoogleSignInReady();
-        final googleUser = await _googleSignIn.authenticate();
-        final googleAuth = googleUser.authentication;
-        await user.reauthenticateWithCredential(
-            GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+        if (kIsWeb) {
+          await user.reauthenticateWithPopup(GoogleAuthProvider());
+        } else {
+          await _ensureGoogleSignInReady();
+          final googleUser = await _googleSignIn.authenticate();
+          final googleAuth = googleUser.authentication;
+          await user.reauthenticateWithCredential(
+              GoogleAuthProvider.credential(idToken: googleAuth.idToken));
+        }
       } else {
         return 'Log out, sign in again, then retry account deletion.';
       }

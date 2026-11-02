@@ -2,6 +2,7 @@ import '../../../core/widgets/app_page_app_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/demo_order.dart';
@@ -68,7 +69,7 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
               builder: (_) => BookingDetailScreen(
                   bookingId: bookingId,
                   isVendor: false,
-                  openCheckoutOnStart: true)));
+                  openCheckoutOnStart: !kIsWeb)));
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

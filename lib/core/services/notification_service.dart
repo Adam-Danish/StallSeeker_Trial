@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/vendor_model.dart';
 import 'vendor_service.dart';
@@ -35,6 +36,20 @@ class NotificationService {
 
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _initialized = false;
+  String? _deviceToken;
+  static const _webVapidKey = String.fromEnvironment('FCM_WEB_VAPID_KEY');
+
+  Future<String?> _getDeviceToken() async {
+    if (kIsWeb && !await _messaging.isSupported()) return null;
+    final token = await _messaging
+        .getToken(
+          vapidKey: kIsWeb && _webVapidKey.isNotEmpty ? _webVapidKey : null,
+        )
+        .timeout(const Duration(seconds: 10));
+    _deviceToken = token;
+    return token;
+  }
+
   StreamSubscription<String>? _tokenSubscription;
   String? _syncedUid;
   String? _configuredUid;
@@ -86,22 +101,40 @@ class NotificationService {
 
     _navigatorKey = navigatorKey;
 
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
+    if (kIsWeb) {
+      final data = Uri.base.queryParameters;
+      if (data['bookingId'] != null) {
+        _pendingBookingId = data['bookingId'];
+        _pendingBookingRecipient = data['recipientId'];
+        _pendingBookingVendor = data['role'] == 'vendor';
+      } else {
+        _pendingVendorId = data['vendorId'];
+        _pendingItemId = data['itemId'];
+      }
+      if (!await _messaging.isSupported()) {
+        _initialized = true;
+        return;
+      }
+    }
 
-    await _localNotifications.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-      onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload;
-        if (payload != null) {
-          _openPayload(payload);
-        }
-      },
-    );
+    if (!kIsWeb) {
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_channel);
+
+      await _localNotifications.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        ),
+        onDidReceiveNotificationResponse: (response) {
+          final payload = response.payload;
+          if (payload != null) {
+            _openPayload(payload);
+          }
+        },
+      );
+    }
 
     _initialized = true;
 
@@ -112,6 +145,28 @@ class NotificationService {
       final vendorId = message.data['vendorId'];
       final bookingId = message.data['bookingId'];
       if (notification != null) {
+        if (kIsWeb) {
+          final context = _navigatorKey?.currentContext;
+          if (context != null && context.mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+              content: Text(
+                  '${notification.title ?? 'StallSeeker'}\n${notification.body ?? ''}'),
+              action: SnackBarAction(
+                  label: 'View',
+                  onPressed: () {
+                    if (bookingId is String) {
+                      unawaited(_openBooking(bookingId,
+                          recipientId: message.data['recipientId'] as String?,
+                          isVendor: message.data['role'] == 'vendor'));
+                    } else if (vendorId is String) {
+                      unawaited(_openVendorDetails(vendorId,
+                          itemId: message.data['itemId'] as String?));
+                    }
+                  }),
+            ));
+          }
+          return;
+        }
         _localNotifications.show(
           notification.hashCode,
           notification.title,
@@ -202,7 +257,7 @@ class NotificationService {
             .doc(user.uid)
             .set({'fcmToken': FieldValue.delete()}, SetOptions(merge: true));
         await _messaging.deleteToken().timeout(const Duration(seconds: 5));
-        await _localNotifications.cancelAll();
+        if (!kIsWeb) await _localNotifications.cancelAll();
       } catch (_) {
         debugPrint('Could not disable notifications.');
         _configuredUid = null;
@@ -216,7 +271,14 @@ class NotificationService {
         await _removeCurrentDeviceToken(user);
         return;
       }
-      final settings = await _messaging.requestPermission();
+      if (kIsWeb && !await _messaging.isSupported()) return;
+      final settings = kIsWeb
+          ? await _messaging.getNotificationSettings()
+          : await _messaging.requestPermission();
+      if (kIsWeb &&
+          settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        return;
+      }
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         await _removeCurrentDeviceToken(user);
         return;
@@ -258,8 +320,7 @@ class NotificationService {
       }
     });
     try {
-      final token =
-          await _messaging.getToken().timeout(const Duration(seconds: 5));
+      final token = await _getDeviceToken();
       if (token != null) {
         await _queueTokenSave(user.uid, token);
       }
@@ -293,7 +354,9 @@ class NotificationService {
       if (enabled) {
         final settings = await _messaging.requestPermission();
         if (settings.authorizationStatus == AuthorizationStatus.denied) {
-          return 'Notifications are blocked in your phone settings.';
+          return kIsWeb
+              ? 'Notifications are blocked in your browser settings.'
+              : 'Notifications are blocked in your phone settings.';
         }
       }
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -305,7 +368,7 @@ class NotificationService {
         await syncTokenForCurrentUser(skipPreferenceCheck: true);
       } else {
         await _removeCurrentDeviceToken(user);
-        await _localNotifications.cancelAll();
+        if (!kIsWeb) await _localNotifications.cancelAll();
       }
       return null;
     } catch (_) {
@@ -321,23 +384,29 @@ class NotificationService {
         .timeout(const Duration(seconds: 5))
         .catchError((Object _) {});
     try {
-      final token =
-          await _messaging.getToken().timeout(const Duration(seconds: 5));
+      final token = kIsWeb ? _deviceToken : await _getDeviceToken();
       if (token != null) {
         final ref =
             FirebaseFirestore.instance.collection('users').doc(user.uid);
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final doc = await tx.get(ref);
-          if (doc.data()?['fcmToken'] == token) {
-            tx.update(ref, {'fcmToken': FieldValue.delete()});
+          if (doc.exists) {
+            tx.update(ref, {
+              'fcmTokens': FieldValue.arrayRemove([token]),
+              if (doc.data()?['fcmToken'] == token)
+                'fcmToken': FieldValue.delete(),
+            });
           }
         }).timeout(const Duration(seconds: 5));
       }
     } finally {
-      await _messaging
-          .deleteToken()
-          .timeout(const Duration(seconds: 5))
-          .catchError((Object _) {});
+      if (!kIsWeb || _deviceToken != null) {
+        await _messaging
+            .deleteToken()
+            .timeout(const Duration(seconds: 5))
+            .catchError((Object _) {});
+      }
+      _deviceToken = null;
     }
   }
 
@@ -358,14 +427,30 @@ class NotificationService {
     } catch (_) {
       debugPrint('Could not remove notification registration.');
     } finally {
-      await _localNotifications.cancelAll();
+      if (!kIsWeb) await _localNotifications.cancelAll();
     }
   }
 
   Future<void> _saveToken(String uid, String token) async {
-    await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {'fcmToken': token},
-        SetOptions(merge: true)).timeout(const Duration(seconds: 5));
+    final ref = FirebaseFirestore.instance.collection('users').doc(uid);
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      final tokens = (doc.data()?['fcmTokens'] as List?)
+              ?.whereType<String>()
+              .where((value) => value != token)
+              .toList() ??
+          [];
+      tokens.add(token);
+      tx.set(
+          ref,
+          {
+            'fcmTokens': tokens.length <= 20
+                ? tokens
+                : tokens.sublist(tokens.length - 20),
+            if (!kIsWeb) 'fcmToken': token,
+          },
+          SetOptions(merge: true));
+    }).timeout(const Duration(seconds: 10));
   }
 
   void _openPayload(String payload) {

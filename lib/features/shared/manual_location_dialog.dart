@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/services/place_search_service.dart';
+import '../../core/services/browser_geocoding.dart';
 import '../../core/widgets/ios_grouped.dart';
 
 export '../../core/services/place_search_service.dart'
@@ -28,6 +30,7 @@ Future<LocationSelection?> showManualLocationDialog(
 }
 
 Future<String> describeLocation(LatLng coordinates) async {
+  if (kIsWeb) return describeBrowserLocation(coordinates);
   final placemarks = await Geocoding()
       .placemarkFromCoordinates(
         coordinates.latitude,
@@ -206,6 +209,11 @@ class _ManualLocationDialogState extends State<_ManualLocationDialog> {
     try {
       final searchQuery =
           query.toLowerCase().contains('malaysia') ? query : '$query, Malaysia';
+
+      if (kIsWeb) {
+        final suggestions = await findBrowserAddresses(searchQuery);
+        return _isCurrent(requestId) ? suggestions : [];
+      }
 
       final locations = await Geocoding()
           .locationFromAddress(searchQuery)

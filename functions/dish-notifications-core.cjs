@@ -2,6 +2,7 @@
 
 const {createHash} = require('node:crypto');
 const {createOnce} = require('./history-core.cjs');
+const {notificationTokens} = require('./notification-tokens.cjs');
 
 function dishAvailabilityAlert({eventId, vendorId, itemId, before, after,
   eventTime, stallName}) {
@@ -47,15 +48,19 @@ const INVALID_TOKEN_CODES = new Set([
 async function sendDishPushes({recipients, messaging, notification, data,
   removeInvalidToken, markDeliveryState = async () => {}}) {
   const tokenOwners = new Map();
+  const deliveries = new Map();
   for (const recipient of recipients) {
-    if (recipient.role !== 'customer' || recipient.notificationsEnabled === false ||
-        typeof recipient.fcmToken !== 'string' || !recipient.fcmToken.trim()) {
+    const deviceTokens = notificationTokens(recipient);
+    if (recipient.role !== 'customer' || !deviceTokens.length) {
       await markDeliveryState(recipient.uid, 'skipped');
       continue;
     }
-    const owners = tokenOwners.get(recipient.fcmToken) || [];
-    owners.push(recipient.uid);
-    tokenOwners.set(recipient.fcmToken, owners);
+    deliveries.set(recipient.uid, {pending: deviceTokens.length, delivered: false, failed: false});
+    for (const token of deviceTokens) {
+      const owners = tokenOwners.get(token) || [];
+      owners.push(recipient.uid);
+      tokenOwners.set(token, owners);
+    }
   }
   const tokens = [...tokenOwners.keys()];
   let transientFailure = false;
@@ -66,14 +71,21 @@ async function sendDishPushes({recipients, messaging, notification, data,
     await Promise.all(result.responses.map(async (response, index) => {
       const owners = tokenOwners.get(batch[index]);
       if (response.success === true) {
-        await Promise.all(owners.map((uid) => markDeliveryState(uid, 'delivered')));
+        for (const uid of owners) deliveries.get(uid).delivered = true;
       } else if (INVALID_TOKEN_CODES.has(response.error?.code)) {
         await Promise.all(owners.map(async (uid) => {
           await removeInvalidToken(uid, batch[index]);
-          await markDeliveryState(uid, 'discarded');
         }));
       } else {
         transientFailure = true;
+        for (const uid of owners) deliveries.get(uid).failed = true;
+      }
+      for (const uid of owners) {
+        const state = deliveries.get(uid);
+        state.pending--;
+        if (!state.pending && !state.failed) {
+          await markDeliveryState(uid, state.delivered ? 'delivered' : 'discarded');
+        }
       }
     }));
   }

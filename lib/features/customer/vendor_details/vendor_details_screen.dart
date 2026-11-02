@@ -1,7 +1,6 @@
 import '../../shared/stall_review_card.dart';
 import '../../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,7 +26,7 @@ class VendorDetailsScreen extends StatefulWidget {
   final bool previewOnly;
   // Freeze profile fields for the unsaved Edit stall preview.
   final bool draftPreview;
-  final File? draftPhoto;
+  final PickedPhoto? draftPhoto;
 
   const VendorDetailsScreen(
       {super.key,
@@ -573,15 +572,16 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         height: height,
         width: double.infinity,
         child: widget.draftPhoto != null
-            ? Image.file(widget.draftPhoto!, fit: BoxFit.cover,
+            ? Image.memory(widget.draftPhoto!.bytes,
+                fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _photoPlaceholder())
             : _vendor.imageUrl.isNotEmpty
-            ? Image.network(
-                _vendor.imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _photoPlaceholder(),
-              )
-            : _photoPlaceholder(),
+                ? Image.network(
+                    _vendor.imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                  )
+                : _photoPlaceholder(),
       ),
     );
   }
@@ -1165,7 +1165,7 @@ class _ReviewEditorState extends State<_ReviewEditor> {
   final _storage = StorageService();
   final _service = StallReviewService();
   final _text = TextEditingController();
-  final _photos = <File>[];
+  final _photos = <PickedPhoto>[];
   final _existingUrls = <String>[];
   int _rating = 0;
   bool _saving = false;

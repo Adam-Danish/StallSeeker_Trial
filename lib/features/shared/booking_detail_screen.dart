@@ -2,6 +2,8 @@ import '../../core/widgets/app_page_app_bar.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../../core/services/browser_checkout.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -184,8 +186,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
   }
 
   Future<void> _pay() async {
-    final uri = await _service.createTestCheckout(widget.bookingId);
-    await _launchCheckout(uri);
+    final browserWindow = kIsWeb ? BrowserCheckoutWindow.open() : null;
+    try {
+      final uri = await _service.createTestCheckout(widget.bookingId);
+      if (browserWindow?.navigate(uri) == true) {
+        _checkoutLaunched = true;
+      } else {
+        await _launchCheckout(uri);
+      }
+    } catch (_) {
+      browserWindow?.close();
+      rethrow;
+    }
   }
 
   Future<void> _launchCheckout(Uri uri) async {

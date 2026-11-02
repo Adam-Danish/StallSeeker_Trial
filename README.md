@@ -45,6 +45,11 @@ flutter pub get
 flutter run
 ```
 
+Open the [web app](https://stallseeker-c2ffe.web.app/), or run
+`flutter run -d chrome --web-port 7357` for local development.
+See [Web Browser Setup](docs/Web%20Browser%20Setup.md) for publishing,
+Google Maps configuration, and browser location/notification behavior.
+
 Before running, place the project's `google-services.json` file in `android/app/`. This file is excluded from Git. The Firebase project must have the services used by the app configured, and Google Maps needs a working Android Maps API key.
 
 The repository contains generated Firebase settings in `lib/firebase_options.dart`. If you use another Firebase project, regenerate those settings and provide the matching platform configuration.

@@ -6,6 +6,7 @@ const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
+const {notificationTokens} = require("./notification-tokens.cjs");
 
 initializeApp();
 
@@ -85,8 +86,7 @@ exports.notifyFollowersOnStallOpen = onDocumentUpdated(
     const tokens = [];
     for (const customerId of customerIds) {
       const userDoc = await db.collection("users").doc(customerId).get();
-      const token = userDoc.data() && userDoc.data().fcmToken;
-      if (token) tokens.push(token);
+      tokens.push(...notificationTokens(userDoc.data()));
     }
 
     if (tokens.length === 0) {
@@ -95,8 +95,10 @@ exports.notifyFollowersOnStallOpen = onDocumentUpdated(
 
     const stallName = after.stallName || "A stall you follow";
 
+    const uniqueTokens = [...new Set(tokens)];
+    for (let start = 0; start < uniqueTokens.length; start += 500) {
     await getMessaging().sendEachForMulticast({
-      tokens: tokens,
+      tokens: uniqueTokens.slice(start, start + 500),
       notification: {
         title: "StallSeeker",
         body: `${stallName} is now open!`,
@@ -105,5 +107,6 @@ exports.notifyFollowersOnStallOpen = onDocumentUpdated(
         vendorId: vendorId,
       },
     });
+    }
   },
 );

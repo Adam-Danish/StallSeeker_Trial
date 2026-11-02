@@ -6,7 +6,7 @@
     "background_color": "#FF6E41",
     "theme_color": "#FF6E41",
     "description": "Find nearby food stalls and follow live updates.",
-    "orientation": "portrait-primary",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

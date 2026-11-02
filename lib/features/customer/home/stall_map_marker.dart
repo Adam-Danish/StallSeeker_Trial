@@ -17,6 +17,28 @@ IconData stallCategoryIcon(String category) => switch (category) {
 /// Bounded cache: two marker states per category, rather than one per stall.
 class StallMapMarkerCache {
   final _icons = <(String, bool), Future<BitmapDescriptor>>{};
+  Future<BitmapDescriptor>? _locationDot;
+
+  Future<BitmapDescriptor> currentLocationDot() =>
+      _locationDot ??= _drawLocationDot();
+
+  Future<BitmapDescriptor> _drawLocationDot() async {
+    const size = 32.0;
+    const scale = 3.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..scale(scale);
+    const center = Offset(size / 2, size / 2);
+    canvas.drawCircle(center, 15, Paint()..color = const Color(0x332185F5));
+    canvas.drawCircle(center, 8, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 6, Paint()..color = const Color(0xFF2185F5));
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(96, 96);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(),
+        imagePixelRatio: scale);
+  }
 
   Future<BitmapDescriptor> icon(String category, {required bool selected}) =>
       _icons.putIfAbsent((category, selected), () => _draw(category, selected));

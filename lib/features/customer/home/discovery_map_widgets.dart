@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/vendor_model.dart';
@@ -309,7 +310,7 @@ String stallCardOpeningText(VendorModel vendor, {DateTime? now}) {
   return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
 }
 
-/// The controller lives with the carousel so sheet/map rebuilds retain its page.
+/// Retain fractional scroll positions when map selection rebuilds the cards.
 class StallCardCarousel extends StatefulWidget {
   const StallCardCarousel({
     super.key,
@@ -318,7 +319,6 @@ class StallCardCarousel extends StatefulWidget {
     required this.onSelected,
     required this.itemBuilder,
     this.viewportFraction = .94,
-    this.padEnds = true,
     this.cardsPerPage = 1,
   });
 
@@ -327,7 +327,6 @@ class StallCardCarousel extends StatefulWidget {
   final ValueChanged<int> onSelected;
   final IndexedWidgetBuilder itemBuilder;
   final double viewportFraction;
-  final bool padEnds;
   final int cardsPerPage;
 
   @override
@@ -335,57 +334,71 @@ class StallCardCarousel extends StatefulWidget {
 }
 
 class _StallCardCarouselState extends State<StallCardCarousel> {
-  late PageController _controller;
-  String? _programmaticId;
-
-  @override
-  void initState() {
-    super.initState();
-    final index = widget.ids.indexOf(widget.selectedId ?? '');
-    _controller = PageController(
-        viewportFraction: widget.viewportFraction,
-        initialPage: index < 0 ? 0 : index ~/ widget.cardsPerPage);
-  }
+  final _controller = ScrollController();
+  static const _edgePadding = 12.0;
+  static const _cardGap = 10.0;
+  double _viewportWidth = 0;
+  double _cardWidth = 0;
+  bool _programmatic = false;
+  bool _revealScheduled = false;
+  String? _scrollSelectedId;
 
   @override
   void didUpdateWidget(covariant StallCardCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final selectedIndex = widget.ids.indexOf(widget.selectedId ?? '');
-    final target =
-        selectedIndex < 0 ? -1 : selectedIndex ~/ widget.cardsPerPage;
-    if (oldWidget.viewportFraction != widget.viewportFraction ||
-        oldWidget.cardsPerPage != widget.cardsPerPage) {
-      final previous = _controller;
-      _programmaticId = widget.selectedId;
-      _controller = PageController(
-          viewportFraction: widget.viewportFraction,
-          initialPage: target < 0 ? 0 : target);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        previous.dispose();
-        if (!mounted) return;
-        if (_controller.hasClients && widget.ids.isNotEmpty) {
-          final currentIndex = widget.ids.indexOf(widget.selectedId ?? '');
-          _controller.jumpToPage(
-              currentIndex < 0 ? 0 : currentIndex ~/ widget.cardsPerPage);
-        }
-        _programmaticId = null;
-      });
+    final reordered = oldWidget.ids.join('\u0000') != widget.ids.join('\u0000');
+    if (!reordered && widget.selectedId == _scrollSelectedId) {
+      _scrollSelectedId = null;
       return;
     }
-    final reordered = oldWidget.ids.join('\u0000') != widget.ids.join('\u0000');
-    if (target >= 0 &&
-        (oldWidget.selectedId != widget.selectedId || reordered)) {
-      _programmaticId = widget.selectedId;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_controller.hasClients) return;
-        final currentIndex = widget.ids.indexOf(widget.selectedId ?? '');
-        if (currentIndex < 0) return;
-        final currentTarget = currentIndex ~/ widget.cardsPerPage;
-        // Jump on external selection: intermediate pages must not move the map.
-        _controller.jumpToPage(currentTarget);
-        _programmaticId = null;
-      });
+    if (oldWidget.selectedId != widget.selectedId || reordered) {
+      _scheduleReveal();
     }
+  }
+
+  void _scheduleReveal() {
+    if (_revealScheduled) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted || !_controller.hasClients) return;
+      final index = widget.ids.indexOf(widget.selectedId ?? '');
+      final offset = index < 0
+          ? 0.0
+          : _edgePadding +
+              index * (_cardWidth + _cardGap) +
+              _cardWidth / 2 -
+              _viewportWidth / 2;
+      _programmatic = true;
+      _controller
+          .jumpTo(offset.clamp(0.0, _controller.position.maxScrollExtent));
+      _programmatic = false;
+    });
+  }
+
+  bool _onScrollEnd(ScrollEndNotification notification) {
+    if (notification.depth != 0 ||
+        _programmatic ||
+        _revealScheduled ||
+        widget.ids.isEmpty ||
+        !_controller.hasClients) {
+      return false;
+    }
+    final offset = _controller.offset;
+    final maximum = _controller.position.maxScrollExtent;
+    final index = offset <= .5
+        ? 0
+        : maximum > 0 && offset >= maximum - .5
+            ? widget.ids.length - 1
+            : ((offset + _viewportWidth / 2 - _edgePadding - _cardWidth / 2) /
+                    (_cardWidth + _cardGap))
+                .round()
+                .clamp(0, widget.ids.length - 1);
+    if (widget.ids[index] != widget.selectedId) {
+      _scrollSelectedId = widget.ids[index];
+      widget.onSelected(index);
+    }
+    return false;
   }
 
   @override
@@ -395,38 +408,40 @@ class _StallCardCarouselState extends State<StallCardCarousel> {
   }
 
   @override
-  Widget build(BuildContext context) => PageView.builder(
-        key: const ValueKey('stall-card-carousel'),
-        controller: _controller,
-        padEnds: widget.padEnds,
-        itemCount: (widget.ids.length / widget.cardsPerPage).ceil(),
-        onPageChanged: (page) {
-          final index = page * widget.cardsPerPage;
-          final selectedIndex = widget.ids.indexOf(widget.selectedId ?? '');
-          if (index < widget.ids.length &&
-              _programmaticId == null &&
-              (selectedIndex < 0 ||
-                  selectedIndex ~/ widget.cardsPerPage != page)) {
-            widget.onSelected(index);
-          }
-        },
-        itemBuilder: (context, page) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-          child: widget.cardsPerPage == 1
-              ? _card(context, page)
-              : Row(children: [
-                  for (var column = 0; column < widget.cardsPerPage; column++)
-                    Expanded(
-                        child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 5),
-                            child: page * widget.cardsPerPage + column <
-                                    widget.ids.length
-                                ? _card(context,
-                                    page * widget.cardsPerPage + column)
-                                : const SizedBox.shrink()))
-                ]),
-        ),
-      );
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final pageWidth = constraints.maxWidth * widget.viewportFraction;
+        final cardWidth = math.max(
+            1.0,
+            widget.cardsPerPage == 1
+                ? pageWidth - 10
+                : (pageWidth - 10) / widget.cardsPerPage - 10);
+        if (_viewportWidth != constraints.maxWidth || _cardWidth != cardWidth) {
+          _viewportWidth = constraints.maxWidth;
+          _cardWidth = cardWidth;
+          _scheduleReveal();
+        }
+        return NotificationListener<ScrollEndNotification>(
+          onNotification: _onScrollEnd,
+          child: ScrollConfiguration(
+            behavior: const MaterialScrollBehavior().copyWith(
+                scrollbars: false,
+                dragDevices: PointerDeviceKind.values.toSet()),
+            child: ListView.separated(
+              key: const ValueKey('stall-card-carousel'),
+              controller: _controller,
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: _edgePadding, vertical: 5),
+              itemCount: widget.ids.length,
+              separatorBuilder: (_, __) => const SizedBox(width: _cardGap),
+              itemBuilder: (context, index) =>
+                  SizedBox(width: cardWidth, child: _card(context, index)),
+            ),
+          ),
+        );
+      });
 
   Widget _card(BuildContext context, int index) => KeyedSubtree(
       key: ValueKey(widget.ids[index]),

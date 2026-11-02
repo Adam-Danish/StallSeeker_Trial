@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_google_places_sdk/flutter_google_places_sdk.dart'
     hide LatLng;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../constants/web_maps_config.dart';
+import 'browser_geocoding.dart';
 
 class LocationSelection {
   const LocationSelection({
@@ -33,7 +35,7 @@ class PlaceSearchService {
   PlaceSearchService({FlutterGooglePlacesSdk? places})
       : _places = places ??
             FlutterGooglePlacesSdk(
-              'AIzaSyDV0UDXXVwuXQw3dVAb8RHmcql3bTlysNE',
+              kIsWeb ? webMapsApiKey : 'AIzaSyDV0UDXXVwuXQw3dVAb8RHmcql3bTlysNE',
               useNewApi: true,
             );
 
@@ -70,6 +72,7 @@ class PlaceSearchService {
     if (placeId.isEmpty) return null;
 
     try {
+      if (kIsWeb) return findBrowserPlaceCoordinates(placeId);
       final response = await _places.fetchPlace(
         placeId,
         fields: [PlaceField.Location],

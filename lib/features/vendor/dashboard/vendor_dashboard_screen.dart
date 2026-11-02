@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -137,8 +138,9 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
                 title: const Text('Open stall and share location?'),
-                content: const Text(
-                    'Your location continues updating while your stall is open, even when you lock your phone or use another app. Android shows a persistent notification while sharing is active.'),
+                content: Text(kIsWeb
+                    ? 'Keep this browser tab visible to share your live location. Sharing pauses when the tab is hidden. You can also set a fixed stall location manually.'
+                    : 'Your location continues updating while your stall is open, even when you lock your phone or use another app. Android shows a persistent notification while sharing is active.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(ctx, false),

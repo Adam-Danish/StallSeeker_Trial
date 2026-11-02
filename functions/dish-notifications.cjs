@@ -20,8 +20,11 @@ async function removeInvalidToken(uid, token) {
   await db.runTransaction(async (transaction) => {
     const user = await transaction.get(ref);
     // A token refresh may have happened while the push was being sent.
-    if (user.exists && user.data().fcmToken === token) {
-      transaction.update(ref, {fcmToken: FieldValue.delete()});
+    if (user.exists) {
+      transaction.update(ref, {
+        fcmTokens: FieldValue.arrayRemove(token),
+        ...(user.data().fcmToken === token ? {fcmToken: FieldValue.delete()} : {}),
+      });
     }
   });
 }

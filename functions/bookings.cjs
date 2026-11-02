@@ -10,6 +10,7 @@ const {getMessaging} = require('firebase-admin/messaging');
 const {vendorAvailable, bookingItems, specialInstructions, nextStatus,
   paidCheckoutBecameVisible} = require('./booking-core.cjs');
 const {PAYMENT_WINDOW_MS} = require('./stripe-payment-core.cjs');
+const {notificationTokens} = require('./notification-tokens.cjs');
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
@@ -35,7 +36,8 @@ function idFrom(data) {
 async function push(uid, role, bookingId, status, stallName) {
   try {
     const profile = (await db.collection('users').doc(uid).get()).data();
-    if (!profile?.fcmToken || profile.notificationsEnabled === false) return;
+    const tokens = notificationTokens(profile);
+    if (!tokens.length) return;
     const message = role === 'vendor'
       ? status === 'paid'
         ? {title: 'New paid self-collect booking', body: 'Open StallSeeker to prepare it.'}
@@ -45,7 +47,7 @@ async function push(uid, role, bookingId, status, stallName) {
       : status === 'ready'
         ? {title: 'Ready for collection', body: `${stallName} has your booking ready.`}
         : {title: 'Booking update', body: `Your booking at ${stallName} is ${status}.`};
-    await getMessaging().send({token: profile.fcmToken,
+    await getMessaging().sendEachForMulticast({tokens,
       notification: message,
       data: {type: 'booking', bookingId, status, recipientId: uid, role}});
   } catch (error) {

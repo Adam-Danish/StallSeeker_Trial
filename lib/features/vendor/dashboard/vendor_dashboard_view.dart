@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/demo_order.dart';
@@ -447,7 +448,9 @@ class VendorDashboardView extends StatelessWidget {
             !open
                 ? 'Open your stall to share its location'
                 : locationSharing && locationError == null
-                    ? 'Customers can find your stall'
+                    ? kIsWeb
+                        ? 'Keep this tab visible to share your live location'
+                        : 'Customers can find your stall'
                     : 'Check your location to stay visible',
             style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
         if (open && (!locationSharing || locationError != null))

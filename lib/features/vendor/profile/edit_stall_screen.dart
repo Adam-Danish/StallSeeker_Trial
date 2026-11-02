@@ -1,6 +1,5 @@
 import 'unsaved_stall_changes_guard.dart';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/vendor_model.dart';
@@ -47,7 +46,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
   // Existing photo URL loaded from Firestore, and a newly picked local
   // file (not yet uploaded) if the vendor chose a new photo this session.
   String _existingImageUrl = '';
-  File? _pickedImage;
+  PickedPhoto? _pickedImage;
 
   @override
   void initState() {
@@ -239,7 +238,7 @@ class _EditStallScreenState extends State<EditStallScreen> {
         child: Icon(Icons.storefront_outlined,
             size: 52, color: AppColors.primary));
     final image = _pickedImage != null
-        ? Image.file(_pickedImage!,
+        ? Image.memory(_pickedImage!.bytes,
             fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder)
         : _existingImageUrl.isNotEmpty
             ? Image.network(_existingImageUrl,
