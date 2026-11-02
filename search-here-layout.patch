@@ -1,0 +1,55 @@
+diff --git a/lib/features/customer/home/discovery_map_widgets.dart b/lib/features/customer/home/discovery_map_widgets.dart
+--- a/lib/features/customer/home/discovery_map_widgets.dart
++++ b/lib/features/customer/home/discovery_map_widgets.dart
+@@ -310,7 +310,7 @@
+   return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
+ }
+ 
+-/// Space for full action labels and a Search here button centered on the map.
++/// A dedicated search row keeps the map action clear of the results panel.
+ class DiscoveryResultsHeader extends StatelessWidget {
+   const DiscoveryResultsHeader(
+       {super.key,
+@@ -340,25 +340,16 @@
+   static double _rowHeight(BuildContext context) =>
+       math.max(44.0, MediaQuery.textScalerOf(context).scale(14) * 1.2 + 16);
+ 
+-  static bool _needsTwoRows(BuildContext context, double width) {
+-    final searchWidth = _textWidth(context, 'Search here') + 32;
+-    final sideWidth = math.max(_textWidth(context, '999 stalls nearby'),
+-        _textWidth(context, 'View all') + 24);
+-    return width - 36 < searchWidth + sideWidth * 2 + 16;
+-  }
+-
+   static double heightFor(BuildContext context, double width,
+           {required bool showSearchHere}) =>
+-      _rowHeight(context) *
+-          (showSearchHere && _needsTwoRows(context, width) ? 2 : 1) +
+-      (showSearchHere && _needsTwoRows(context, width) ? 4 : 0);
++      _rowHeight(context) * (showSearchHere ? 2 : 1) +
++      (showSearchHere ? 16 : 8);
+ 
+   @override
+   Widget build(BuildContext context) =>
+       LayoutBuilder(builder: (context, constraints) {
+         final rowHeight = _rowHeight(context);
+-        final separateSearch = onSearchHere != null &&
+-            _needsTwoRows(context, constraints.maxWidth);
++        final separateSearch = onSearchHere != null;
+         final searchWidth = _textWidth(context, 'Search here') + 32;
+         Widget search() => SizedBox(
+               height: rowHeight,
+@@ -395,11 +386,11 @@
+           child: Text(actionLabel, maxLines: 1, softWrap: false),
+         );
+         return Padding(
+-          padding: const EdgeInsets.symmetric(horizontal: 18),
++          padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+           child: Column(mainAxisSize: MainAxisSize.min, children: [
+             if (separateSearch) ...[
+               Center(child: search()),
+-              const SizedBox(height: 4)
++              const SizedBox(height: 8)
+             ],
+             SizedBox(
+                 height: rowHeight,

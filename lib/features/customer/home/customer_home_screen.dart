@@ -91,6 +91,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   Set<String> _onScreenVendorIds = const {};
   DiscoverySort _sort = DiscoverySort.distance;
   bool _listOnly = false;
+  bool _pointerOverResults = false;
+  final Set<int> _resultPointers = {};
+  bool get _blockMapGestures =>
+      _pointerOverResults || _resultPointers.isNotEmpty;
+
+  void _trackResultPointer(int pointer, bool down) {
+    if (!kIsWeb || !mounted) return;
+    setState(() {
+      if (down) {
+        _resultPointers.add(pointer);
+      } else {
+        _resultPointers.remove(pointer);
+      }
+    });
+  }
   bool _availableOnly = false;
   bool _selfCollectOnly = false;
   bool _recentOnly = false;
@@ -1725,6 +1740,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   compassEnabled: false,
+                  webGestureHandling: _blockMapGestures
+                      ? WebGestureHandling.none
+                      : WebGestureHandling.auto,
+                  scrollGesturesEnabled: !_blockMapGestures,
+                  zoomGesturesEnabled: !_blockMapGestures,
+                  rotateGesturesEnabled: !_blockMapGestures,
+                  tiltGesturesEnabled: !_blockMapGestures,
                   padding: mapPadding,
                   onMapCreated: (controller) {
                     _mapController = controller;
@@ -1881,7 +1903,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                     bottom: navClearance,
                     width: panelWidth,
                     height: panelHeight,
-                    child: Column(children: [
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: (event) =>
+                          _trackResultPointer(event.pointer, true),
+                      onPointerUp: (event) =>
+                          _trackResultPointer(event.pointer, false),
+                      onPointerCancel: (event) =>
+                          _trackResultPointer(event.pointer, false),
+                      child: MouseRegion(
+                      onEnter: (_) {
+                        if (kIsWeb) setState(() => _pointerOverResults = true);
+                      },
+                      onExit: (_) {
+                        if (kIsWeb) setState(() => _pointerOverResults = false);
+                      },
+                      child: Column(children: [
                       DiscoveryResultsHeader(
                         countLabel:
                             '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
@@ -1959,7 +1996,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                                 }),
                                   ),
                       ),
-                    ]),
+                    ]))),
                   ),
                 ],
                 if (preview != null)

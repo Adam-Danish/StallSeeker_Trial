@@ -1,0 +1,47 @@
+diff --git a/lib/features/customer/home/customer_home_screen.dart b/lib/features/customer/home/customer_home_screen.dart
+--- a/lib/features/customer/home/customer_home_screen.dart
++++ b/lib/features/customer/home/customer_home_screen.dart
+@@ -91,6 +91,7 @@
+   Set<String> _onScreenVendorIds = const {};
+   DiscoverySort _sort = DiscoverySort.distance;
+   bool _listOnly = false;
++  bool _pointerOverResults = false;
+   bool _availableOnly = false;
+   bool _selfCollectOnly = false;
+   bool _recentOnly = false;
+@@ -1725,6 +1726,10 @@
+                   zoomControlsEnabled: false,
+                   mapToolbarEnabled: false,
+                   compassEnabled: false,
++                  scrollGesturesEnabled: !_pointerOverResults,
++                  zoomGesturesEnabled: !_pointerOverResults,
++                  rotateGesturesEnabled: !_pointerOverResults,
++                  tiltGesturesEnabled: !_pointerOverResults,
+                   padding: mapPadding,
+                   onMapCreated: (controller) {
+                     _mapController = controller;
+@@ -1881,7 +1886,14 @@
+                     bottom: navClearance,
+                     width: panelWidth,
+                     height: panelHeight,
+-                    child: Column(children: [
++                    child: MouseRegion(
++                      onEnter: (_) {
++                        if (kIsWeb) setState(() => _pointerOverResults = true);
++                      },
++                      onExit: (_) {
++                        if (kIsWeb) setState(() => _pointerOverResults = false);
++                      },
++                      child: Column(children: [
+                       DiscoveryResultsHeader(
+                         countLabel:
+                             '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+@@ -1959,7 +1971,7 @@
+                                                 }),
+                                   ),
+                       ),
+-                    ]),
++                    ])),
+                   ),
+                 ],
+                 if (preview != null)
