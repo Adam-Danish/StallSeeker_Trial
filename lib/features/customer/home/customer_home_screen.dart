@@ -26,6 +26,7 @@ import 'discovery_search_filters.dart';
 import 'price_range_picker.dart';
 import 'discovery_map_widgets.dart';
 import 'stall_map_marker.dart';
+import 'map_marker_visibility.dart';
 import 'stall_preview_sheet.dart';
 import '../../../core/services/follow_service.dart';
 import '../orders/demo_order_cart_screen.dart';
@@ -69,8 +70,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   String? _customerLocationLabel;
   double _searchRadiusKm = 5;
 
-  // NEW: Track the visible map area to filter vendors
-  LatLngBounds? _visibleBounds;
+  // Bounds are used only for the Search here action.
   LatLngBounds? _searchedBounds;
   LatLngBounds? _pendingBounds;
   LatLng? _mapCenter;
@@ -82,6 +82,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   Timer? _cameraMoveGuard;
   bool _cameraMovedByUser = false;
   int _boundsRequest = 0;
+  Timer? _viewportRefreshTimer;
+  Size _mapViewportSize = Size.zero;
+  EdgeInsets _mapViewportPadding = EdgeInsets.zero;
+  double _mapCoordinateScale = 1;
+  List<VendorModel> _projectionVendors = const [];
+  List<(String, double, double)> _projectionLocations = const [];
+  Set<String> _onScreenVendorIds = const {};
   DiscoverySort _sort = DiscoverySort.distance;
   bool _listOnly = false;
   bool _availableOnly = false;
@@ -219,6 +226,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     _previewExtent.dispose();
     _freshnessTimer?.cancel();
     _cameraMoveGuard?.cancel();
+    _viewportRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -419,7 +427,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       _selectedVendorId = null;
       _customerPosition = selection.coordinates;
       _searchCenter = selection.coordinates;
-      _visibleBounds = null;
       _searchedBounds = null;
       _previewVendorId = null;
       _selectedDishId = null;
@@ -536,7 +543,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   void _setSearchRadius(double radius) {
     setState(() {
       _searchRadiusKm = radius;
-      _visibleBounds = null;
       _searchedBounds = null;
       _showSearchArea = false;
     });
@@ -680,19 +686,74 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     }
   }
 
-  // Cards follow the visible viewport. Scrolling cards never moves this camera.
-  void _updateVisibleBounds() async {
+  // Projection inputs change on data updates, filtering, and map resize.
+  void _syncMapViewport(List<VendorModel> vendors, Size size, double scale,
+      EdgeInsets padding) {
+    final locations = [
+      for (final vendor in vendors)
+        (vendor.vendorId, vendor.latitude, vendor.longitude),
+    ];
+    if (_mapViewportSize == size &&
+        _mapViewportPadding == padding &&
+        _mapCoordinateScale == scale &&
+        listEquals(_projectionLocations, locations)) {
+      return;
+    }
+    _mapViewportSize = size;
+    _mapViewportPadding = padding;
+    _mapCoordinateScale = scale;
+    _projectionVendors = List<VendorModel>.of(vendors);
+    _projectionLocations = locations;
+    _boundsRequest++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scheduleViewportRefresh();
+    });
+  }
+
+  // Throttle rather than debounce so cards update during a continuous gesture.
+  void _scheduleViewportRefresh() {
+    if (_viewportRefreshTimer?.isActive ?? false) return;
+    _viewportRefreshTimer = Timer(const Duration(milliseconds: 80), () {
+      _viewportRefreshTimer = null;
+      if (mounted) _updateVisibleBounds(cameraIdle: false);
+    });
+  }
+
+  // Cards follow the full map, including its padded region.
+  // Scrolling cards never moves this camera.
+  void _updateVisibleBounds({bool cameraIdle = true}) async {
     final controller = _mapController;
-    if (controller == null) return;
+    final size = _mapViewportSize;
+    if (controller == null || size.isEmpty) return;
+    final vendors = _projectionVendors;
+    final scale = _mapCoordinateScale;
     final request = ++_boundsRequest;
     final movedByUser = _cameraMovedByUser && !_programmaticCameraMove;
-    _cameraMovedByUser = false;
     try {
       final bounds = await controller.getVisibleRegion();
-      if (!mounted || request != _boundsRequest) return;
+      final coordinates = await Future.wait([
+        for (final vendor in vendors)
+          controller.getScreenCoordinate(
+              LatLng(vendor.latitude, vendor.longitude)),
+      ]);
+      if (!mounted ||
+          controller != _mapController ||
+          request != _boundsRequest) {
+        return;
+      }
+      final visibleIds = <String>{
+        for (var i = 0; i < vendors.length; i++)
+          if (stallMarkerIntersectsViewport(
+            coordinate: coordinates[i],
+            viewport: size,
+            pixelsPerLogicalPixel: scale,
+          ))
+            vendors[i].vendorId,
+      };
       setState(() {
+        _cameraMovedByUser = false;
+        _onScreenVendorIds = visibleIds;
         _pendingBounds = bounds;
-        _visibleBounds = bounds;
         _searchedBounds ??= bounds;
         if (movedByUser) {
           final previous = _searchedBounds!;
@@ -709,19 +770,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                           .abs() >
                       .0001;
         }
-        _programmaticCameraMove = false;
-        _cameraMoveGuard?.cancel();
+        if (cameraIdle) {
+          _programmaticCameraMove = false;
+          _cameraMoveGuard?.cancel();
+        }
       });
     } catch (_) {
-      _programmaticCameraMove = false;
-      _cameraMoveGuard?.cancel();
+      if (cameraIdle && mounted && request == _boundsRequest) {
+        _programmaticCameraMove = false;
+        _cameraMoveGuard?.cancel();
+      }
     }
   }
 
   void _searchThisArea() {
     if (_pendingBounds == null || _mapCenter == null) return;
     setState(() {
-      _visibleBounds = _pendingBounds;
       _searchedBounds = _pendingBounds;
       _selectedDishId = null;
       _searchCenter = _mapCenter;
@@ -1378,7 +1442,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   : DateTime.fromMillisecondsSinceEpoch(
                       filters['openingEnd'] as int));
       _selectedVendorId = null;
-      _visibleBounds = null;
       _searchedBounds = null;
       if (_listOnly) _mapController = null;
     });
@@ -1486,10 +1549,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
         // Cards include only eligible stalls currently visible on the map.
         var onScreenVendors = List<VendorModel>.from(filteredVendors);
 
-        if (!_listOnly && _visibleBounds != null) {
+        if (!_listOnly) {
           onScreenVendors = onScreenVendors
-              .where((v) =>
-                  _visibleBounds!.contains(LatLng(v.latitude, v.longitude)))
+              .where((vendor) => _onScreenVendorIds.contains(vendor.vendorId))
               .toList();
         }
 
@@ -1557,6 +1619,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
         }
 
         return LayoutBuilder(builder: (context, constraints) {
+          // Android returns physical pixels; iOS and web return logical units.
+          final coordinateScale =
+              !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                  ? MediaQuery.devicePixelRatioOf(context)
+                  : 1.0;
           final navClearance = MediaQuery.paddingOf(context).bottom + 4;
           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
           final geometry = DiscoveryMapGeometry(constraints.biggest);
@@ -1627,6 +1694,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   (_locationError != null ? 60 : 0);
               final mapTopInset =
                   math.min(headerBottom, constraints.maxHeight * .38);
+              final mapPadding = EdgeInsets.fromLTRB(
+                  12,
+                  mapTopInset,
+                  12,
+                  math.min(navClearance + covered + 12,
+                      math.max(12, constraints.maxHeight - mapTopInset - 80)));
+              _syncMapViewport(filteredVendors, constraints.biggest,
+                  coordinateScale, mapPadding);
               return Stack(
                   children: [
                 Positioned.fill(
@@ -1650,14 +1725,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   compassEnabled: false,
-                  padding: EdgeInsets.fromLTRB(
-                      12,
-                      mapTopInset,
-                      12,
-                      math.min(
-                          navClearance + covered + 12,
-                          math.max(
-                              12, constraints.maxHeight - mapTopInset - 80))),
+                  padding: mapPadding,
                   onMapCreated: (controller) {
                     _mapController = controller;
                     if (_lastCameraPosition != null) {
@@ -1674,6 +1742,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   onCameraMove: (position) {
                     _mapCenter = position.target;
                     _lastCameraPosition = position;
+                    _scheduleViewportRefresh();
                     if ((_mapBearing.value - position.bearing).abs() > .1) {
                       _mapBearing.value = position.bearing;
                     }
@@ -1682,7 +1751,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                     _boundsRequest++;
                     if (!_programmaticCameraMove) _cameraMovedByUser = true;
                   },
-                  onCameraIdle: _updateVisibleBounds,
+                  onCameraIdle: () {
+                    _viewportRefreshTimer?.cancel();
+                    _viewportRefreshTimer = null;
+                    _updateVisibleBounds();
+                  },
                   onTap: (_) => _searchFocus.unfocus(),
                 )),
                 Positioned(

@@ -1,0 +1,335 @@
+diff --git a/lib/features/customer/home/customer_home_screen.dart b/lib/features/customer/home/customer_home_screen.dart
+--- a/lib/features/customer/home/customer_home_screen.dart
++++ b/lib/features/customer/home/customer_home_screen.dart
+@@ -26,6 +26,7 @@
+ import 'price_range_picker.dart';
+ import 'discovery_map_widgets.dart';
+ import 'stall_map_marker.dart';
++import 'map_marker_visibility.dart';
+ import 'stall_preview_sheet.dart';
+ import '../../../core/services/follow_service.dart';
+ import '../orders/demo_order_cart_screen.dart';
+@@ -69,8 +70,7 @@
+   String? _customerLocationLabel;
+   double _searchRadiusKm = 5;
+ 
+-  // NEW: Track the visible map area to filter vendors
+-  LatLngBounds? _visibleBounds;
++  // Bounds are used only for the Search here action.
+   LatLngBounds? _searchedBounds;
+   LatLngBounds? _pendingBounds;
+   LatLng? _mapCenter;
+@@ -82,6 +82,13 @@
+   Timer? _cameraMoveGuard;
+   bool _cameraMovedByUser = false;
+   int _boundsRequest = 0;
++  Timer? _viewportRefreshTimer;
++  Size _mapViewportSize = Size.zero;
++  EdgeInsets _mapViewportPadding = EdgeInsets.zero;
++  double _mapCoordinateScale = 1;
++  List<VendorModel> _projectionVendors = const [];
++  List<(String, double, double)> _projectionLocations = const [];
++  Set<String> _onScreenVendorIds = const {};
+   DiscoverySort _sort = DiscoverySort.distance;
+   bool _listOnly = false;
+   bool _availableOnly = false;
+@@ -219,6 +226,7 @@
+     _previewExtent.dispose();
+     _freshnessTimer?.cancel();
+     _cameraMoveGuard?.cancel();
++    _viewportRefreshTimer?.cancel();
+     super.dispose();
+   }
+ 
+@@ -419,7 +427,6 @@
+       _selectedVendorId = null;
+       _customerPosition = selection.coordinates;
+       _searchCenter = selection.coordinates;
+-      _visibleBounds = null;
+       _searchedBounds = null;
+       _previewVendorId = null;
+       _selectedDishId = null;
+@@ -536,7 +543,6 @@
+   void _setSearchRadius(double radius) {
+     setState(() {
+       _searchRadiusKm = radius;
+-      _visibleBounds = null;
+       _searchedBounds = null;
+       _showSearchArea = false;
+     });
+@@ -680,19 +686,74 @@
+     }
+   }
+ 
+-  // Cards follow the visible viewport. Scrolling cards never moves this camera.
+-  void _updateVisibleBounds() async {
++  // Projection inputs change on data updates, filtering, and map resize.
++  void _syncMapViewport(List<VendorModel> vendors, Size size, double scale,
++      EdgeInsets padding) {
++    final locations = [
++      for (final vendor in vendors)
++        (vendor.vendorId, vendor.latitude, vendor.longitude),
++    ];
++    if (_mapViewportSize == size &&
++        _mapViewportPadding == padding &&
++        _mapCoordinateScale == scale &&
++        listEquals(_projectionLocations, locations)) {
++      return;
++    }
++    _mapViewportSize = size;
++    _mapViewportPadding = padding;
++    _mapCoordinateScale = scale;
++    _projectionVendors = List<VendorModel>.of(vendors);
++    _projectionLocations = locations;
++    _boundsRequest++;
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      if (mounted) _scheduleViewportRefresh();
++    });
++  }
++
++  // Throttle rather than debounce so cards update during a continuous gesture.
++  void _scheduleViewportRefresh() {
++    if (_viewportRefreshTimer?.isActive ?? false) return;
++    _viewportRefreshTimer = Timer(const Duration(milliseconds: 80), () {
++      _viewportRefreshTimer = null;
++      if (mounted) _updateVisibleBounds(cameraIdle: false);
++    });
++  }
++
++  // Cards follow the full map, including its padded region.
++  // Scrolling cards never moves this camera.
++  void _updateVisibleBounds({bool cameraIdle = true}) async {
+     final controller = _mapController;
+-    if (controller == null) return;
++    final size = _mapViewportSize;
++    if (controller == null || size.isEmpty) return;
++    final vendors = _projectionVendors;
++    final scale = _mapCoordinateScale;
+     final request = ++_boundsRequest;
+     final movedByUser = _cameraMovedByUser && !_programmaticCameraMove;
+-    _cameraMovedByUser = false;
+     try {
+       final bounds = await controller.getVisibleRegion();
+-      if (!mounted || request != _boundsRequest) return;
++      final coordinates = await Future.wait([
++        for (final vendor in vendors)
++          controller.getScreenCoordinate(
++              LatLng(vendor.latitude, vendor.longitude)),
++      ]);
++      if (!mounted ||
++          controller != _mapController ||
++          request != _boundsRequest) {
++        return;
++      }
++      final visibleIds = <String>{
++        for (var i = 0; i < vendors.length; i++)
++          if (stallMarkerIntersectsViewport(
++            coordinate: coordinates[i],
++            viewport: size,
++            pixelsPerLogicalPixel: scale,
++          ))
++            vendors[i].vendorId,
++      };
+       setState(() {
++        _cameraMovedByUser = false;
++        _onScreenVendorIds = visibleIds;
+         _pendingBounds = bounds;
+-        _visibleBounds = bounds;
+         _searchedBounds ??= bounds;
+         if (movedByUser) {
+           final previous = _searchedBounds!;
+@@ -709,19 +770,22 @@
+                           .abs() >
+                       .0001;
+         }
++        if (cameraIdle) {
++          _programmaticCameraMove = false;
++          _cameraMoveGuard?.cancel();
++        }
++      });
++    } catch (_) {
++      if (cameraIdle && mounted && request == _boundsRequest) {
+         _programmaticCameraMove = false;
+         _cameraMoveGuard?.cancel();
+-      });
+-    } catch (_) {
+-      _programmaticCameraMove = false;
+-      _cameraMoveGuard?.cancel();
++      }
+     }
+   }
+ 
+   void _searchThisArea() {
+     if (_pendingBounds == null || _mapCenter == null) return;
+     setState(() {
+-      _visibleBounds = _pendingBounds;
+       _searchedBounds = _pendingBounds;
+       _selectedDishId = null;
+       _searchCenter = _mapCenter;
+@@ -1378,7 +1442,6 @@
+                   : DateTime.fromMillisecondsSinceEpoch(
+                       filters['openingEnd'] as int));
+       _selectedVendorId = null;
+-      _visibleBounds = null;
+       _searchedBounds = null;
+       if (_listOnly) _mapController = null;
+     });
+@@ -1486,10 +1549,9 @@
+         // Cards include only eligible stalls currently visible on the map.
+         var onScreenVendors = List<VendorModel>.from(filteredVendors);
+ 
+-        if (!_listOnly && _visibleBounds != null) {
++        if (!_listOnly) {
+           onScreenVendors = onScreenVendors
+-              .where((v) =>
+-                  _visibleBounds!.contains(LatLng(v.latitude, v.longitude)))
++              .where((vendor) => _onScreenVendorIds.contains(vendor.vendorId))
+               .toList();
+         }
+ 
+@@ -1557,6 +1619,11 @@
+         }
+ 
+         return LayoutBuilder(builder: (context, constraints) {
++          // Android returns physical pixels; iOS and web return logical units.
++          final coordinateScale =
++              !kIsWeb && defaultTargetPlatform == TargetPlatform.android
++                  ? MediaQuery.devicePixelRatioOf(context)
++                  : 1.0;
+           final navClearance = MediaQuery.paddingOf(context).bottom + 4;
+           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+           final geometry = DiscoveryMapGeometry(constraints.biggest);
+@@ -1627,6 +1694,14 @@
+                   (_locationError != null ? 60 : 0);
+               final mapTopInset =
+                   math.min(headerBottom, constraints.maxHeight * .38);
++              final mapPadding = EdgeInsets.fromLTRB(
++                  12,
++                  mapTopInset,
++                  12,
++                  math.min(navClearance + covered + 12,
++                      math.max(12, constraints.maxHeight - mapTopInset - 80)));
++              _syncMapViewport(filteredVendors, constraints.biggest,
++                  coordinateScale, mapPadding);
+               return Stack(
+                   children: [
+                 Positioned.fill(
+@@ -1650,14 +1725,7 @@
+                   zoomControlsEnabled: false,
+                   mapToolbarEnabled: false,
+                   compassEnabled: false,
+-                  padding: EdgeInsets.fromLTRB(
+-                      12,
+-                      mapTopInset,
+-                      12,
+-                      math.min(
+-                          navClearance + covered + 12,
+-                          math.max(
+-                              12, constraints.maxHeight - mapTopInset - 80))),
++                  padding: mapPadding,
+                   onMapCreated: (controller) {
+                     _mapController = controller;
+                     if (_lastCameraPosition != null) {
+@@ -1674,6 +1742,7 @@
+                   onCameraMove: (position) {
+                     _mapCenter = position.target;
+                     _lastCameraPosition = position;
++                    _scheduleViewportRefresh();
+                     if ((_mapBearing.value - position.bearing).abs() > .1) {
+                       _mapBearing.value = position.bearing;
+                     }
+@@ -1682,7 +1751,11 @@
+                     _boundsRequest++;
+                     if (!_programmaticCameraMove) _cameraMovedByUser = true;
+                   },
+-                  onCameraIdle: _updateVisibleBounds,
++                  onCameraIdle: () {
++                    _viewportRefreshTimer?.cancel();
++                    _viewportRefreshTimer = null;
++                    _updateVisibleBounds();
++                  },
+                   onTap: (_) => _searchFocus.unfocus(),
+                 )),
+                 Positioned(
+diff --git a/lib/features/customer/home/map_marker_visibility.dart b/lib/features/customer/home/map_marker_visibility.dart
+new file mode 100644
+--- /dev/null
++++ b/lib/features/customer/home/map_marker_visibility.dart
+@@ -0,0 +1,21 @@
++import 'dart:ui' show Size;
++
++import 'package:google_maps_flutter/google_maps_flutter.dart';
++
++/// Uses the full map rectangle, independently of camera padding, tilt, or bearing.
++/// The 28 logical-pixel radius matches the centered 56px stall marker.
++bool stallMarkerIntersectsViewport({
++  required ScreenCoordinate coordinate,
++  required Size viewport,
++  double pixelsPerLogicalPixel = 1,
++  double markerRadius = 28,
++}) {
++  if (viewport.isEmpty || pixelsPerLogicalPixel <= 0 || markerRadius < 0) {
++    return false;
++  }
++  final x = coordinate.x / pixelsPerLogicalPixel;
++  final y = coordinate.y / pixelsPerLogicalPixel;
++  final dx = x - x.clamp(0.0, viewport.width);
++  final dy = y - y.clamp(0.0, viewport.height);
++  return dx * dx + dy * dy <= markerRadius * markerRadius;
++}
+diff --git a/test/map_marker_visibility_test.dart b/test/map_marker_visibility_test.dart
+new file mode 100644
+--- /dev/null
++++ b/test/map_marker_visibility_test.dart
+@@ -0,0 +1,51 @@
++import 'dart:ui' show Size;
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:google_maps_flutter/google_maps_flutter.dart';
++import 'package:stallseeker/features/customer/home/map_marker_visibility.dart';
++
++void main() {
++  const viewport = Size(1000, 700);
++  bool visible(int x, int y, {double scale = 1}) =>
++      stallMarkerIntersectsViewport(
++        coordinate: ScreenCoordinate(x: x, y: y),
++        viewport: viewport,
++        pixelsPerLogicalPixel: scale,
++      );
++
++  test('keeps markers in the top and bottom padded areas', () {
++    expect(visible(500, 80), isTrue);
++    expect(visible(500, 620), isTrue);
++  });
++
++  test('includes partially visible centered marker icons on every edge', () {
++    expect(visible(-20, 350), isTrue);
++    expect(visible(1020, 350), isTrue);
++    expect(visible(500, -20), isTrue);
++    expect(visible(500, 720), isTrue);
++  });
++
++  test('excludes marker icons completely outside the map', () {
++    expect(visible(-29, 350), isFalse);
++    expect(visible(1029, 350), isFalse);
++    expect(visible(500, -29), isFalse);
++    expect(visible(500, 729), isFalse);
++    expect(visible(-25, -25), isFalse);
++  });
++
++  test('normalizes Android screen pixels before checking visibility', () {
++    expect(visible(1500, 1860, scale: 3), isTrue);
++    expect(visible(3060, 1050, scale: 3), isTrue);
++    expect(visible(3090, 1050, scale: 3), isFalse);
++  });
++
++  test('does not report an unlaid-out map as visible', () {
++    expect(
++      stallMarkerIntersectsViewport(
++        coordinate: const ScreenCoordinate(x: 0, y: 0),
++        viewport: Size.zero,
++      ),
++      isFalse,
++    );
++  });
++}
