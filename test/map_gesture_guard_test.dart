@@ -175,11 +175,11 @@ void main() {
             ),
           )));
       expect(mapBlocked, isTrue);
+      await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView), const Offset(0, -220));
       await tester.pumpAndSettle();
       expect(extents.any((extent) => extent > .55), isTrue);
-      await tester.tap(find.byTooltip('Expand preview'));
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Exit full screen'), findsOneWidget);
       final scroll = tester.widget<ListView>(find.byType(ListView)).controller!;
       final initialOffset = scroll.offset;
       await tester.sendEventToBinding(PointerScrollEvent(
@@ -191,8 +191,9 @@ void main() {
       expect(mapEvents, 0);
       await tester.drag(find.byType(ListView), const Offset(0, 5000));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Close preview'));
+      await tester.drag(find.byType(ListView), const Offset(0, 1000));
       await tester.pumpAndSettle();
+      expect(find.byType(StallPreviewSheet), findsNothing);
       expect(mapBlocked, isFalse);
       await tester.drag(find.byKey(mapKey), const Offset(30, 10));
       expect(mapEvents, greaterThan(0));

@@ -7,6 +7,7 @@ import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/menu_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/widgets/app_dropdown.dart';
+import '../../../core/widgets/menu_photo.dart';
 
 class VendorMenuScreen extends StatefulWidget {
   const VendorMenuScreen({super.key, this.stockOnly = false});
@@ -165,20 +166,9 @@ class _VendorMenuScreenState extends State<VendorMenuScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(children: [
-                                  ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: SizedBox(
-                                          width: 56,
-                                          height: 56,
-                                          child: item.imageUrl.isEmpty
-                                              ? const Icon(Icons.restaurant,
-                                                  size: 32)
-                                              : Image.network(item.imageUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) =>
-                                                      const Icon(
-                                                          Icons.restaurant,
-                                                          size: 32)))),
+                                  MenuPhotoThumbnail(
+                                      imageUrl: item.imageUrl,
+                                      dishName: item.name),
                                   const SizedBox(width: 12),
                                   Expanded(
                                       child: Column(

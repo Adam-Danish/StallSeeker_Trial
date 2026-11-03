@@ -1,5 +1,6 @@
 import '../../shared/stall_review_card.dart';
 import '../../../core/widgets/app_page_app_bar.dart';
+import '../../../core/widgets/menu_photo.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -998,16 +999,7 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         decoration: BoxDecoration(
             color: Colors.white, borderRadius: BorderRadius.circular(26)),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SizedBox(
-                  width: 68,
-                  height: 68,
-                  child: item.imageUrl.isEmpty
-                      ? _photoPlaceholder()
-                      : Image.network(item.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _photoPlaceholder()))),
+          MenuPhotoThumbnail(imageUrl: item.imageUrl, dishName: item.name),
           const SizedBox(width: 14),
           Expanded(
               child: Column(

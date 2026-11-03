@@ -1,24 +1,34 @@
-// Load Google Maps once for both maps and Places, before Flutter creates a map.
-window.initMap = function () {
-  const flutterScript = document.createElement('script');
-  flutterScript.src = 'flutter_bootstrap.js?v=' +
-      encodeURIComponent(window.stallSeekerRelease || Date.now());
-  document.body.appendChild(flutterScript);
-};
-window.addEventListener('flutter-first-frame', function () {
-  document.getElementById('web-startup')?.remove();
-});
-const mapsScript = document.createElement('script');
-mapsScript.id = 'flutter_google_places_sdk_web_script_id';
-mapsScript.src = 'https://maps.googleapis.com/maps/api/js?key=' +
-    encodeURIComponent(window.stallSeekerMapsKey) +
-    '&libraries=places,marker&v=quarterly&loading=async&callback=initMap';
-mapsScript.onerror = function () {
-  const status = document.getElementById('web-startup');
-  status.textContent = 'StallSeeker could not load. Check your connection and ';
-  const retry = document.createElement('button');
-  retry.textContent = 'Retry';
-  retry.onclick = function () { window.location.reload(); };
-  status.appendChild(retry);
-};
-document.head.appendChild(mapsScript);
+(() => {
+  const release = encodeURIComponent(window.stallSeekerRelease || Date.now());
+  function loadScript(src, id) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      if (id) script.id = id;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Could not load ' + src));
+      document.head.appendChild(script);
+    });
+  }
+
+  // Download Maps, clustering and Flutter in parallel. Wait for the Maps
+  // callback before running Dart so Places cannot inject a second Maps script.
+  const mapsReady = loadScript('maps-config.js?v=' + release).then(() =>
+    new Promise((resolve, reject) => {
+      window.initMap = resolve;
+      loadScript('https://maps.googleapis.com/maps/api/js?key=' +
+        encodeURIComponent(window.stallSeekerMapsKey) +
+        '&libraries=places,marker&v=quarterly&loading=async&callback=initMap',
+        'flutter_google_places_sdk_web_script_id').catch(reject);
+    })
+  );
+  window.stallSeekerMapsReady = Promise.all([
+    mapsReady,
+    loadScript('vendor/markerclusterer-2.5.3.min.js'),
+  ]);
+  // Attach recovery immediately, even if the Flutter download is still pending.
+  window.stallSeekerMapsReady.catch(() => window.stallSeekerStartup.fail(
+    'StallSeeker could not load the map. Check your connection and retry.'));
+  loadScript('flutter_bootstrap.js?v=' + release).catch(() =>
+    window.stallSeekerStartup.fail('StallSeeker could not load. Check your connection and retry.'));
+})();

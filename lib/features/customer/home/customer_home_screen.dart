@@ -938,37 +938,49 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           ),
         ],
       ),
-      bottomNavigationBar: AppPillNavigation(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
+      bottomNavigationBar: ValueListenableBuilder<double>(
+        valueListenable: _previewExtent,
+        builder: (context, extent, _) => AppPillNavigation(
+          visibility: _selectedIndex == 0 && _previewVendorId != null
+              ? 1 - StallPreviewSheet.expansionProgress(extent)
+              : 1,
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _selectedIndex = index;
+              if (index != 0) {
+                _previewVendorId = null;
+                _previewCamera = null;
+              }
+            });
 
-          if (index == 0) {
-            unawaited(_loadGreeting());
-          }
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.favorite_border),
-            selectedIcon: Icon(Icons.favorite),
-            label: 'Following',
-          ),
-          NavigationDestination(
-            icon: _notificationIcon(false),
-            selectedIcon: _notificationIcon(true),
-            label: 'Notifications',
-          ),
-          NavigationDestination(
-            icon: _settingsIcon(false),
-            selectedIcon: _settingsIcon(true),
-            label: 'Settings',
-          ),
-        ],
+            if (index == 0) {
+              unawaited(_loadGreeting());
+            }
+          },
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded),
+              label: 'Home',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.favorite_border),
+              selectedIcon: Icon(Icons.favorite),
+              label: 'Following',
+            ),
+            NavigationDestination(
+              icon: _notificationIcon(false),
+              selectedIcon: _notificationIcon(true),
+              label: 'Notifications',
+            ),
+            NavigationDestination(
+              icon: _settingsIcon(false),
+              selectedIcon: _settingsIcon(true),
+              label: 'Settings',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1917,134 +1929,161 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                       ),
                     ]),
                   ),
-                if (preview == null) ...[
+                ...[
                   Positioned(
                     left: geometry.panelLeft,
                     bottom: navClearance,
                     width: panelWidth,
                     height: panelHeight,
-                    child: Listener(
-                        behavior: HitTestBehavior.opaque,
-                        onPointerDown: (event) =>
-                            _trackResultPointer(event.pointer, true),
-                        onPointerUp: (event) =>
-                            _trackResultPointer(event.pointer, false),
-                        onPointerCancel: (event) =>
-                            _trackResultPointer(event.pointer, false),
-                        child: MouseRegion(
-                            onEnter: (_) {
-                              if (kIsWeb) {
-                                setState(() => _pointerOverResults = true);
-                              }
-                            },
-                            onExit: (_) {
-                              if (kIsWeb) {
-                                setState(() => _pointerOverResults = false);
-                              }
-                            },
-                            child: Column(children: [
-                              DiscoveryResultsHeader(
-                                countLabel:
-                                    '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
-                                actionLabel:
-                                    snapshot.hasError ? 'Retry' : 'View all',
-                                onViewAll: snapshot.hasError
-                                    ? () => setState(
-                                        () => _vendors = _watchVendors())
-                                    : () => showingDishResults
-                                        ? _showAllDishes(
-                                            cards, filteredVendorById)
-                                        : _showAllStalls(onScreenVendors),
-                                onSearchHere:
-                                    _showSearchArea ? _searchThisArea : null,
-                              ),
-                              Expanded(
-                                child: searching
-                                    ? const Center(
-                                        child: CircularProgressIndicator())
-                                    : resultCount == 0
-                                        ? Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16),
-                                            child: Material(
-                                              color: AppColors.cardColor,
-                                              borderRadius:
-                                                  BorderRadius.circular(23),
-                                              child: Center(
-                                                child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            18),
-                                                    child: Text(
-                                                        snapshot.hasError
-                                                            ? 'Could not load stalls. Check your connection and retry.'
-                                                            : _dishSearchError !=
-                                                                        null &&
-                                                                    (query.isNotEmpty ||
-                                                                        _priceRange !=
-                                                                            null)
-                                                                ? _dishSearchError!
-                                                                : _dishesLoading &&
-                                                                        (query.isNotEmpty ||
-                                                                            _priceRange !=
-                                                                                null)
-                                                                    ? 'Loading dishes and prices…'
-                                                                    : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: const TextStyle(
-                                                            fontSize: 13,
-                                                            color: AppColors
-                                                                .textMuted))),
-                                              ),
-                                            ))
-                                        : StallCardCarousel(
-                                            key: ValueKey(showingDishResults
-                                                ? 'dish-map-cards'
-                                                : 'stall-map-cards'),
-                                            ids: ids,
-                                            selectedId: selectedCard,
-                                            viewportFraction:
-                                                geometry.viewportFraction,
-                                            cardsPerPage: geometry.cardsPerPage,
-                                            itemBuilder: (_, index) =>
-                                                showingDishResults
-                                                    ? _dishCard(
-                                                        cards[index],
-                                                        filteredVendorById[
-                                                            cards[index]
-                                                                .vendorId]!)
-                                                    : StallMapCard(
-                                                        vendor: onScreenVendors[
-                                                            index],
-                                                        selected: onScreenVendors[
-                                                                    index]
-                                                                .vendorId ==
-                                                            _selectedVendorId,
-                                                        onTap: () {
-                                                          final vendor =
-                                                              onScreenVendors[
-                                                                  index];
-                                                          if (vendor.vendorId ==
-                                                              _selectedVendorId) {
-                                                            _openStallPreview(
-                                                                vendor);
-                                                          } else {
-                                                            _selectVendor(
-                                                                vendor);
-                                                          }
-                                                        }),
-                                          ),
-                              ),
-                            ]))),
+                    child: IgnorePointer(
+                      ignoring: preview != null,
+                      child: ExcludeSemantics(
+                        excluding: preview != null,
+                        child: Opacity(
+                          opacity: preview == null
+                              ? 1
+                              : (1 - extent / .28).clamp(0.0, 1.0),
+                          child: Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (event) =>
+                                  _trackResultPointer(event.pointer, true),
+                              onPointerUp: (event) =>
+                                  _trackResultPointer(event.pointer, false),
+                              onPointerCancel: (event) =>
+                                  _trackResultPointer(event.pointer, false),
+                              child: MouseRegion(
+                                  onEnter: (_) {
+                                    if (kIsWeb) {
+                                      setState(
+                                          () => _pointerOverResults = true);
+                                    }
+                                  },
+                                  onExit: (_) {
+                                    if (kIsWeb) {
+                                      setState(
+                                          () => _pointerOverResults = false);
+                                    }
+                                  },
+                                  child: Column(children: [
+                                    DiscoveryResultsHeader(
+                                      countLabel:
+                                          '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                                      actionLabel: snapshot.hasError
+                                          ? 'Retry'
+                                          : 'View all',
+                                      onViewAll: snapshot.hasError
+                                          ? () => setState(
+                                              () => _vendors = _watchVendors())
+                                          : () => showingDishResults
+                                              ? _showAllDishes(
+                                                  cards, filteredVendorById)
+                                              : _showAllStalls(onScreenVendors),
+                                      onSearchHere: _showSearchArea
+                                          ? _searchThisArea
+                                          : null,
+                                    ),
+                                    Expanded(
+                                      child: searching
+                                          ? const Center(
+                                              child:
+                                                  CircularProgressIndicator())
+                                          : resultCount == 0
+                                              ? Padding(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 16),
+                                                  child: Material(
+                                                    color: AppColors.cardColor,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            23),
+                                                    child: Center(
+                                                      child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(18),
+                                                          child: Text(
+                                                              snapshot.hasError
+                                                                  ? 'Could not load stalls. Check your connection and retry.'
+                                                                  : _dishSearchError !=
+                                                                              null &&
+                                                                          (query
+                                                                                  .isNotEmpty ||
+                                                                              _priceRange !=
+                                                                                  null)
+                                                                      ? _dishSearchError!
+                                                                      : _dishesLoading &&
+                                                                              (query.isNotEmpty ||
+                                                                                  _priceRange !=
+                                                                                      null)
+                                                                          ? 'Loading dishes and prices…'
+                                                                          : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .center,
+                                                              style: const TextStyle(
+                                                                  fontSize: 13,
+                                                                  color: AppColors
+                                                                      .textMuted))),
+                                                    ),
+                                                  ))
+                                              : StallCardCarousel(
+                                                  key: ValueKey(
+                                                      showingDishResults
+                                                          ? 'dish-map-cards'
+                                                          : 'stall-map-cards'),
+                                                  ids: ids,
+                                                  selectedId: selectedCard,
+                                                  viewportFraction:
+                                                      geometry.viewportFraction,
+                                                  cardsPerPage:
+                                                      geometry.cardsPerPage,
+                                                  itemBuilder: (_, index) =>
+                                                      showingDishResults
+                                                          ? _dishCard(
+                                                              cards[index],
+                                                              filteredVendorById[
+                                                                  cards[index]
+                                                                      .vendorId]!)
+                                                          : StallMapCard(
+                                                              onDoubleTap: () =>
+                                                                  _openStallPreview(
+                                                                      onScreenVendors[
+                                                                          index]),
+                                                              vendor:
+                                                                  onScreenVendors[
+                                                                      index],
+                                                              selected: onScreenVendors[
+                                                                          index]
+                                                                      .vendorId ==
+                                                                  _selectedVendorId,
+                                                              onTap: () {
+                                                                final vendor =
+                                                                    onScreenVendors[
+                                                                        index];
+                                                                if (vendor
+                                                                        .vendorId ==
+                                                                    _selectedVendorId) {
+                                                                  _openStallPreview(
+                                                                      vendor);
+                                                                } else {
+                                                                  _selectVendor(
+                                                                      vendor);
+                                                                }
+                                                              }),
+                                                ),
+                                    ),
+                                  ]))),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
                 if (preview != null)
                   Positioned.fill(
-                      left: geometry.previewInset,
-                      right: geometry.previewInset,
-                      bottom: navClearance,
-                      child: _buildStallPreview(preview)),
+                      child: _buildStallPreview(preview,
+                          horizontalInset: geometry.previewInset,
+                          bottomInset: navClearance)),
                 if (showSuggestions && preview == null)
                   Positioned(
                       top: searchTop + searchHeight + 4,
@@ -2163,7 +2202,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
   void _openStallPreview(VendorModel vendor) {
     _searchFocus.unfocus();
-    _previewExtent.value = .55;
+    _previewExtent.value = 0;
     _previewCamera = _lastCameraPosition;
     _previewMapPadding = _mapViewportPadding;
     final user = FirebaseAuth.instance.currentUser;
@@ -2194,11 +2233,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     }
   }
 
-  Widget _buildStallPreview(VendorModel vendor) => StreamBuilder<bool>(
+  Widget _buildStallPreview(VendorModel vendor,
+          {required double horizontalInset, required double bottomInset}) =>
+      StreamBuilder<bool>(
         stream: _previewFollowStream,
         builder: (context, snapshot) => StallPreviewSheet(
           key: ValueKey('preview-${vendor.vendorId}'),
           vendor: vendor,
+          horizontalInset: horizontalInset,
+          bottomInset: bottomInset,
           rating: _ratingLine(vendor),
           distance: _distanceTo(vendor),
           photos: <String>{
@@ -2228,7 +2271,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           onDetails: () => _openVendorDetails(vendor),
           onClose: _closeStallPreview,
           onExtentChanged: (extent) {
-            if ((_previewExtent.value - extent).abs() >= .015) {
+            if ((_previewExtent.value - extent).abs() > .0001) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted || _previewVendorId != vendor.vendorId) return;
                 _previewExtent.value = extent;
@@ -2573,37 +2616,38 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => PointerInterceptor(
-        intercepting: kIsWeb,
+          intercepting: kIsWeb,
           child: SizedBox(
-        height: MediaQuery.of(context).size.height * .6,
-        child: Column(children: [
-          const AppSheetHeader(
-              title: Text('Stalls in this area'),
-              subtitle: Text('Choose a stall to find it on the map')),
-          const Divider(height: 1),
-          Expanded(
-              child: ListView.separated(
-            itemCount: vendors.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, indent: 80),
-            itemBuilder: (context, index) {
-              final vendor = vendors[index];
-              return ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: _stallPhoto(vendor),
-                  title: Text(vendor.stallName),
-                  subtitle: Text([
-                    vendor.categoryLabel,
-                    _stallStatus(vendor),
-                    if (_distanceTo(vendor) != null) _distanceTo(vendor)!
-                  ].join(' · ')),
-                  trailing: const Icon(Icons.near_me_outlined,
-                      color: AppColors.primary),
-                  onTap: () => Navigator.pop(context, vendor));
-            },
+            height: MediaQuery.of(context).size.height * .6,
+            child: Column(children: [
+              const AppSheetHeader(
+                  title: Text('Stalls in this area'),
+                  subtitle: Text('Choose a stall to find it on the map')),
+              const Divider(height: 1),
+              Expanded(
+                  child: ListView.separated(
+                itemCount: vendors.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 80),
+                itemBuilder: (context, index) {
+                  final vendor = vendors[index];
+                  return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      leading: _stallPhoto(vendor),
+                      title: Text(vendor.stallName),
+                      subtitle: Text([
+                        vendor.categoryLabel,
+                        _stallStatus(vendor),
+                        if (_distanceTo(vendor) != null) _distanceTo(vendor)!
+                      ].join(' · ')),
+                      trailing: const Icon(Icons.near_me_outlined,
+                          color: AppColors.primary),
+                      onTap: () => Navigator.pop(context, vendor));
+                },
+              )),
+            ]),
           )),
-        ]),
-      )),
     );
     if (mounted && selected != null) {
       await _selectVendor(selected);
@@ -2620,44 +2664,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => PointerInterceptor(
-        intercepting: kIsWeb,
+          intercepting: kIsWeb,
           child: SizedBox(
-        height: MediaQuery.of(context).size.height * .72,
-        child: Column(children: [
-          AppSheetHeader(
-              title: Text('${dishes.length} nearby dish results'),
-              subtitle: Text('Results for “${_searchController.text.trim()}”')),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.separated(
-              itemCount: dishes.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, indent: 100),
-              itemBuilder: (context, index) {
-                final dish = dishes[index];
-                final vendor = vendors[dish.vendorId]!;
-                return ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: _dishPhoto(dish),
-                  title: Text(dish.item.name),
-                  subtitle: Text([
-                    dish.priceIsKnown
-                        ? 'RM ${dish.item.price.toStringAsFixed(2)}'
-                        : 'Price unavailable',
-                    _stockLabel(dish.item.status),
-                    vendor.stallName,
-                    if (_distanceTo(vendor) != null) _distanceTo(vendor)!,
-                    _stallStatus(vendor),
-                  ].join(' · ')),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.pop(context, dish),
-                );
-              },
-            ),
-          ),
-        ]),
-      )),
+            height: MediaQuery.of(context).size.height * .72,
+            child: Column(children: [
+              AppSheetHeader(
+                  title: Text('${dishes.length} nearby dish results'),
+                  subtitle:
+                      Text('Results for “${_searchController.text.trim()}”')),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: dishes.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 100),
+                  itemBuilder: (context, index) {
+                    final dish = dishes[index];
+                    final vendor = vendors[dish.vendorId]!;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      leading: _dishPhoto(dish),
+                      title: Text(dish.item.name),
+                      subtitle: Text([
+                        dish.priceIsKnown
+                            ? 'RM ${dish.item.price.toStringAsFixed(2)}'
+                            : 'Price unavailable',
+                        _stockLabel(dish.item.status),
+                        vendor.stallName,
+                        if (_distanceTo(vendor) != null) _distanceTo(vendor)!,
+                        _stallStatus(vendor),
+                      ].join(' · ')),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.pop(context, dish),
+                    );
+                  },
+                ),
+              ),
+            ]),
+          )),
     );
     if (mounted && selected != null) {
       _openVendorDetails(vendors[selected.vendorId]!,

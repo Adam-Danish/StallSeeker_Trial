@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stallseeker/core/models/vendor_model.dart';
 import 'package:stallseeker/features/customer/home/discovery_map_widgets.dart';
@@ -9,6 +10,38 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stallseeker/core/models/stall_schedule.dart';
 
 void main() {
+  for (final kind in [PointerDeviceKind.touch, PointerDeviceKind.mouse]) {
+    testWidgets('$kind double tap opens a card once without selecting it first',
+        (tester) async {
+      var selected = 0;
+      var opened = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Center(
+        child: SizedBox(
+            width: 350,
+            height: 180,
+            child: StallMapCard(
+              vendor: _vendor(),
+              onTap: () => selected++,
+              onDoubleTap: () => opened++,
+            )),
+      ))));
+      final title = find.text('Adam stalls');
+      await tester.tap(title, kind: kind);
+      await tester.pump(const Duration(milliseconds: 70));
+      await tester.tap(title, kind: kind);
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      expect(selected, 0);
+      await tester.tap(title, kind: kind);
+      await tester.pumpAndSettle(const Duration(milliseconds: 350));
+      expect(selected, 1);
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final width in [320.0, 390.0, 1280.0]) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
@@ -37,6 +70,12 @@ void main() {
         final search = find.byKey(const ValueKey('search-here'));
         final action = find.byKey(const ValueKey('view-all-stalls'));
         expect(tester.getCenter(search).dx, closeTo(width / 2, .01));
+        final header = tester.getRect(find.byType(DiscoveryResultsHeader));
+        expect(header.bottom - tester.getRect(search).bottom, closeTo(8, .01));
+        if (width == 1280 && scale == 1) {
+          expect(tester.getCenter(search).dy,
+              closeTo(tester.getCenter(action).dy, .01));
+        }
         final label = tester.getRect(find.text('View all'));
         expect(tester.getRect(action).contains(label.topLeft), isTrue);
         expect(tester.getRect(action).contains(label.bottomRight), isTrue);
@@ -463,7 +502,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('preview collapses, expands and closes above navigation',
+  testWidgets('preview collapses, expands to full screen and closes',
       (tester) async {
     final extents = <double>[];
     var closed = false;
@@ -486,12 +525,13 @@ void main() {
         onExtentChanged: extents.add,
       ),
     ))));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Collapse preview'));
     await tester.pumpAndSettle();
     expect(extents.last, closeTo(.28, .005));
-    await tester.tap(find.byTooltip('Expand preview'));
+    await tester.tap(find.byTooltip('Full screen'));
     await tester.pumpAndSettle();
-    expect(extents.last, closeTo(.94, .005));
+    expect(extents.last, closeTo(1, .005));
     await tester.tap(find.byTooltip('Close preview'));
     await tester.pumpAndSettle();
     expect(closed, isTrue);

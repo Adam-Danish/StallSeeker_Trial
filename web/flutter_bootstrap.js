@@ -9,4 +9,23 @@ for (const build of _flutter.buildConfig.builds) {
     build.mainJsPath += '?v=' + encodeURIComponent(window.stallSeekerRelease);
   }
 }
-_flutter.loader.load();
+// Serve the rendering engine with the app instead of waiting on another CDN.
+const config = {canvasKitBaseUrl: 'canvaskit/'};
+_flutter.loader.load({
+  config,
+  onEntrypointLoaded: async function (engineInitializer) {
+    try {
+      const [appRunner] = await Promise.all([
+        engineInitializer.initializeEngine(config),
+        window.stallSeekerMapsReady,
+      ]);
+      await appRunner.runApp();
+    } catch (error) {
+      console.error('StallSeeker startup failed:', error);
+      window.stallSeekerStartup.fail('StallSeeker could not start. Check your connection and retry.');
+    }
+  },
+}).catch((error) => {
+  console.error('StallSeeker loader failed:', error);
+  window.stallSeekerStartup.fail('StallSeeker could not load. Check your connection and retry.');
+});

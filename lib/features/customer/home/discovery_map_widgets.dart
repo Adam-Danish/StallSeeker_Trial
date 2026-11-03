@@ -310,7 +310,7 @@ String stallCardOpeningText(VendorModel vendor, {DateTime? now}) {
   return vendor.weeklyHours.isEmpty ? vendor.openingHours.trim() : '';
 }
 
-/// A dedicated search row keeps the map action clear of the results panel.
+/// Keeps the search action centered directly above the result cards.
 class DiscoveryResultsHeader extends StatelessWidget {
   const DiscoveryResultsHeader(
       {super.key,
@@ -340,16 +340,27 @@ class DiscoveryResultsHeader extends StatelessWidget {
   static double _rowHeight(BuildContext context) =>
       math.max(44.0, MediaQuery.textScalerOf(context).scale(14) * 1.2 + 16);
 
+  static bool _needsTwoRows(BuildContext context, double width) {
+    final searchWidth = _textWidth(context, 'Search here') + 32;
+    final sideWidth = math.max(
+        math.max(_textWidth(context, '999 stalls nearby'),
+            _textWidth(context, '999 dishes nearby')),
+        _textWidth(context, 'View all') + 24);
+    return width - 36 < searchWidth + sideWidth * 2 + 16;
+  }
+
   static double heightFor(BuildContext context, double width,
           {required bool showSearchHere}) =>
-      _rowHeight(context) * (showSearchHere ? 2 : 1) +
-      (showSearchHere ? 16 : 8);
+      _rowHeight(context) *
+          (showSearchHere && _needsTwoRows(context, width) ? 2 : 1) +
+      (showSearchHere && _needsTwoRows(context, width) ? 16 : 8);
 
   @override
   Widget build(BuildContext context) =>
       LayoutBuilder(builder: (context, constraints) {
         final rowHeight = _rowHeight(context);
-        final separateSearch = onSearchHere != null;
+        final separateSearch = onSearchHere != null &&
+            _needsTwoRows(context, constraints.maxWidth);
         final searchWidth = _textWidth(context, 'Search here') + 32;
         Widget search() => SizedBox(
               height: rowHeight,
@@ -388,10 +399,6 @@ class DiscoveryResultsHeader extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (separateSearch) ...[
-              Center(child: search()),
-              const SizedBox(height: 8)
-            ],
             SizedBox(
                 height: rowHeight,
                 child: Row(children: [
@@ -408,6 +415,10 @@ class DiscoveryResultsHeader extends StatelessWidget {
                   else
                     viewAll,
                 ])),
+            if (separateSearch) ...[
+              const SizedBox(height: 8),
+              Center(child: search()),
+            ],
           ]),
         );
       });
@@ -521,9 +532,11 @@ class StallMapCard extends StatelessWidget {
       {super.key,
       required this.vendor,
       required this.onTap,
+      this.onDoubleTap,
       this.selected = false});
   final VendorModel vendor;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final bool selected;
 
   // Flutter uses logical pixels. Keep the reference layout compact instead of
@@ -593,6 +606,7 @@ class StallMapCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
+            onDoubleTap: onDoubleTap,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
               child: SingleChildScrollView(

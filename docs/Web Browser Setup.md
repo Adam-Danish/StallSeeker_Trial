@@ -18,7 +18,12 @@ same public browser Maps key. Keep both values in sync. The Android key is
 separate and retains its application restrictions.
 
 Maps JavaScript, Places and Geocoding APIs must be enabled. The web loader
-loads Maps once, with Places and marker clustering, before starting Flutter.
+downloads Maps (with Places), the bundled marker clustering library and Flutter
+in parallel. Flutter initializes its rendering engine while Maps loads, then
+starts the app after the Maps callback to avoid duplicate Maps scripts.
+CanvasKit and marker clustering are served from Hosting, so startup does not
+depend on the CanvasKit or jsDelivr CDNs. The clustering library is pinned to
+2.5.3 in `web/vendor/` with its license.
 Address selection uses Google's browser Place API directly to avoid the
 installed Places plugin's missing location-field mapping on web.
 
@@ -63,6 +68,9 @@ needed for this bucket configuration change.
   compiled app use build-specific URLs so existing tabs bypass older cached
   releases. The custom Flutter bootstrap does not register an offline worker;
   the separate Firebase messaging worker still handles notifications.
+- Before Flutter's first frame, failed script downloads and engine errors show
+  a Retry button. A 45-second startup timeout also offers Retry if a request
+  never finishes. A late successful first frame clears this recovery screen.
 - Location permission requires HTTPS, except on localhost. Browsers can
   provide less precise coordinates than phone GPS. A fresh browser asks for
   location when the customer clicks My location; existing grants are reused.
@@ -87,6 +95,7 @@ needed for this bucket configuration change.
 ```powershell
 flutter analyze --no-pub
 flutter test --no-pub
+node --test test/web_startup_test.cjs
 node --test functions/*test.cjs
 ```
 

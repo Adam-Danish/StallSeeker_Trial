@@ -44,9 +44,46 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <div id="web-startup" role="status" style="font:16px system-ui,sans-serif;text-align:center;padding:25vh 24px;color:#4b403b">Loading StallSeeker…</div>
-  <script src="maps-config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@googlemaps/markerclusterer@2.5.3/dist/index.umd.min.js"></script>
   <script>
+    // Install recovery before requesting any startup resources. Script failures
+    // and requests that never finish must not leave an endless loading screen.
+    (() => {
+      let finished = false;
+      let failed = false;
+      const status = document.getElementById('web-startup');
+      const timeout = setTimeout(() => fail('Loading is taking longer than expected. Check your connection and try again.'), 45000);
+      function fail(message) {
+        if (finished || failed) return;
+        failed = true;
+        clearTimeout(timeout);
+        status.replaceChildren();
+        const text = document.createElement('p');
+        text.textContent = message;
+        const retry = document.createElement('button');
+        retry.textContent = 'Retry';
+        retry.style.cssText = 'font:inherit;padding:10px 24px;cursor:pointer';
+        retry.onclick = () => window.location.reload();
+        status.append(text, retry);
+      }
+      window.stallSeekerStartup = {
+        fail,
+        complete() {
+          finished = true;
+          clearTimeout(timeout);
+          status.remove();
+        },
+      };
+      window.addEventListener('flutter-first-frame', window.stallSeekerStartup.complete, {once: true});
+      window.addEventListener('error', (event) => {
+        if (event.target instanceof HTMLScriptElement) {
+          fail('StallSeeker could not download a required file. Check your connection and retry.');
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', () => {
+        fail('StallSeeker could not start. Check your connection and retry.');
+      });
+    })();
+
     // Flutter supplies a new build identifier for each release build.
     window.stallSeekerRelease = {{flutter_service_worker_version}};
     const mapsLoader = document.createElement('script');
