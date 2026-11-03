@@ -1,10 +1,9 @@
-import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../models/demo_order.dart';
 import '../models/vendor_model.dart';
+import '../utils/booking_request_key.dart';
 
 /// Live self-collect bookings shared between customer and vendor accounts.
 /// The old same-phone demo is read separately by LocalDemoBookingService.
@@ -49,10 +48,7 @@ class DemoOrderService {
 
   Future<String> requestOrder(VendorModel vendor, List<DemoOrderItem> items,
       {String specialInstructions = ''}) async {
-    final random = Random.secure();
-    final key = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
-        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}'
-        '${random.nextInt(1 << 32).toRadixString(36).padLeft(7, '0')}';
+    final key = newBookingRequestKey();
     final result = await _functions.httpsCallable('createBooking').call({
       'vendorId': vendor.vendorId,
       'requestKey': key,

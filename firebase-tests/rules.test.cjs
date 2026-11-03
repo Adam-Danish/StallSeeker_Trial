@@ -7,7 +7,7 @@ const path = require('node:path');
 const {initializeTestEnvironment, assertFails, assertSucceeds} =
     require('@firebase/rules-unit-testing');
 const {doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc, collection, collectionGroup,
-  query, where, deleteField, serverTimestamp, writeBatch} =
+  query, where, limit, deleteField, serverTimestamp, writeBatch} =
     require('firebase/firestore');
 const {ref, uploadBytes, deleteObject} = require('firebase/storage');
 
@@ -116,6 +116,50 @@ async function seedDish() {
       {name: 'Nasi', price: 5, status: 'out_of_stock'});
   });
 }
+
+test('vendor follow status can load before following and after unfollowing', async () => {
+  const owner = client('customer-a').firestore();
+  const followRef = doc(owner, 'follows/customer-a_vendor-a');
+  const statusQuery = query(collection(owner, 'follows'),
+    where('customerId', '==', 'customer-a'),
+    where('vendorId', '==', 'vendor-a'), limit(1));
+
+  // Reproduce the original failure: missing records have no customerId for
+  // the ownership rule to check. The scoped query must instead return empty.
+  await assertFails(getDoc(followRef));
+  assert.equal((await assertSucceeds(getDocs(statusQuery))).empty, true);
+
+  // Another customer following this vendor, or this customer following a
+  // different vendor, must not make the selected vendor appear followed.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'follows/customer-b_vendor-a'),
+      {customerId: 'customer-b', vendorId: 'vendor-a', followedAt: serverTimestamp()});
+  });
+  await assertSucceeds(setDoc(doc(owner, 'follows/customer-a_vendor-b'),
+    {customerId: 'customer-a', vendorId: 'vendor-b', followedAt: serverTimestamp()}));
+  assert.equal((await assertSucceeds(getDocs(statusQuery))).empty, true);
+
+  await assertSucceeds(setDoc(followRef,
+    {customerId: 'customer-a', vendorId: 'vendor-a', followedAt: serverTimestamp()}));
+  assert.equal((await assertSucceeds(getDocs(statusQuery))).size, 1);
+  const following = await assertSucceeds(getDocs(query(
+    collection(owner, 'follows'), where('customerId', '==', 'customer-a'))));
+  assert.deepEqual(following.docs.map((entry) => entry.data().vendorId).sort(),
+    ['vendor-a', 'vendor-b']);
+
+  await assertSucceeds(deleteDoc(followRef));
+  assert.equal((await assertSucceeds(getDocs(statusQuery))).empty, true);
+});
+
+test('vendor follow status queries cannot read another customer or all follows', async () => {
+  for (const denied of [client('customer-b').firestore(),
+    env.unauthenticatedContext().firestore()]) {
+    await assertFails(getDocs(query(collection(denied, 'follows'),
+      where('customerId', '==', 'customer-a'),
+      where('vendorId', '==', 'vendor-a'), limit(1))));
+  }
+  await assertFails(getDocs(collection(client('customer-a').firestore(), 'follows')));
+});
 
 function dishFollow(overrides = {}) {
   return {customerId: 'customer-a', vendorId: 'vendor-a', itemId: 'dish-1',

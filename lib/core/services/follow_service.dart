@@ -27,10 +27,15 @@ class FollowService {
   // Used to show the correct Follow/Unfollow button state, and keeps it
   // in sync automatically if changed from another device.
   Stream<bool> isFollowing(String customerId, String vendorId) {
+    // An owner-filtered query can return an empty result before the first
+    // follow. Reading the document directly is denied when it does not exist:
+    // the rules cannot check resource.data.customerId on a missing document.
     return _followsRef
-        .doc(_followId(customerId, vendorId))
+        .where('customerId', isEqualTo: customerId)
+        .where('vendorId', isEqualTo: vendorId)
+        .limit(1)
         .snapshots()
-        .map((doc) => doc.exists);
+        .map((snapshot) => snapshot.docs.isNotEmpty);
   }
 
   // Live stream of vendor IDs this customer follows -- used by the

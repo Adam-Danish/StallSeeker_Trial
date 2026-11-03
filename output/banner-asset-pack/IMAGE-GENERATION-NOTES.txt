@@ -1,0 +1,9 @@
+Tool: built-in image_gen (not CLI).
+Output: 03-RASTER-ASSETS/nasi-lemak-cutout.png
+Input: original-generated-concept.png
+Transparent background: true
+
+Final prompt:
+Extract only the nasi lemak plate shown at the lower right of this StallSeeker banner as a standalone high resolution transparent PNG cutout. Preserve the same food plate, white rice mound, red sambal, peanuts and anchovies, cucumber slices, half boiled egg and green banana leaf, same perspective and food placement. Include complete plate and leaf, centered with a small transparent margin. Remove all poster text, all background, all orange decorative lines, all icons, and all shadows not attached to the plate. Do not add text or any new objects. The result must have a truly transparent background. This is a supporting raster asset for an editable vector recreation of the poster.
+
+The rest of the SVG pack was recreated as local vector artwork. The original concept is preserved unchanged.

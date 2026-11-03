@@ -39,10 +39,12 @@ class _StallPreviewSheetState extends State<StallPreviewSheet> {
 
   void _resize(double size) {
     if (!_controller.isAttached) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.jumpTo(size);
+      return;
+    }
     _controller.animateTo(size,
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 240),
+        duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic);
   }
 

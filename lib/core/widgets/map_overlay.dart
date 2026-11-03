@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
+import 'map_gesture_guard.dart';
+
 /// Let Flutter controls above an HTML map receive browser mouse/touch events.
 Widget interceptMapOverlay(Widget overlay) {
   if (!kIsWeb) return overlay;
-  if (overlay is Positioned && overlay.child is! GoogleMap) {
+  if (overlay is Positioned &&
+      overlay.child is! GoogleMap &&
+      overlay.child is! MapGestureGuard) {
     return Positioned(
       key: overlay.key,
       left: overlay.left,

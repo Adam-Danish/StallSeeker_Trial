@@ -11,6 +11,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/widgets/map_overlay.dart';
+import '../../../core/widgets/map_gesture_guard.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -106,6 +108,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       }
     });
   }
+
   bool _availableOnly = false;
   bool _selfCollectOnly = false;
   bool _recentOnly = false;
@@ -171,6 +174,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   String? _previewVendorId;
   String? _selectedDishId;
   CameraPosition? _previewCamera;
+  EdgeInsets _previewMapPadding = EdgeInsets.zero;
   Stream<bool>? _previewFollowStream;
   bool _followingBusy = false;
   int _cameraRequest = 0;
@@ -702,8 +706,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   }
 
   // Projection inputs change on data updates, filtering, and map resize.
-  void _syncMapViewport(List<VendorModel> vendors, Size size, double scale,
-      EdgeInsets padding) {
+  void _syncMapViewport(
+      List<VendorModel> vendors, Size size, double scale, EdgeInsets padding) {
     final locations = [
       for (final vendor in vendors)
         (vendor.vendorId, vendor.latitude, vendor.longitude),
@@ -748,8 +752,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       final bounds = await controller.getVisibleRegion();
       final coordinates = await Future.wait([
         for (final vendor in vendors)
-          controller.getScreenCoordinate(
-              LatLng(vendor.latitude, vendor.longitude)),
+          controller
+              .getScreenCoordinate(LatLng(vendor.latitude, vendor.longitude)),
       ]);
       if (!mounted ||
           controller != _mapController ||
@@ -1709,77 +1713,93 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   (_locationError != null ? 60 : 0);
               final mapTopInset =
                   math.min(headerBottom, constraints.maxHeight * .38);
-              final mapPadding = EdgeInsets.fromLTRB(
-                  12,
-                  mapTopInset,
-                  12,
-                  math.min(navClearance + covered + 12,
-                      math.max(12, constraints.maxHeight - mapTopInset - 80)));
+              // Resizing/scrolling the preview must not change map padding:
+              // Google Maps shifts its camera when padding changes.
+              final mapPadding = preview != null
+                  ? _previewMapPadding
+                  : EdgeInsets.fromLTRB(
+                      12,
+                      mapTopInset,
+                      12,
+                      math.min(
+                          navClearance + covered + 12,
+                          math.max(
+                              12, constraints.maxHeight - mapTopInset - 80)));
               _syncMapViewport(filteredVendors, constraints.biggest,
                   coordinateScale, mapPadding);
               return Stack(
                   children: [
                 Positioned.fill(
-                    child: GoogleMap(
-                  style: _mapStyle,
-                  initialCameraPosition: CameraPosition(
-                    target: _lastCameraPosition?.target ??
-                        _searchCenter ??
-                        _customerPosition ??
-                        _defaultPosition.target,
-                    zoom: _lastCameraPosition?.zoom ?? 14,
-                  ),
-                  markers: markers,
-                  clusterManagers: {
-                    ClusterManager(
-                        clusterManagerId: _clusterId,
-                        onClusterTap: _zoomToCluster)
-                  },
-                  myLocationEnabled: _locationPermissionGranted,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  mapToolbarEnabled: false,
-                  compassEnabled: false,
-                  webGestureHandling: _blockMapGestures
-                      ? WebGestureHandling.none
-                      : WebGestureHandling.auto,
-                  scrollGesturesEnabled: !_blockMapGestures,
-                  zoomGesturesEnabled: !_blockMapGestures,
-                  rotateGesturesEnabled: !_blockMapGestures,
-                  tiltGesturesEnabled: !_blockMapGestures,
-                  padding: mapPadding,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                    if (_lastCameraPosition != null) {
-                      _expectProgrammaticCameraMove();
-                      controller.moveCamera(
-                          CameraUpdate.newCameraPosition(_lastCameraPosition!));
-                    } else if (_customerPosition != null) {
-                      _expectProgrammaticCameraMove();
-                      controller.animateCamera(
-                          CameraUpdate.newLatLngZoom(_customerPosition!, 15));
-                    }
-                    _updateVisibleBounds();
-                  },
-                  onCameraMove: (position) {
-                    _mapCenter = position.target;
-                    _lastCameraPosition = position;
-                    _scheduleViewportRefresh();
-                    if ((_mapBearing.value - position.bearing).abs() > .1) {
-                      _mapBearing.value = position.bearing;
-                    }
-                  },
-                  onCameraMoveStarted: () {
-                    _boundsRequest++;
-                    if (!_programmaticCameraMove) _cameraMovedByUser = true;
-                  },
-                  onCameraIdle: () {
-                    _viewportRefreshTimer?.cancel();
-                    _viewportRefreshTimer = null;
-                    _updateVisibleBounds();
-                  },
-                  onTap: (_) => _searchFocus.unfocus(),
-                )),
+                    child: MapGestureGuard(
+                        blocked: _blockMapGestures ||
+                            preview != null ||
+                            _selectedIndex != 0,
+                        builder: (context, blocked) => GoogleMap(
+                              style: _mapStyle,
+                              initialCameraPosition: CameraPosition(
+                                target: _lastCameraPosition?.target ??
+                                    _searchCenter ??
+                                    _customerPosition ??
+                                    _defaultPosition.target,
+                                zoom: _lastCameraPosition?.zoom ?? 14,
+                              ),
+                              markers: markers,
+                              clusterManagers: {
+                                ClusterManager(
+                                    clusterManagerId: _clusterId,
+                                    onClusterTap: _zoomToCluster)
+                              },
+                              myLocationEnabled: _locationPermissionGranted,
+                              myLocationButtonEnabled: false,
+                              zoomControlsEnabled: false,
+                              mapToolbarEnabled: false,
+                              compassEnabled: false,
+                              webGestureHandling: blocked
+                                  ? WebGestureHandling.none
+                                  : WebGestureHandling.auto,
+                              scrollGesturesEnabled: !blocked,
+                              zoomGesturesEnabled: !blocked,
+                              rotateGesturesEnabled: !blocked,
+                              tiltGesturesEnabled: !blocked,
+                              padding: mapPadding,
+                              onMapCreated: (controller) {
+                                _mapController = controller;
+                                if (_lastCameraPosition != null) {
+                                  _expectProgrammaticCameraMove();
+                                  controller.moveCamera(
+                                      CameraUpdate.newCameraPosition(
+                                          _lastCameraPosition!));
+                                } else if (_customerPosition != null) {
+                                  _expectProgrammaticCameraMove();
+                                  controller.animateCamera(
+                                      CameraUpdate.newLatLngZoom(
+                                          _customerPosition!, 15));
+                                }
+                                _updateVisibleBounds();
+                              },
+                              onCameraMove: (position) {
+                                _mapCenter = position.target;
+                                _lastCameraPosition = position;
+                                _scheduleViewportRefresh();
+                                if ((_mapBearing.value - position.bearing)
+                                        .abs() >
+                                    .1) {
+                                  _mapBearing.value = position.bearing;
+                                }
+                              },
+                              onCameraMoveStarted: () {
+                                _boundsRequest++;
+                                if (!_programmaticCameraMove) {
+                                  _cameraMovedByUser = true;
+                                }
+                              },
+                              onCameraIdle: () {
+                                _viewportRefreshTimer?.cancel();
+                                _viewportRefreshTimer = null;
+                                _updateVisibleBounds();
+                              },
+                              onTap: (_) => _searchFocus.unfocus(),
+                            ))),
                 Positioned(
                     top: 10,
                     left: 12,
@@ -1904,99 +1924,119 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                     width: panelWidth,
                     height: panelHeight,
                     child: Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (event) =>
-                          _trackResultPointer(event.pointer, true),
-                      onPointerUp: (event) =>
-                          _trackResultPointer(event.pointer, false),
-                      onPointerCancel: (event) =>
-                          _trackResultPointer(event.pointer, false),
-                      child: MouseRegion(
-                      onEnter: (_) {
-                        if (kIsWeb) setState(() => _pointerOverResults = true);
-                      },
-                      onExit: (_) {
-                        if (kIsWeb) setState(() => _pointerOverResults = false);
-                      },
-                      child: Column(children: [
-                      DiscoveryResultsHeader(
-                        countLabel:
-                            '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
-                        actionLabel: snapshot.hasError ? 'Retry' : 'View all',
-                        onViewAll: snapshot.hasError
-                            ? () => setState(() => _vendors = _watchVendors())
-                            : () => showingDishResults
-                                ? _showAllDishes(cards, filteredVendorById)
-                                : _showAllStalls(onScreenVendors),
-                        onSearchHere: _showSearchArea ? _searchThisArea : null,
-                      ),
-                      Expanded(
-                        child: searching
-                            ? const Center(child: CircularProgressIndicator())
-                            : resultCount == 0
-                                ? Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16),
-                                    child: Material(
-                                      color: AppColors.cardColor,
-                                      borderRadius: BorderRadius.circular(23),
-                                      child: Center(
-                                        child: Padding(
-                                            padding: const EdgeInsets.all(18),
-                                            child: Text(
-                                                snapshot.hasError
-                                                    ? 'Could not load stalls. Check your connection and retry.'
-                                                    : _dishSearchError !=
-                                                                null &&
-                                                            (query.isNotEmpty ||
-                                                                _priceRange !=
-                                                                    null)
-                                                        ? _dishSearchError!
-                                                        : _dishesLoading &&
-                                                                (query.isNotEmpty ||
-                                                                    _priceRange !=
-                                                                        null)
-                                                            ? 'Loading dishes and prices…'
-                                                            : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color:
-                                                        AppColors.textMuted))),
-                                      ),
-                                    ))
-                                : StallCardCarousel(
-                                    key: ValueKey(showingDishResults
-                                        ? 'dish-map-cards'
-                                        : 'stall-map-cards'),
-                                    ids: ids,
-                                    selectedId: selectedCard,
-                                    viewportFraction: geometry.viewportFraction,
-                                    cardsPerPage: geometry.cardsPerPage,
-                                    itemBuilder: (_, index) =>
-                                        showingDishResults
-                                            ? _dishCard(
-                                                cards[index],
-                                                filteredVendorById[
-                                                    cards[index].vendorId]!)
-                                            : StallMapCard(
-                                                vendor: onScreenVendors[index],
-                                                selected: onScreenVendors[index]
-                                                        .vendorId ==
-                                                    _selectedVendorId,
-                                                onTap: () {
-                                                  final vendor =
-                                                      onScreenVendors[index];
-                                                  if (vendor.vendorId ==
-                                                      _selectedVendorId) {
-                                                    _openStallPreview(vendor);
-                                                  } else {
-                                                    _selectVendor(vendor);
-                                                  }
-                                                }),
-                                  ),
-                      ),
-                    ]))),
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (event) =>
+                            _trackResultPointer(event.pointer, true),
+                        onPointerUp: (event) =>
+                            _trackResultPointer(event.pointer, false),
+                        onPointerCancel: (event) =>
+                            _trackResultPointer(event.pointer, false),
+                        child: MouseRegion(
+                            onEnter: (_) {
+                              if (kIsWeb) {
+                                setState(() => _pointerOverResults = true);
+                              }
+                            },
+                            onExit: (_) {
+                              if (kIsWeb) {
+                                setState(() => _pointerOverResults = false);
+                              }
+                            },
+                            child: Column(children: [
+                              DiscoveryResultsHeader(
+                                countLabel:
+                                    '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                                actionLabel:
+                                    snapshot.hasError ? 'Retry' : 'View all',
+                                onViewAll: snapshot.hasError
+                                    ? () => setState(
+                                        () => _vendors = _watchVendors())
+                                    : () => showingDishResults
+                                        ? _showAllDishes(
+                                            cards, filteredVendorById)
+                                        : _showAllStalls(onScreenVendors),
+                                onSearchHere:
+                                    _showSearchArea ? _searchThisArea : null,
+                              ),
+                              Expanded(
+                                child: searching
+                                    ? const Center(
+                                        child: CircularProgressIndicator())
+                                    : resultCount == 0
+                                        ? Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 16),
+                                            child: Material(
+                                              color: AppColors.cardColor,
+                                              borderRadius:
+                                                  BorderRadius.circular(23),
+                                              child: Center(
+                                                child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            18),
+                                                    child: Text(
+                                                        snapshot.hasError
+                                                            ? 'Could not load stalls. Check your connection and retry.'
+                                                            : _dishSearchError !=
+                                                                        null &&
+                                                                    (query.isNotEmpty ||
+                                                                        _priceRange !=
+                                                                            null)
+                                                                ? _dishSearchError!
+                                                                : _dishesLoading &&
+                                                                        (query.isNotEmpty ||
+                                                                            _priceRange !=
+                                                                                null)
+                                                                    ? 'Loading dishes and prices…'
+                                                                    : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                            fontSize: 13,
+                                                            color: AppColors
+                                                                .textMuted))),
+                                              ),
+                                            ))
+                                        : StallCardCarousel(
+                                            key: ValueKey(showingDishResults
+                                                ? 'dish-map-cards'
+                                                : 'stall-map-cards'),
+                                            ids: ids,
+                                            selectedId: selectedCard,
+                                            viewportFraction:
+                                                geometry.viewportFraction,
+                                            cardsPerPage: geometry.cardsPerPage,
+                                            itemBuilder: (_, index) =>
+                                                showingDishResults
+                                                    ? _dishCard(
+                                                        cards[index],
+                                                        filteredVendorById[
+                                                            cards[index]
+                                                                .vendorId]!)
+                                                    : StallMapCard(
+                                                        vendor: onScreenVendors[
+                                                            index],
+                                                        selected: onScreenVendors[
+                                                                    index]
+                                                                .vendorId ==
+                                                            _selectedVendorId,
+                                                        onTap: () {
+                                                          final vendor =
+                                                              onScreenVendors[
+                                                                  index];
+                                                          if (vendor.vendorId ==
+                                                              _selectedVendorId) {
+                                                            _openStallPreview(
+                                                                vendor);
+                                                          } else {
+                                                            _selectVendor(
+                                                                vendor);
+                                                          }
+                                                        }),
+                                          ),
+                              ),
+                            ]))),
                   ),
                 ],
                 if (preview != null)
@@ -2125,6 +2165,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     _searchFocus.unfocus();
     _previewExtent.value = .55;
     _previewCamera = _lastCameraPosition;
+    _previewMapPadding = _mapViewportPadding;
     final user = FirebaseAuth.instance.currentUser;
     _previewFollowStream = user == null || user.isAnonymous
         ? Stream.value(false)
@@ -2190,7 +2231,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
             if ((_previewExtent.value - extent).abs() >= .015) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted || _previewVendorId != vendor.vendorId) return;
-                _expectProgrammaticCameraMove();
                 _previewExtent.value = extent;
               });
             }
@@ -2532,7 +2572,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SizedBox(
+      builder: (context) => PointerInterceptor(
+        intercepting: kIsWeb,
+          child: SizedBox(
         height: MediaQuery.of(context).size.height * .6,
         child: Column(children: [
           const AppSheetHeader(
@@ -2561,7 +2603,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
             },
           )),
         ]),
-      ),
+      )),
     );
     if (mounted && selected != null) {
       await _selectVendor(selected);
@@ -2577,7 +2619,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SizedBox(
+      builder: (context) => PointerInterceptor(
+        intercepting: kIsWeb,
+          child: SizedBox(
         height: MediaQuery.of(context).size.height * .72,
         child: Column(children: [
           AppSheetHeader(
@@ -2613,7 +2657,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
             ),
           ),
         ]),
-      ),
+      )),
     );
     if (mounted && selected != null) {
       _openVendorDetails(vendors[selected.vendorId]!,

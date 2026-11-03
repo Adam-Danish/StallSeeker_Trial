@@ -1,10 +1,12 @@
 // Exercise the real discovery screen with read-only data and a map placeholder.
 // ignore_for_file: depend_on_referenced_packages
+import 'dart:async';
 import 'package:cloud_firestore_platform_interface/cloud_firestore_platform_interface.dart';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -16,6 +18,7 @@ import 'package:stallseeker/core/constants/app_colors.dart';
 import 'package:stallseeker/features/customer/home/discovery_map_widgets.dart';
 import 'package:stallseeker/features/customer/home/customer_home_screen.dart';
 import 'package:stallseeker/features/customer/home/discovery_options.dart';
+import 'package:stallseeker/features/customer/home/stall_preview_sheet.dart';
 import 'package:stallseeker/features/customer/profile/customer_profile_screen.dart';
 import 'package:stallseeker/features/shared/manual_location_dialog.dart';
 
@@ -99,6 +102,9 @@ class _NoLocation extends GeolocatorPlatform {
 class _InteractiveMaps extends MethodChannelGoogleMapsFlutter {
   final created = <int>{};
   final cameraMoves = <CameraUpdate>[];
+  final immediateCameraMoves = <CameraUpdate>[];
+  final configurations = <MapConfiguration>[];
+  Completer<double>? pendingZoom;
   LatLngBounds bounds = LatLngBounds(
     southwest: const LatLng(3.138, 101.68),
     northeast: const LatLng(3.142, 101.69),
@@ -114,7 +120,23 @@ class _InteractiveMaps extends MethodChannelGoogleMapsFlutter {
   @override
   Future<LatLngBounds> getVisibleRegion({required int mapId}) async => bounds;
   @override
-  Future<double> getZoomLevel({required int mapId}) async => 16;
+  Future<double> getZoomLevel({required int mapId}) async =>
+      pendingZoom == null ? 16 : await pendingZoom!.future;
+  @override
+  Future<ScreenCoordinate> getScreenCoordinate(LatLng latLng,
+          {required int mapId}) async =>
+      bounds.contains(latLng)
+          ? const ScreenCoordinate(x: 100, y: 100)
+          : const ScreenCoordinate(x: -1000, y: -1000);
+  @override
+  Future<void> moveCamera(CameraUpdate cameraUpdate, {required int mapId}) async {
+    immediateCameraMoves.add(cameraUpdate);
+  }
+  @override
+  Future<void> updateMapConfiguration(MapConfiguration configuration,
+      {required int mapId}) async {
+    configurations.add(configuration);
+  }
   @override
   Future<void> animateCamera(CameraUpdate cameraUpdate,
       {required int mapId}) async {
@@ -159,6 +181,85 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({
         'guest_search_history_v1': ['Previous search'],
       }));
+
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('real stall profile keeps map stationary while scrolling at $width',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final maps = _InteractiveMaps();
+      GoogleMapsFlutterPlatform.instance = maps;
+      final originalVendors = firestore.vendors;
+      firestore.vendors = [
+        {
+          ...originalVendors.first,
+          'description': List.filled(200, 'Stall profile details.').join(' '),
+        },
+      ];
+      addTearDown(() async {
+        if (maps.pendingZoom case final pending? when !pending.isCompleted) {
+          pending.complete(16);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        GoogleMapsFlutterPlatform.instance = _PlaceholderMaps();
+        firestore.vendors = originalVendors;
+      });
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+      await tester.pumpAndSettle();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+      GoogleMap map() => tester.widget<GoogleMap>(find.byType(GoogleMap));
+      const camera = CameraPosition(target: LatLng(3.139, 101.6869), zoom: 16);
+      map().onCameraMove!(camera);
+      map().onCameraIdle!();
+      await tester.pumpAndSettle();
+
+      // Open the real profile before a pending marker-focus request finishes.
+      // That request must never move the map behind the open profile.
+      maps.pendingZoom = Completer<double>();
+      map().markers.single.onTap!();
+      map().markers.single.infoWindow.onTap!();
+      await tester.pumpAndSettle();
+      expect(find.byType(StallPreviewSheet), findsOneWidget);
+      final frozenPadding = map().padding;
+      expect(map().scrollGesturesEnabled, isFalse);
+      expect(map().zoomGesturesEnabled, isFalse);
+      expect(map().rotateGesturesEnabled, isFalse);
+      expect(map().tiltGesturesEnabled, isFalse);
+      expect(map().webGestureHandling, WebGestureHandling.none);
+      maps.pendingZoom!.complete(16);
+      await tester.pumpAndSettle();
+      expect(maps.cameraMoves, isEmpty,
+          reason: 'A delayed marker focus must be cancelled when the profile opens.');
+      final cameraCommands = maps.immediateCameraMoves.length;
+      maps.configurations.clear();
+      final list = find.descendant(
+          of: find.byType(StallPreviewSheet), matching: find.byType(ListView));
+      await tester.drag(list, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Expand preview'));
+      await tester.pumpAndSettle();
+      final controller = tester.widget<ListView>(list).controller!;
+      final offset = controller.offset;
+      await tester.sendEventToBinding(PointerScrollEvent(
+          position: tester.getCenter(list), scrollDelta: const Offset(0, 200)));
+      await tester.pumpAndSettle();
+      expect(controller.offset, greaterThan(offset));
+      expect(map().padding, frozenPadding);
+      expect(map().scrollGesturesEnabled, isFalse);
+      expect(map().webGestureHandling, WebGestureHandling.none);
+      expect(maps.cameraMoves, isEmpty);
+      expect(maps.immediateCameraMoves, hasLength(cameraCommands));
+      expect(maps.created, hasLength(1));
+      expect(maps.configurations.where((config) => config.padding != null),
+          isEmpty, reason: 'Profile scrolling must not update the map viewport.');
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'cards follow viewport; scrolling leaves markers and camera unchanged; tapping focuses',
