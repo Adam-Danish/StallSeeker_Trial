@@ -60,61 +60,89 @@ class _AccountGate extends StatefulWidget {
   State<_AccountGate> createState() => _AccountGateState();
 }
 
-class _AccountGateState extends State<_AccountGate> {
+class _AccountGateState extends State<_AccountGate>
+    with WidgetsBindingObserver {
   late Stream<DocumentSnapshot<Map<String, dynamic>>> _profile;
+  late Future<void> _session;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _listen();
   }
 
   void _listen() {
+    NotificationService.instance.setNavigationReady(false);
+    _session = AuthService().validateCurrentSession();
     _profile = FirebaseFirestore.instance
         .collection('users')
         .doc(widget.user.uid)
         .snapshots();
-    unawaited(AuthService().repairCurrentUserProfile().catchError(
-          (Object error) => debugPrint('Account profile repair failed: $error'),
-        ));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) setState(_listen);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     NotificationService.instance.setNavigationReady(false);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _profile,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return FutureBuilder<void>(
+      future: _session,
+      builder: (context, session) {
+        if (session.connectionState != ConnectionState.done) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
-        final role = snapshot.data?.data()?['role'];
-        if (snapshot.hasError ||
-            !snapshot.hasData ||
-            !snapshot.data!.exists ||
-            (role != 'vendor' && role != 'customer')) {
-          NotificationService.instance.setNavigationReady(false);
+        if (session.hasError) {
           return _AccountRecovery(
-            message: snapshot.hasError
-                ? 'Could not load your account. Check your connection and retry.'
-                : 'Your account setup is incomplete. Retry, or sign out and contact support.',
+            message:
+                'Could not check your session. Check your connection and retry.',
             retry: () => setState(_listen),
           );
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            NotificationService.instance.setNavigationReady(true);
-            unawaited(NotificationService.instance.configureForRole(role));
-          }
-        });
-        return role == 'vendor'
-            ? const VendorMainScreen()
-            : const CustomerHomeScreen();
+        if (FirebaseAuth.instance.currentUser == null) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _profile,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()));
+            }
+            final role = snapshot.data?.data()?['role'];
+            if (snapshot.hasError ||
+                !snapshot.hasData ||
+                !snapshot.data!.exists ||
+                (role != 'vendor' && role != 'customer')) {
+              NotificationService.instance.setNavigationReady(false);
+              return _AccountRecovery(
+                message: snapshot.hasError
+                    ? 'Could not load your account. Check your connection and retry.'
+                    : 'This account is no longer available. Sign out to register a new account, or contact support.',
+                retry: snapshot.hasError ? () => setState(_listen) : null,
+              );
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                NotificationService.instance.setNavigationReady(true);
+                unawaited(NotificationService.instance.configureForRole(role));
+              }
+            });
+            return role == 'vendor'
+                ? const VendorMainScreen()
+                : const CustomerHomeScreen();
+          },
+        );
       },
     );
   }

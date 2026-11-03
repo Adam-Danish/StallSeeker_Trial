@@ -72,6 +72,49 @@ beforeEach(async () => {
 
 after(async () => { if (env) await env.cleanup(); });
 
+test('production admin directory access remains admin-only and server-written', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'users/admin-a'), {role: 'admin'});
+    await setDoc(doc(db, 'adminDirectory/customer-a'), {uid: 'customer-a', role: 'customer'});
+  });
+  const admin = client('admin-a').firestore();
+  await assertSucceeds(getDoc(doc(admin, 'adminDirectory/customer-a')));
+  await assertFails(updateDoc(doc(admin, 'adminDirectory/customer-a'), {role: 'admin'}));
+  await assertFails(getDoc(doc(client('customer-a').firestore(), 'adminDirectory/customer-a')));
+});
+
+test('deleted UID cannot recreate a profile or upload photos with a cached token', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, '_accountDeletions/customer-a'), {requestedAt: new Date()});
+    await deleteDoc(doc(db, 'users/customer-a'));
+  });
+  const deleted = client('customer-a');
+  await assertFails(setDoc(doc(deleted.firestore(), 'users/customer-a'),
+      {role: 'customer', email: 'reused@example.com'}));
+  await assertFails(setDoc(doc(deleted.firestore(), 'users/customer-a'),
+      {role: 'vendor', email: 'reused@example.com'}));
+  await assertFails(uploadBytes(ref(deleted.storage(), 'review_images/vendor-a/customer-a/new.jpg'),
+      new Uint8Array([1, 2, 3]), {contentType: 'image/jpeg'}));
+  // Email reuse is safe: signup creates a fresh UID, outside the old tombstone.
+  const replacement = client('replacement');
+  await assertSucceeds(setDoc(doc(replacement.firestore(), 'users/replacement'),
+      {role: 'customer', email: 'reused@example.com'}));
+});
+
+test('deletion jobs are server-only and block writes while cleanup is pending', async () => {
+  const db = client('customer-a').firestore();
+  await assertFails(setDoc(doc(db, '_accountDeletions/customer-a'), {requestedAt: new Date()}));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), '_accountDeletions/customer-a'), {requestedAt: new Date()});
+  });
+  await assertFails(getDoc(doc(db, '_accountDeletions/customer-a')));
+  await assertFails(deleteDoc(doc(db, '_accountDeletions/customer-a')));
+  await assertFails(updateDoc(doc(db, 'users/customer-a'), {fullName: 'Restored'}));
+  await assertFails(setDoc(doc(db, 'follows/deleted-user'), {customerId: 'customer-a', vendorId: 'vendor-a'}));
+});
+
 for (const collectionName of ['_connection_test_', 'reports', 'stalls']) {
   test(`retired ${collectionName} records deny all client reads and writes`, async () => {
     const existingPath = `${collectionName}/existing`;

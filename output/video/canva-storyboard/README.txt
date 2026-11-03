@@ -1,0 +1,1 @@
+Six full 1920x1080 scene references for recreating in Canva. Static fully revealed frames; no animation included. QR boxes are explicitly labelled placeholders. Scene 4 shows an illustrative menu layout and example price, not a real app screenshot. All other phone screens use existing project references.

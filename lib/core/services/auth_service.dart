@@ -15,9 +15,12 @@ import '../constants/firestore_collections.dart';
 import '../utils/vendor_phone.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance; // connect to firebase auth
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance; // connect to firestore db
+  AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
+      : _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
   final GoogleSignIn _googleSignIn =
       GoogleSignIn.instance; // connect to google login
   static bool _googleSignInReady = false;
@@ -39,38 +42,25 @@ class AuthService {
   // Get current Firebase user
   User? get currentUser => _auth.currentUser;
 
-  // repair current user profile
-  Future<void> repairCurrentUserProfile() async {
+  // Firebase keeps deleted/disabled users cached until explicitly refreshed.
+  Future<void> validateCurrentSession() async {
     final user = _auth.currentUser;
-
-    if (user == null || user.isAnonymous) {
-      return;
+    if (user == null || user.isAnonymous) return;
+    try {
+      await user.reload();
+      await _auth.currentUser?.getIdToken(true);
+    } on FirebaseAuthException catch (error) {
+      if (const {
+        'user-not-found',
+        'user-disabled',
+        'user-token-expired',
+        'invalid-user-token',
+      }.contains(error.code)) {
+        await signOut();
+        return;
+      }
+      rethrow;
     }
-
-    final userRef =
-        _firestore.collection(FirestoreCollections.users).doc(user.uid);
-
-    final userSnapshot = await userRef.get();
-    final existingData = userSnapshot.data();
-    final existingRole = existingData?['role'];
-
-    if (existingRole == 'customer' || existingRole == 'vendor') {
-      return;
-    }
-
-    final vendorSnapshot = await _firestore
-        .collection(FirestoreCollections.vendors)
-        .doc(user.uid)
-        .get();
-
-    await userRef.set({
-      'uid': user.uid,
-      'email': user.email ?? '',
-      'fullName': user.displayName ?? '',
-      'role': vendorSnapshot.exists ? 'vendor' : 'customer',
-      if (existingData?['createdAt'] == null)
-        'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
   }
 
   // Register user with Email, Password, Name & Role
@@ -130,7 +120,13 @@ class AuthService {
                 'isOpen': false,
               });
         }
-        await batch.commit();
+        try {
+          await batch.commit();
+        } catch (_) {
+          // A failed registration must not reserve the email indefinitely.
+          await credential.user!.delete();
+          rethrow;
+        }
 
         return null;
       }
@@ -188,10 +184,15 @@ class AuthService {
           role: 'customer',
           createdAt: DateTime.now(),
         );
-        await _firestore // save profile dalam firestore
-            .collection(FirestoreCollections.users)
-            .doc(user.uid)
-            .set(newUser.toMap());
+        try {
+          await _firestore
+              .collection(FirestoreCollections.users)
+              .doc(user.uid)
+              .set(newUser.toMap());
+        } catch (_) {
+          await user.delete();
+          rethrow;
+        }
       }
 
       return null;
@@ -283,7 +284,11 @@ class AuthService {
   // Sign Out
   // stop vendor location service
   Future<void> signOut() async {
-    await VendorLocationService.instance.pause();
+    try {
+      await VendorLocationService.instance.pause();
+    } catch (_) {
+      debugPrint('Location cleanup could not finish.');
+    }
     try {
       await NotificationService.instance.clearCurrentDevice();
     } catch (_) {
@@ -293,6 +298,8 @@ class AuthService {
       if (!kIsWeb && _googleSignInReady) {
         await _googleSignIn.signOut();
       }
+    } catch (_) {
+      debugPrint('Google session cleanup could not finish.');
     } finally {
       await _auth.signOut();
     }
@@ -500,7 +507,7 @@ class AuthService {
     }
   }
 
-// delete account (bug)
+// Delete the sign-in identity before background cleanup of account data.
   Future<String?> deleteAccount({String? currentPassword}) async {
     final user = _auth.currentUser;
     if (user == null || user.isAnonymous) {
@@ -531,14 +538,20 @@ class AuthService {
         return 'Log out, sign in again, then retry account deletion.';
       }
 
-      await NotificationService.instance.clearCurrentDevice();
-      await FirebaseFunctions.instance.httpsCallable('deleteAccount').call();
+      // Reauthentication updates auth_time; force the callable to use that token.
+      await user.getIdToken(true);
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('deleteAccount')
+          .call<Map<String, dynamic>>();
+      if (result.data['deleted'] != true) {
+        return 'Could not finish account deletion. Please retry.';
+      }
       try {
         await LocalDemoBookingService().removeAccountData(user.uid);
       } catch (_) {
         debugPrint('Account deleted; local booking cleanup was unavailable.');
       }
-      await _auth.signOut();
+      await signOut();
       return null;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {

@@ -11,9 +11,30 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Preserve the production admin directory's bounded live-listener access.
+    function directoryAdmin() {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+          && profile.get('role', profile.get('userRole', profile.get('type', ''))).lower() == 'admin';
+    }
+
+    match /adminDirectory/{entryId} {
+      allow read: if request.auth != null && directoryAdmin();
+      allow write: if false;
+    }
+
+    match /adminDirectoryCategories/{entryId} {
+      allow read, write: if false;
+    }
+
+    match /adminDirectoryMeta/{entryId} {
+      allow read, write: if false;
+    }
+
     function signedIn() {
       return request.auth != null
-          && request.auth.token.firebase.sign_in_provider != 'anonymous';
+          && request.auth.token.firebase.sign_in_provider != 'anonymous'
+          && !exists(/databases/$(database)/documents/_accountDeletions/$(request.auth.uid));
     }
 
     function ownsVendor(vendorId) {

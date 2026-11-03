@@ -435,6 +435,7 @@ class NotificationService {
     final ref = FirebaseFirestore.instance.collection('users').doc(uid);
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final doc = await tx.get(ref);
+      if (!doc.exists) return;
       final tokens = (doc.data()?['fcmTokens'] as List?)
               ?.whereType<String>()
               .where((value) => value != token)

@@ -812,7 +812,7 @@ This is a source-based product and technical inventory. “Fully Implemented” 
 | Function / entry point | Implemented behavior and conditions |
 |---|---|
 | `AuthService.authStateChanges`, `currentUser` | Expose Firebase auth state/current identity. Firebase SDK session state is reused; there is no custom remember-me checkbox or custom session-token store. |
-| `repairCurrentUserProfile()` | Skip guests and valid roles; inspect vendor record and merge missing identity/profile fields and an inferred role. Subject to existing-role write restrictions. |
+| `validateCurrentSession()` | Reload the sign-in identity and force a fresh token; sign out cached deleted, disabled or expired accounts. Missing profiles are never recreated by the login gate or Retry. |
 | `signUp()` | Normalize vendor phone; create email/password identity; create user role/profile and initial closed vendor document through a Firestore batch. |
 | `login()` | Trim email/password, authenticate through Firebase, and return a user-facing error string or success. |
 | `_ensureGoogleSignInReady()`, `signInWithGoogle()` | Initialize Google Sign-In once with configured client ID, authenticate, exchange ID token with Firebase, and create customer profile for a new Google user. Handle cancellation, timeout, and conflicting credential provider. |
