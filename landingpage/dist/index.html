@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>StallSeeker · Find nearby food stalls</title>
+  <meta name="description" content="StallSeeker is a food stall discovery mobile app developed for a final-year project. Try the web version on iPhone or Android while the mobile app awaits publication.">
+  <meta property="og:title" content="StallSeeker · Find nearby food stalls">
+  <meta property="og:description" content="Explore nearby stalls, check menus, and request self-collection. Available on the web first for iPhone and Android.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header"><div class="container header-inner">
+    <a class="brand" href="#main" aria-label="StallSeeker home"><img src="assets/logo.png" width="38" height="38" alt=""><span>StallSeeker</span></a>
+    <button class="nav-toggle" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span><span></span></button>
+    <nav id="site-nav" aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#for-vendors">For vendors</a><a href="#about">The project</a><a href="#faq">FAQs</a><a class="button" href="https://stallseeker.my">Open web app</a></nav>
+  </div></header>
+  <main id="main">
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-copy"><h1 id="hero-title">Find nearby food worth the trip.</h1><p class="hero-lead">Locate mobile and roadside food stalls, browse their menus, and check availability before you head out.</p><a class="button" href="https://stallseeker.my">Explore stalls on the web</a><p class="hero-note">Our FYP mobile app hasn’t been published yet. Try the web version on iPhone or Android, with no download needed.</p></div>
+      <figure class="hero-preview"><div class="hero-screens"><img src="assets/nearby-map.png" alt="StallSeeker map showing nearby stalls and their opening status" width="468" height="990" fetchpriority="high"><img src="assets/stall-details.png" alt="StallSeeker stall details with menu, directions, and self-collect options" width="468" height="990" fetchpriority="high"></div><figcaption>Map discovery and stall details. Screenshots from the project app.</figcaption></figure>
+    </section>
+    <section class="intro container" aria-labelledby="intro-title"><h2 id="intro-title">A familiar stall isn’t always in the same place.</h2><div><p>Small food vendors can be easy to miss online. Mobile stalls change locations, and a stall that was open yesterday might be closed or sold out today.</p><p>StallSeeker brings vendor-shared locations, menus, and availability into one place, so customers have more information before making a trip.</p></div></section>
+    <section class="how-section container section-space" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-heading"><h2 id="how-title">From the map to your next meal.</h2><p>Explore the app’s discovery and self-collection features.</p></div>
+      <div class="product-layout"><div class="product-preview"><div id="preview-panel" role="tabpanel" aria-labelledby="step-discover"><img id="preview-image" src="assets/nearby-map.png" alt="Map view showing nearby stalls and a stall's opening status" width="468" height="990" loading="lazy"></div><p class="preview-caption" id="preview-caption">Discover what’s around you.</p></div>
+        <div class="steps" role="tablist" aria-label="Explore StallSeeker features" aria-orientation="vertical">
+          <button class="step active" role="tab" id="step-discover" aria-controls="preview-panel" aria-selected="true" data-preview="discover"><span class="step-number">01</span><span><span class="step-title">Find a stall nearby</span><span class="step-description">Explore stalls on the map. Filter by category, distance, price, and opening status to narrow down your options.</span><span class="step-detail">View the map screen</span></span></button>
+          <button class="step" role="tab" id="step-check" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-preview="check"><span class="step-number">02</span><span><span class="step-title">Check before you visit</span><span class="step-description">Browse digital menus, opening hours, and vendor-shared food availability. Check the last known location before you travel.</span><span class="step-detail">View the stall details screen</span></span></button>
+          <button class="step" role="tab" id="step-collect" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-preview="collect"><span class="step-number">03</span><span><span class="step-title">Request self-collection</span><span class="step-description">Send a booking request and track its status in the app. The vendor reviews the request before you collect your food at the stall.</span><span class="step-detail">See where a booking begins</span></span></button>
+        </div>
+      </div><p class="availability-note">Locations, opening status, and food availability depend on updates from each vendor. Check the latest information before travelling.</p>
+    </section>
+    <section class="vendor-section" id="for-vendors" aria-labelledby="vendor-title"><div class="container vendor-layout"><div class="vendor-copy"><h2 id="vendor-title">Give customers a way to find your stall.</h2><p>Set up a stall profile and keep nearby customers informed about where you are and what you’re serving.</p><a class="button" href="https://stallseeker.my">Open web app as a vendor</a></div><div class="vendor-tools"><article><h3>Share where you’re open</h3><p>Maintain your business hours, set temporary closures, and share your location while your stall is open.</p></article><article><h3>Keep your menu current</h3><p>Add dishes, prices, and menu images. Update stock status when an item becomes unavailable.</p></article><article><h3>Review collection requests</h3><p>Manage customer booking requests and update their status from your vendor account.</p></article></div></div></section>
+    <section class="about-section container section-space" id="about" aria-labelledby="about-title">
+      <div class="about-intro"><h2 id="about-title">A mobile app, available on the web first.</h2><p class="about-lead">StallSeeker is a mobile application developed for a final-year project in food stall discovery.</p><p>The mobile app hasn’t been published yet. To let people try the project now, we’ve made a web version available first. You can use it in a browser on iPhone or Android without installing an app.</p><p>The project addresses limited online visibility for small vendors, changing stall locations, and uncertainty about food availability.</p><p class="project-code">Project reference: SWE/134/24B</p></div>
+      <div class="project-objectives"><h3>What the project sets out to do</h3><article><span class="objective-number">01</span><div><h4>Make local stalls easier to discover</h4><p>Connect customers with nearby food vendors through searchable profiles and digital menus.</p></div></article><article><span class="objective-number">02</span><div><h4>Show vendors’ shared locations</h4><p>Display vendor-shared locations dynamically on an interactive map, including details about a stall’s last known location.</p></div></article><article><span class="objective-number">03</span><div><h4>Help customers check food availability</h4><p>Let customers see stock updates and follow stalls or dishes for availability notifications before visiting.</p></div></article></div>
+      <p class="project-scope"><strong>Project scope.</strong> Customers discover stalls and request self-collection. Vendors maintain stall information and review requests. The screenshots show the project app; individual stall information depends on updates shared by vendors.</p>
+    </section>
+    <section class="faq-section container section-space" id="faq" aria-labelledby="faq-title"><div><h2 id="faq-title">Before you open the app</h2><p>A few details about access, availability, and self-collection.</p></div><div class="faq-list">
+      <details><summary>What is StallSeeker?<span aria-hidden="true">+</span></summary><p>StallSeeker is a mobile application for food stall discovery, developed as a final-year project. It connects customers with nearby mobile and roadside food vendors through map discovery, menus, availability updates, and self-collect booking requests.</p></details>
+      <details><summary>Can I use it on iPhone or Android?<span aria-hidden="true">+</span></summary><p>Yes. The mobile app hasn’t been published yet, so a web version is available first at <a href="https://stallseeker.my">stallseeker.my</a>. Open it in a browser on iPhone or Android. No app download is needed.</p></details>
+      <details><summary>Do I need an account?<span aria-hidden="true">+</span></summary><p>You can explore stalls as a guest. Features such as following stalls and managing bookings require sign-in. Vendors register an account to manage their stall.</p></details>
+      <details><summary>Are locations and menus always up to date?<span aria-hidden="true">+</span></summary><p>Vendors share their locations, opening status, menus, and availability. Mobile stalls may move and food may sell out, so check the latest update and any location warnings before making a trip.</p></details>
+      <details><summary>How does self-collection work?<span aria-hidden="true">+</span></summary><p>Choose a stall and send a self-collect booking request in the app. The vendor reviews the request, and you can track its status. Wait for vendor acceptance before collecting. You pick up the food at the stall.</p></details>
+      <details><summary>Can I list my own food stall?<span aria-hidden="true">+</span></summary><p>Open StallSeeker and register as a vendor to set up your stall details, menu, business hours, and location. You can then update availability and manage booking requests.</p></details>
+    </div></section>
+  </main>
+  <footer class="container"><div class="footer-top"><a class="brand" href="#main"><img src="assets/logo.png" width="32" height="32" alt=""><span>StallSeeker</span></a><a href="https://stallseeker.my">Open web app</a><a href="#main">Back to top</a></div><div class="footer-bottom"><span>© <span id="year">2026</span> StallSeeker.</span><span>A final-year project in food stall discovery.</span></div></footer>
+</body>
+</html>
