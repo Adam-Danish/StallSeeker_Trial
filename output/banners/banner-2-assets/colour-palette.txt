@@ -1,0 +1,15 @@
+StallSeeker Banner 2 - suggested Canva palette
+Dark brown text: #2D1A13
+Bright orange icons and section numbers: #F0640B
+Burnt orange accents: #B83B12
+Dark divider: #4A2115
+Warm ivory background: #FFFAF5
+Pale peach map: #FFF0E2
+Pale sage map: #E8EACB
+White: #FFFFFF
+Available text: #2E7D32
+Available background: #DFF0D8
+Sold-out text: #707070
+Sold-out background: #E5E5E5
+
+SVG icons have transparent backgrounds. The editable SVG background is a clean reconstruction; the PNG is the generated reference-style background. Upload individual SVGs into Canva. Generated preview colours may vary slightly from these exact values.

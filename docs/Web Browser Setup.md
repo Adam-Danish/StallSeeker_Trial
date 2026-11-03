@@ -29,11 +29,18 @@ flutter build web --release
 firebase deploy --only hosting --project stallseeker-c2ffe
 ```
 
-The stable site is `https://stallseeker-c2ffe.web.app`. A custom domain or
+The public site is `https://stallseeker.my`; Firebase Hosting also serves
+`https://stallseeker-c2ffe.web.app`. A custom domain or
 preview channel also needs to be added to Firebase Authentication's authorized
 domains, the Maps key's allowed websites, and the Storage bucket's CORS origins.
-The bucket currently allows browser image reads from the default hosting
-domains and local port 7357; existing Storage security rules still apply.
+The bucket currently allows browser image reads from `https://stallseeker.my`,
+the default hosting domains, the existing preview domain and local port 7357;
+existing Storage security rules still apply. The custom domain was added to
+the existing GET/HEAD CORS policy on 3 November 2026 after stall and menu photos
+were found to render as placeholders there. Public image responses now return
+`Access-Control-Allow-Origin: https://stallseeker.my` for that origin, and live
+browser checks confirm the cover and menu photos display. No app rebuild is
+needed for this bucket configuration change.
 
 ## Browser behavior
 

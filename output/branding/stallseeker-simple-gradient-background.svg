@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">StallSeeker simple brand gradient</title>
+  <desc id="description">Rounded square with the application's two-color brand gradient from orange #FB8D24 at the top left to red-orange #FA3A1E at the bottom right. Transparent outside the rounded square.</desc>
+  <defs>
+    <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FB8D24"/>
+      <stop offset="1" stop-color="#FA3A1E"/>
+    </linearGradient>
+  </defs>
+  <rect id="gradient-background" width="1024" height="1024" rx="240" ry="240" fill="url(#brand-gradient)"/>
+</svg>
