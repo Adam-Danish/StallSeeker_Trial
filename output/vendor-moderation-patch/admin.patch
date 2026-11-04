@@ -1,0 +1,440 @@
+diff --git a/src/app/App.tsx b/src/app/App.tsx
+index fb54916..a345f20 100644
+--- a/src/app/App.tsx
++++ b/src/app/App.tsx
+@@ -15,7 +15,8 @@ import {
+   Phone,
+   Trash2,
+   UserX,
+-  UserCheck
++  UserCheck,
++  Flag
+ } from "lucide-react";
+ import { collection, onSnapshot, doc, getDoc, updateDoc, deleteDoc, type DocumentData } from "firebase/firestore";
+ import { onAuthStateChanged, signOut } from "firebase/auth";
+@@ -39,12 +40,14 @@ import { AdminLogin } from "./components/AdminLogin";
+ import type { DashboardVendor } from "./components/DashboardCharts";
+ import { MonitorVendors } from "./components/MonitorVendors";
+ import { VendorDetail } from "./components/VendorDetail";
++import { ReportsPage } from "./components/ReportsPage";
++import { decideCase } from "./moderationApi";
+ import { ActionConfirmation } from "./components/ActionConfirmation";
+ import { LiveVendorMap } from "./LiveMap";
+ import type { Vendor, AdminAction } from "./components/types";
+ 
+-type Screen = "dashboard" | "analytics" | "map" | "activity-log" | "booking-history" | "vendors" | "users" | "vendor-detail" | "action-confirm";
+-type NavTab = "dashboard" | "analytics" | "map" | "activity-log" | "booking-history" | "vendors" | "users";
++type Screen = "reports" | "dashboard" | "analytics" | "map" | "activity-log" | "booking-history" | "vendors" | "users" | "vendor-detail" | "action-confirm";
++type NavTab = "reports" | "dashboard" | "analytics" | "map" | "activity-log" | "booking-history" | "vendors" | "users";
+ 
+ function firstNonEmptyString(...values: unknown[]): string {
+   for (const value of values) {
+@@ -91,6 +94,7 @@ function vendorFromData(id: string, data: DocumentData): Vendor {
+     openingHours: data.openingHours || data.hours || "",
+     hours: data.hours || data.openingHours || "",
+     isOpen: Boolean(data.isOpen),
++    listingStatus: data.listingStatus === "suspended" ? "suspended" : "active",
+     latitude: Number.isFinite(latitude) ? latitude : 0,
+     longitude: Number.isFinite(longitude) ? longitude : 0,
+     lat: Number.isFinite(latitude) ? latitude : 0,
+@@ -165,6 +169,7 @@ function AdminDashboardApp() {
+   const [userActionError, setUserActionError] = useState<string | null>(null);
+   const [activeUserActionId, setActiveUserActionId] = useState<string | null>(null);
+   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
++  const [reportVendorId, setReportVendorId] = useState<string | undefined>();
+   const [pendingAction, setPendingAction] = useState<AdminAction>("suspend");
+ 
+   // Search & Filter State
+@@ -463,6 +468,7 @@ function AdminDashboardApp() {
+     setActiveTab(tab);
+     if (tab === "dashboard") setScreen("dashboard");
+     if (tab === "analytics") setScreen("analytics");
++    if (tab === "reports") { setReportVendorId(undefined); setScreen("reports"); }
+     if (tab === "map") setScreen("map");
+     if (tab === "activity-log") setScreen("activity-log");
+     if (tab === "booking-history") setScreen("booking-history");
+@@ -481,8 +487,8 @@ function AdminDashboardApp() {
+   };
+ 
+   const handleVendorDetail = (vendor: Vendor) => {
+-    setSelectedVendor(vendor);
+-    navigate("vendor-detail", "vendors");
++    const id = vendor.id ?? vendor.vendorId;
++    if (id) void handleVendorSelect(id);
+   };
+ 
+   // Open the latest vendor record from a dashboard activity or map marker.
+@@ -660,6 +666,9 @@ function AdminDashboardApp() {
+       case "activity-log":
+         return <ActivityLogPage />;
+ 
++      case "reports":
++        return <ReportsPage vendorId={reportVendorId} onClearVendor={() => setReportVendorId(undefined)} onOpenVendor={handleVendorSelect} />;
++
+       case "booking-history":
+         return <BookingHistoryPage />;
+ 
+@@ -854,6 +863,7 @@ function AdminDashboardApp() {
+           <VendorDetail
+             vendor={selectedVendor}
+             onBack={() => navigate("vendors", "vendors")}
++            onReports={() => { setReportVendorId(selectedVendor.id ?? selectedVendor.vendorId); navigate("reports", "reports"); }}
+             onSuspend={() => handleAdminAction("suspend")}
+             onReactivate={() => handleAdminAction("reactivate")}
+           />
+@@ -866,7 +876,15 @@ function AdminDashboardApp() {
+             action={pendingAction}
+             vendor={selectedVendor}
+             onCancel={() => navigate("vendor-detail", "vendors")}
+-            onConfirm={() => navigate("vendors", "vendors")}
++            onConfirm={async (reason) => {
++              const vendorId = selectedVendor.id ?? selectedVendor.vendorId;
++              if (!vendorId) throw new Error("Vendor unavailable.");
++              const state = await getDoc(doc(db, "vendorModeration", vendorId));
++              const caseId = state.data()?.currentCaseId;
++              if (!caseId) throw new Error("This vendor has no active warning. Open Reports to review customer complaints first.");
++              await decideCase(vendorId, caseId, pendingAction === "suspend" ? "suspend" : "resolve", reason);
++              await handleVendorSelect(vendorId);
++            }}
+           />
+         );
+     }
+@@ -878,11 +896,13 @@ function AdminDashboardApp() {
+     { tab: "map", label: "Vendor map", icon: <MapIcon size={18} /> },
+     { tab: "activity-log", label: "Activity log", icon: <History size={18} /> },
+     { tab: "booking-history", label: "Booking history", icon: <CalendarDays size={18} /> },
++    { tab: "reports", label: "Reports & warnings", icon: <Flag size={18} /> },
+     { tab: "vendors", label: "Vendors", icon: <Store size={18} /> },
+     { tab: "users", label: "Users", icon: <Users size={18} /> },
+   ];
+ 
+   const pageTitle: Record<Screen, string> = {
++    reports: "Reports & warnings",
+     dashboard: "Admin dashboard",
+     analytics: "Analytics",
+     map: "Vendor map",
+diff --git a/src/app/components/ActionConfirmation.tsx b/src/app/components/ActionConfirmation.tsx
+index 30c7f9e..b819064 100644
+--- a/src/app/components/ActionConfirmation.tsx
++++ b/src/app/components/ActionConfirmation.tsx
+@@ -1,11 +1,13 @@
+ import { ArrowLeft, AlertTriangle, X, CheckCircle, Store, RefreshCw } from "lucide-react";
+ import type { AdminAction, Vendor } from "./types";
++import { useState } from "react";
++import { moderationError } from "../moderationApi";
+ 
+ interface Props {
+   action: AdminAction;
+   vendor: Vendor;
+   onCancel: () => void;
+-  onConfirm: () => void;
++  onConfirm: (reason: string) => Promise<void>;
+ }
+ 
+ const CONFIG = {
+@@ -35,6 +37,17 @@ const CONFIG = {
+ 
+ export function ActionConfirmation({ action, vendor, onCancel, onConfirm }: Props) {
+   const cfg = CONFIG[action];
++  const [reason, setReason] = useState("");
++  const [saving, setSaving] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const confirm = async () => {
++    if (saving || !reason.trim()) return;
++    setSaving(true); setError(null);
++    try { await onConfirm(reason.trim()); }
++    catch (failure) {
++      setError(failure instanceof Error && !('code' in failure) ? failure.message : moderationError(failure));
++    } finally { setSaving(false); }
++  };
+ 
+   return (
+     <div className="p-4 sm:p-8 flex items-start justify-center">
+@@ -117,14 +130,19 @@ export function ActionConfirmation({ action, vendor, onCancel, onConfirm }: Prop
+             >
+               <AlertTriangle size={14} color="#F2994A" className="flex-shrink-0 mt-0.5" />
+               <p style={{ fontSize: "12px", color: "#7A5C2E", lineHeight: "1.6" }}>
+-                The vendor will be notified via email and in-app message once this action is confirmed.
++                Suspension requires an overdue warning. Check the correction before restoring a listing. The vendor receives an in-app notice and a push notification where available.
+               </p>
+             </div>
+ 
++            <label htmlFor="listing-action-reason" className="mb-2 block text-sm font-semibold">Admin reason</label>
++            <textarea id="listing-action-reason" className="mb-4 w-full rounded-lg border p-3" rows={4}
++              maxLength={1000} disabled={saving} value={reason} onChange={(event) => setReason(event.target.value)} />
++            {error && <p role="alert" className="mb-4 text-sm text-red-700">{error}</p>}
+             {/* Action buttons */}
+             <div className="flex flex-col gap-3 sm:flex-row">
+               <button
+                 onClick={onCancel}
++                disabled={saving}
+                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl active:opacity-80"
+                 style={{ background: "#fff", border: "1px solid #EDD9C6", cursor: "pointer" }}
+               >
+@@ -132,12 +150,13 @@ export function ActionConfirmation({ action, vendor, onCancel, onConfirm }: Prop
+                 <span style={{ color: "#9B7B5B", fontSize: "14px", fontWeight: 600 }}>Cancel</span>
+               </button>
+               <button
+-                onClick={onConfirm}
++                onClick={() => void confirm()}
++                disabled={saving || !reason.trim()}
+                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl active:opacity-80"
+                 style={{ background: cfg.confirmBg, border: "none", cursor: "pointer" }}
+               >
+                 <CheckCircle size={16} color="#fff" />
+-                <span style={{ color: "#fff", fontSize: "14px", fontWeight: 600 }}>{cfg.confirmLabel}</span>
++                <span style={{ color: "#fff", fontSize: "14px", fontWeight: 600 }}>{saving ? 'Saving…' : cfg.confirmLabel}</span>
+               </button>
+             </div>
+           </div>
+diff --git a/src/app/components/ReportsPage.tsx b/src/app/components/ReportsPage.tsx
+new file mode 100644
+index 0000000..281db46
+--- /dev/null
++++ b/src/app/components/ReportsPage.tsx
+@@ -0,0 +1,154 @@
++import { useEffect, useState } from 'react';
++import { collection, onSnapshot, orderBy, query, where, limit, type QueryConstraint, type Timestamp } from 'firebase/firestore';
++import { db } from '../../firebase';
++import { decideCase, moderationError, reviewReport } from '../moderationApi';
++import { Button } from './ui/button';
++import { Textarea } from './ui/textarea';
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
++
++export const reasonLabels: Record<string, string> = {
++  wrong_location: 'Wrong location', opening_status: 'Incorrect opening status or hours',
++  menu_prices: 'Outdated menu, prices, or availability', stall_details: 'Incorrect stall information', other: 'Other inaccurate information',
++};
++interface Summary { reason: string; details: string; observedAt?: Timestamp }
++interface ModerationEntry {
++  id: string; vendorId: string; customerId?: string; stallName: string; status: string;
++  reason?: string; details?: string; createdAt?: Timestamp; observedAt?: Timestamp; dueAt?: Timestamp;
++  adminReason?: string; vendorResponse?: string; responseStatus?: string; summaries?: Summary[];
++  snapshot?: {stallName?: string; openingHours?: string; isOpen?: boolean; latitude?: number; longitude?: number; description?: string;
++    menu?: {name: string; price: number; status: string}[]; menuMayBeTruncated?: boolean};
++}
++type Decision = {record: ModerationEntry; action: 'verify' | 'reject' | 'suspend' | 'resolve' | 'rejectCorrection'};
++export function formatModerationTime(time?: Timestamp) {
++  return time ? time.toDate().toLocaleString('en-MY', {timeZone: 'Asia/Kuala_Lumpur', dateStyle: 'medium', timeStyle: 'short'}) + ' MYT' : '—';
++}
++const panel = {background: '#fff', border: '1px solid #e9e5dd', borderRadius: 16};
++
++export function ReportsPage({vendorId, onClearVendor, onOpenVendor}: {vendorId?: string; onClearVendor: () => void; onOpenVendor: (vendorId: string) => void}) {
++  const [reports, setReports] = useState<ModerationEntry[]>([]);
++  const [cases, setCases] = useState<ModerationEntry[]>([]);
++  const [filter, setFilter] = useState('pending');
++  const [size, setSize] = useState(50);
++  const [loading, setLoading] = useState(true);
++  const [caseLoading, setCaseLoading] = useState(true);
++  const [reportError, setReportError] = useState<string | null>(null);
++  const [caseError, setCaseError] = useState<string | null>(null);
++  const [retry, setRetry] = useState(0);
++  const [decision, setDecision] = useState<Decision | null>(null);
++  const [reason, setReason] = useState('');
++  const [saving, setSaving] = useState(false);
++  const [saveError, setSaveError] = useState<string | null>(null);
++  const [notice, setNotice] = useState<string | null>(null);
++  const [clock, setClock] = useState(Date.now());
++  useEffect(() => { const timer = window.setInterval(() => setClock(Date.now()), 30000); return () => window.clearInterval(timer); }, []);
++  useEffect(() => { setSize(50); }, [vendorId, filter]);
++  useEffect(() => {
++    setLoading(true); setCaseLoading(true); setReportError(null); setCaseError(null); setReports([]); setCases([]);
++    const scope: QueryConstraint[] = vendorId ? [where('vendorId', '==', vendorId)] : [];
++    const status = filter === 'all' ? [] : [where('status', '==', filter)];
++    const stopReports = onSnapshot(query(collection(db, 'vendorReports'), ...scope, ...status, orderBy('createdAt', 'desc'), limit(size)),
++      (snapshot) => { setReports(snapshot.docs.map((doc) => ({...doc.data(), id: doc.id} as ModerationEntry))); setLoading(false); },
++      () => { setReportError('Could not load reports. Check your connection and deployed indexes.'); setLoading(false); });
++    const stopCases = onSnapshot(query(collection(db, 'moderationCases'), ...scope, orderBy('createdAt', 'desc'), limit(size)),
++      (snapshot) => { setCases(snapshot.docs.map((doc) => ({...doc.data(), id: doc.id} as ModerationEntry))); setCaseLoading(false); },
++      () => { setCaseError('Could not load warning history. Check your connection and retry.'); setCaseLoading(false); });
++    return () => { stopReports(); stopCases(); };
++  }, [vendorId, filter, size, retry]);
++  const begin = (record: ModerationEntry, action: Decision['action']) => { setDecision({record, action}); setReason(''); setSaveError(null); };
++  const submit = async () => {
++    if (!decision || saving || !reason.trim()) return;
++    setSaving(true); setSaveError(null);
++    try {
++      const {record, action} = decision;
++      if (action === 'verify' || action === 'reject') await reviewReport(record.id, action, reason.trim());
++      else await decideCase(record.vendorId, record.id, action, reason.trim());
++      setDecision(null); setNotice('Decision saved.');
++    } catch (error) { setSaveError(moderationError(error)); }
++    finally { setSaving(false); }
++  };
++  const sortedCases = [...cases].sort((a, b) => {
++    const priority = (record: ModerationEntry) => record.status === 'suspended' ? 0
++      : record.status === 'warning' && (record.dueAt?.toMillis() ?? Infinity) <= clock ? 1
++      : record.status === 'warning' ? 2 : 3;
++    return priority(a) - priority(b) || (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
++  });
++  return <div className="space-y-6 p-4 sm:p-6 lg:p-8">
++    <div className="flex flex-wrap items-center justify-between gap-3">
++      <div><h2 className="text-xl font-semibold">Reports & vendor warnings</h2>
++        <p className="mt-1 text-sm text-muted-foreground">Three different customers’ verified reports within 30 days trigger a warning. Vendors have 48 hours to correct information.</p></div>
++      {vendorId && <Button variant="outline" onClick={onClearVendor}>Show all vendors</Button>}
++    </div>
++    {vendorId && <p className="break-all text-sm">Showing vendor: {vendorId}</p>}
++    {notice && <p role="status" className="rounded-xl bg-green-50 p-3 text-green-800">{notice}</p>}
++    {(reportError || caseError) && <div role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">
++      {reportError} {caseError} <Button variant="outline" onClick={() => setRetry((value) => value + 1)}>Retry</Button></div>}
++    <section aria-labelledby="warnings-title" style={panel} className="p-4 sm:p-6">
++      <h3 id="warnings-title" className="mb-4 text-lg font-semibold">Warnings & correction reviews</h3>
++      {caseLoading ? <p role="status">Loading warnings…</p> : !caseError && cases.length === 0 ? <p>No warning cases.</p> : null}
++      <div className="space-y-4">{sortedCases.map((record) => {
++        const overdue = record.status === 'warning' && (record.dueAt?.toMillis() ?? Infinity) <= clock;
++        const active = record.status === 'warning' || record.status === 'suspended';
++        return <article key={record.id} className="rounded-xl border p-4">
++          <div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-semibold">{record.stallName}</h4>
++            <span className="rounded-full bg-orange-50 px-3 py-1 text-sm text-orange-900">{overdue ? 'Overdue' : record.status}</span></div>
++          <p className="mt-2 text-sm">Issued: {formatModerationTime(record.createdAt)} · Deadline: {formatModerationTime(record.dueAt)}</p>
++          <ul className="my-3 list-disc space-y-2 pl-5">{record.summaries?.map((summary, index) => <li key={index}>
++            <strong>{reasonLabels[summary.reason] || summary.reason}:</strong> {summary.details}
++            <span className="block text-sm text-muted-foreground">Observed: {formatModerationTime(summary.observedAt)}</span></li>)}</ul>
++          {record.vendorResponse && <div className="my-3 rounded-lg bg-slate-50 p-3"><p className="font-medium">Vendor response ({record.responseStatus})</p>
++            <p className="whitespace-pre-wrap break-words">{record.vendorResponse}</p></div>}
++          {record.adminReason && <p className="my-2 whitespace-pre-wrap break-words text-sm">Admin: {record.adminReason}</p>}
++          <Button className="my-2" variant="outline" onClick={() => onOpenVendor(record.vendorId)}>View current listing</Button>
++          {active && <div className="mt-3 flex flex-wrap gap-2">
++            <Button onClick={() => begin(record, 'resolve')}>Approve correction / resolve</Button>
++            {record.responseStatus === 'pending' && <Button variant="outline" onClick={() => begin(record, 'rejectCorrection')}>Request further correction</Button>}
++            {overdue && <Button variant="destructive" onClick={() => begin(record, 'suspend')}>Suspend listing</Button>}
++          </div>}
++        </article>;
++      })}</div>
++    </section>
++    <section aria-labelledby="reports-title" style={panel} className="p-4 sm:p-6">
++      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 id="reports-title" className="text-lg font-semibold">Customer reports</h3>
++        <label className="flex items-center gap-2 text-sm">Status <select value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-md border bg-background p-2">
++          {['pending', 'verified', 'rejected', 'resolved', 'all'].map((value) => <option key={value} value={value}>{value}</option>)}
++        </select></label></div>
++      {loading ? <p role="status">Loading reports…</p> : !reportError && reports.length === 0 ? <p>No reports with this status.</p> : null}
++      <div className="space-y-4">{reports.map((record) => <article key={record.id} className="rounded-xl border p-4">
++        <h4 className="font-semibold">{record.stallName} · {record.status}</h4>
++        <p className="mt-1 break-all text-xs text-muted-foreground">Customer: {record.customerId} · Vendor: {record.vendorId}</p>
++        <p className="mt-2 font-medium">{reasonLabels[record.reason || ''] || record.reason}</p>
++        <p className="whitespace-pre-wrap break-words">{record.details}</p>
++        <p className="mt-2 text-sm">Observed: {formatModerationTime(record.observedAt)} · Submitted: {formatModerationTime(record.createdAt)}</p>
++        <details className="my-3"><summary className="cursor-pointer text-sm font-medium">Listing at submission</summary>
++          <div className="mt-2 rounded-lg bg-slate-50 p-3 text-sm">
++            <p>{record.snapshot?.stallName} · {record.snapshot?.isOpen ? 'Open' : 'Closed'}</p>
++            <p>Hours: {record.snapshot?.openingHours || 'Not set'}</p>
++            <p>Location: {record.snapshot?.latitude}, {record.snapshot?.longitude}</p>
++            <p className="whitespace-pre-wrap break-words">{record.snapshot?.description}</p>
++            {record.snapshot?.menu?.map((item, index) => <p key={index}>{item.name} · RM {item.price.toFixed(2)} · {item.status}</p>)}
++            {record.snapshot?.menuMayBeTruncated && <p>Snapshot contains the first 100 menu items.</p>}
++          </div></details>
++        {record.adminReason && <p className="my-2 text-sm">Admin: {record.adminReason}</p>}
++        <Button className="my-2" variant="outline" onClick={() => onOpenVendor(record.vendorId)}>View current listing</Button>
++        {record.status === 'pending' && <div className="mt-3 flex flex-wrap gap-2">
++          <Button onClick={() => begin(record, 'verify')}>Verify report</Button>
++          <Button variant="outline" onClick={() => begin(record, 'reject')}>Reject report</Button>
++        </div>}
++      </article>)}</div>
++    </section>
++    {(reports.length >= size || cases.length >= size) && <Button variant="outline" disabled={loading || caseLoading} onClick={() => setSize((value) => value + 50)}>Load older records</Button>}
++    <Dialog open={decision !== null} onOpenChange={(open) => { if (!open && !saving) setDecision(null); }}>
++      <DialogContent><DialogHeader><DialogTitle>{decision?.action === 'verify' ? 'Verify this report?' : decision?.action === 'reject' ? 'Reject this report?'
++        : decision?.action === 'suspend' ? 'Suspend this listing?' : decision?.action === 'resolve' ? 'Approve and resolve this case?' : 'Request further correction?'}</DialogTitle>
++        <DialogDescription>{decision?.action === 'suspend' ? 'The listing will be hidden and new bookings blocked. Existing orders remain accessible.'
++          : decision?.action === 'resolve' ? 'Check the current listing against the reported issue first. Approval restores visibility and leaves the stall closed.'
++            : 'Record the evidence checked and the reason for your decision. This decision is saved in the activity log.'}</DialogDescription></DialogHeader>
++        <label htmlFor="moderation-reason" className="text-sm font-medium">Admin reason</label>
++        <Textarea id="moderation-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} rows={4} disabled={saving} />
++        {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
++        <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDecision(null)}>Cancel</Button>
++          <Button disabled={saving || !reason.trim()} onClick={() => void submit()}>{saving ? 'Saving…' : 'Confirm decision'}</Button></DialogFooter>
++      </DialogContent>
++    </Dialog>
++  </div>;
++}
+diff --git a/src/app/components/VendorDetail.tsx b/src/app/components/VendorDetail.tsx
+index 3f6b507..c2723a1 100644
+--- a/src/app/components/VendorDetail.tsx
++++ b/src/app/components/VendorDetail.tsx
+@@ -25,6 +25,7 @@ interface VendorDetailProps {
+   vendor: Vendor;
+   onBack: () => void;
+   onSuspend: () => void;
++  onReports: () => void;
+   onReactivate: () => void;
+ }
+ 
+@@ -66,6 +67,7 @@ export const VendorDetail: React.FC<VendorDetailProps> = ({
+   vendor,
+   onBack,
+   onSuspend,
++  onReports,
+   onReactivate,
+ }) => {
+   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+@@ -81,6 +83,7 @@ export const VendorDetail: React.FC<VendorDetailProps> = ({
+   const vendorPhone = vendor.phoneNumber || '';
+   const vendorCoordinates = getVendorCoordinates(vendor);
+   const vendorStatus = Boolean(vendor.isOpen);
++  const suspended = vendor.listingStatus === 'suspended';
+ 
+   // Fetch menu subcollection in real-time
+   useEffect(() => {
+@@ -197,7 +200,7 @@ export const VendorDetail: React.FC<VendorDetailProps> = ({
+           </div>
+         </div>
+         <button
+-          onClick={vendorStatus ? onSuspend : onReactivate}
++          onClick={suspended ? onReactivate : onSuspend}
+           style={{
+             background: vendorStatus ? '#EF4444' : '#10B981',
+             color: '#fff',
+@@ -212,10 +215,12 @@ export const VendorDetail: React.FC<VendorDetailProps> = ({
+           }}
+         >
+           <Power size={16} />
+-          {vendorStatus ? 'Mark as Closed' : 'Mark as Open'}
++          {suspended ? 'Approve restoration' : 'Suspend listing'}
+         </button>
+       </div>
+ 
++      <button type="button" onClick={onReports} className="mb-4 rounded-lg border px-4 py-2 font-medium">Reports & warning history</button>
++      {suspended && <p role="status" className="mb-4 rounded-xl bg-red-50 p-3 text-red-800">Listing suspended. Customer visibility and new bookings are blocked.</p>}
+       {/* Info Cards Grid */}
+       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+         <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: '1px solid #EDD9C6' }}>
+diff --git a/src/app/components/types.ts b/src/app/components/types.ts
+index 0c6a6ac..a877073 100644
+--- a/src/app/components/types.ts
++++ b/src/app/components/types.ts
+@@ -8,6 +8,7 @@ export interface Vendor {
+   openingHours?: string;
+   hours?: string;
+   isOpen?: boolean;
++  listingStatus?: "active" | "suspended";
+   latitude?: number;
+   longitude?: number;
+   lat?: number;
+diff --git a/src/app/moderationApi.ts b/src/app/moderationApi.ts
+new file mode 100644
+index 0000000..9de5a22
+--- /dev/null
++++ b/src/app/moderationApi.ts
+@@ -0,0 +1,22 @@
++import { getFunctions, httpsCallable } from 'firebase/functions';
++import { auth } from '../firebase';
++
++const functions = getFunctions(auth.app, 'asia-southeast1');
++export async function reviewReport(reportId: string, decision: 'verify' | 'reject', reason: string) {
++  await httpsCallable(functions, 'reviewVendorReport')({reportId, decision, reason});
++}
++export async function decideCase(vendorId: string, caseId: string,
++  action: 'suspend' | 'resolve' | 'rejectCorrection', reason: string) {
++  await httpsCallable(functions, 'decideVendorModeration')({vendorId, caseId, action, reason});
++}
++export function moderationError(error: unknown): string {
++  if (error && typeof error === 'object' && 'code' in error) {
++    const code = String(error.code);
++    if (code.includes('unauthenticated')) return 'Your session has expired. Sign in again.';
++    if (code.includes('permission-denied')) return 'Administrator access is required.';
++    if (code.includes('failed-precondition') || code.includes('invalid-argument') || code.includes('not-found')) {
++      return 'message' in error ? String(error.message) : 'Refresh the records and try again.';
++    }
++  }
++  return 'Could not save this decision. Check your connection and retry.';
++}

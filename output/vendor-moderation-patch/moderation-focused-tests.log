@@ -1,0 +1,25 @@
+00:00 +0: loading C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/moderation_test.dart
+00:00 +0: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/moderation_test.dart: legacy vendors are active and suspension survives profile drafts
+00:00 +1: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/moderation_test.dart: deadlines display Malaysia time independently of the device timezone
+00:00 +2: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/moderation_test.dart: warning response is readable at width 360.0 with large text
+00:00 +3: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: stall controls, preview and each quick action are connected
+00:00 +4: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: stall controls, preview and each quick action are connected
+00:00 +5: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: stall controls, preview and each quick action are connected
+00:01 +6: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: follow notification settings are available only to customers
+00:01 +7: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: follow notification settings are available only to customers
+00:01 +8: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: follow notification settings are available only to customers
+00:01 +9: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: follow notification settings are available only to customers
+00:01 +10: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: overview counts Malaysia dates and uses release wording
+00:01 +11: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: saved pin rows invoke their actions and remain available to guests
+00:01 +12: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: dashboard fits 320.0 wide with enlarged text
+00:01 +13: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/profile_page_test.dart: long account details wrap on small screens with larger text
+00:02 +14: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: dashboard fits 960.0 wide with enlarged text
+00:02 +15: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: responsive dashboard at 320.0 × 900.0
+00:02 +16: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: responsive dashboard at 390.0 × 1100.0
+00:02 +17: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: responsive dashboard at 768.0 × 1024.0
+00:02 +18: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: responsive dashboard at 960.0 × 700.0
+00:02 +19: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: responsive dashboard at 1280.0 × 800.0
+00:02 +20: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: tablet window switches to one column when resized
+00:02 +21: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: loading and failure do not present zero sales as real data
+00:02 +22: C:/Others/SE/Flutter Projects/StallSeeker_Trial/output/vendor-moderation-patch/proposed/app/test/vendor_dashboard_view_test.dart: (tearDownAll)
+00:02 +22: All tests passed!

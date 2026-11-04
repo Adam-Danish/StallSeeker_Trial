@@ -399,10 +399,6 @@ class DiscoveryResultsHeader extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (separateSearch) ...[
-              Center(child: search()),
-              const SizedBox(height: 8),
-            ],
             SizedBox(
                 height: rowHeight,
                 child: Row(children: [
@@ -419,6 +415,10 @@ class DiscoveryResultsHeader extends StatelessWidget {
                   else
                     viewAll,
                 ])),
+            if (separateSearch) ...[
+              const SizedBox(height: 8),
+              Center(child: search()),
+            ],
           ]),
         );
       });

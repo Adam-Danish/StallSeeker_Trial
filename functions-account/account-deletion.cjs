@@ -41,6 +41,7 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
       db.collection('stalls').where('vendorId', '==', uid),
       db.collection('bookings').where('customerId', '==', uid),
       db.collection('bookings').where('vendorId', '==', uid),
+      db.collection('transactionEmailOutbox').where('booking.customerId', '==', uid),
     ];
     for (const query of queries) {
       const snapshot = await query.get();

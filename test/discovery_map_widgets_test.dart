@@ -45,7 +45,7 @@ void main() {
   for (final width in [320.0, 390.0, 1280.0]) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
-          'results label stays above cards when search appears at $width / $scale',
+          'search stays beside or directly above cards at $width / $scale',
           (tester) async {
         tester.view.physicalSize = Size(width, 844);
         tester.view.devicePixelRatio = 1;
@@ -73,15 +73,18 @@ void main() {
         expect(tester.getCenter(search).dx, closeTo(width / 2, .01));
         final header = tester.getRect(find.byType(DiscoveryResultsHeader));
         if (width < 600 || scale > 1) {
-          expect(tester.getRect(search).bottom,
-              lessThan(tester.getRect(count).top));
+          expect(tester.getRect(count).bottom,
+              lessThan(tester.getRect(search).top));
+          expect(
+              header.bottom - tester.getRect(search).bottom, closeTo(8, .01));
         } else {
           expect(tester.getCenter(search).dy,
               closeTo(tester.getCenter(count).dy, .01));
+          expect(
+              header.bottom - tester.getRect(search).bottom, closeTo(8, .01));
         }
         expect(tester.getCenter(count).dy,
             closeTo(tester.getCenter(action).dy, .01));
-        expect(header.bottom - tester.getRect(action).bottom, closeTo(8, .01));
         final label = tester.getRect(find.text('View all'));
         expect(tester.getRect(action).contains(label.topLeft), isTrue);
         expect(tester.getRect(action).contains(label.bottomRight), isTrue);

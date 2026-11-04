@@ -1,0 +1,46 @@
+{
+  "app": {
+    "files": [
+      "firestore.rules",
+      "firestore.indexes.json",
+      "functions/index.js",
+      "functions/booking-core.cjs",
+      "functions/dish-notifications.cjs",
+      "functions/moderation-core.cjs",
+      "functions/moderation-service.cjs",
+      "functions/moderation.cjs",
+      "functions/moderation-core.test.cjs",
+      "functions-account/account-deletion.cjs",
+      "firebase-tests/rules.test.cjs",
+      "firebase-tests/moderation.test.cjs",
+      "lib/core/models/vendor_model.dart",
+      "lib/core/services/vendor_service.dart",
+      "lib/core/services/moderation_service.dart",
+      "lib/core/services/notification_service.dart",
+      "lib/features/shared/moderation_screen.dart",
+      "lib/features/shared/profile_page.dart",
+      "lib/features/customer/profile/customer_profile_screen.dart",
+      "lib/features/customer/vendor_details/vendor_details_screen.dart",
+      "lib/features/customer/following/customer_following_screen.dart",
+      "lib/features/customer/following/followed_dishes_list.dart",
+      "lib/features/vendor/dashboard/vendor_dashboard_screen.dart",
+      "lib/features/vendor/dashboard/vendor_dashboard_view.dart",
+      "web/firebase-messaging-sw.js",
+      "test/moderation_test.dart"
+    ],
+    "bytes": 88324,
+    "stat": " firebase-tests/moderation.test.cjs                 | 108 +++++\n firebase-tests/rules.test.cjs                      |  51 +++\n firestore.indexes.json                             | 110 +++++\n firestore.rules                                    |  38 +-\n functions-account/account-deletion.cjs             |   6 +\n functions/booking-core.cjs                         |   1 +\n functions/dish-notifications.cjs                   |   2 +-\n functions/index.js                                 |   1 +\n functions/moderation-core.cjs                      |  46 ++\n functions/moderation-core.test.cjs                 |  30 ++\n functions/moderation-service.cjs                   | 184 ++++++++\n functions/moderation.cjs                           |  64 +++\n lib/core/models/vendor_model.dart                  |   8 +-\n lib/core/services/moderation_service.dart          |  98 +++++\n lib/core/services/notification_service.dart        |  89 +++-\n lib/core/services/vendor_service.dart              |   2 +\n .../following/customer_following_screen.dart       |  13 +-\n .../customer/following/followed_dishes_list.dart   |   1 +\n .../customer/profile/customer_profile_screen.dart  |   3 +\n .../vendor_details/vendor_details_screen.dart      |  23 +-\n lib/features/shared/moderation_screen.dart         | 482 +++++++++++++++++++++\n lib/features/shared/profile_page.dart              |   5 +\n .../vendor/dashboard/vendor_dashboard_screen.dart  |   9 +\n .../vendor/dashboard/vendor_dashboard_view.dart    |   3 +\n test/moderation_test.dart                          |  87 ++++\n web/firebase-messaging-sw.js                       |   2 +-\n 26 files changed, 1436 insertions(+), 30 deletions(-)\n"
+  },
+  "admin": {
+    "files": [
+      "src/app/App.tsx",
+      "src/app/moderationApi.ts",
+      "src/app/components/ReportsPage.tsx",
+      "src/app/components/ActionConfirmation.tsx",
+      "src/app/components/VendorDetail.tsx",
+      "src/app/components/types.ts"
+    ],
+    "bytes": 27062,
+    "stat": " src/app/App.tsx                           |  32 +++++--\n src/app/components/ActionConfirmation.tsx |  27 +++++-\n src/app/components/ReportsPage.tsx        | 154 ++++++++++++++++++++++++++++++\n src/app/components/VendorDetail.tsx       |   9 +-\n src/app/components/types.ts               |   1 +\n src/app/moderationApi.ts                  |  22 +++++\n 6 files changed, 233 insertions(+), 12 deletions(-)\n"
+  }
+}

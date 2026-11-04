@@ -76,6 +76,7 @@ class DemoOrder {
   final int paymentRefundedCents;
 
   bool get hasTestPayment => paymentMode == 'test';
+  bool get hasReceipt => hasTestPayment && paymentPaidAt != null;
   bool get awaitingPayment =>
       hasTestPayment &&
       status == 'confirmed' &&

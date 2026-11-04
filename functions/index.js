@@ -34,6 +34,11 @@ exports.stripeWebhook = payments.stripeWebhook;
 exports.stripePaymentReturn = payments.stripePaymentReturn;
 exports.closeCancelledStripePayment = payments.closeCancelledStripePayment;
 exports.expireStripePayments = payments.expireStripePayments;
+exports.getBookingReceipt = require('./booking-receipt-endpoint.cjs').getBookingReceipt;
+const transactionEmails = require('./transaction-emails.cjs');
+exports.queueTransactionEmail = transactionEmails.queueTransactionEmail;
+exports.sendTransactionEmail = transactionEmails.sendTransactionEmail;
+exports.retryTransactionEmails = transactionEmails.retryTransactionEmails;
 
 exports.cleanupDeletedMenuItemImage = onDocumentDeleted(
     {

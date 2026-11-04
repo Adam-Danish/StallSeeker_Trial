@@ -29,7 +29,8 @@ class BookingPaymentCard extends StatelessWidget {
       this.busy = false,
       this.busyLabel = 'Processing…',
       this.onPay,
-      this.onRefresh});
+      this.onRefresh,
+      this.onReceipt});
 
   final DemoOrder booking;
   final bool isVendor;
@@ -37,6 +38,7 @@ class BookingPaymentCard extends StatelessWidget {
   final String busyLabel;
   final VoidCallback? onPay;
   final VoidCallback? onRefresh;
+  final VoidCallback? onReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +110,17 @@ class BookingPaymentCard extends StatelessWidget {
               if (booking.paymentRefundedCents > 0)
                 Text(
                     'Refunded: RM ${(booking.paymentRefundedCents / 100).toStringAsFixed(2)}'),
+              if (!isVendor && booking.hasReceipt && onReceipt != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onReceipt,
+                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                    label: const Text('View receipt'),
+                  ),
+                ),
+              ],
               if (!isVendor && booking.canPay) ...[
                 const SizedBox(height: 16),
                 SizedBox(

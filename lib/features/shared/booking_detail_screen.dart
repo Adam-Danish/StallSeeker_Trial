@@ -11,6 +11,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
 import 'booking_payment_card.dart';
+import 'booking_receipt_screen.dart';
 
 enum _PaymentTransition { openingCheckout, checkingPayment }
 
@@ -69,6 +70,9 @@ class BookingSummaryCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(bookingPaymentLabel(booking),
                   style: Theme.of(context).textTheme.bodySmall),
+              if (!isVendor && booking.hasReceipt)
+                Text('Receipt available in booking details',
+                    style: Theme.of(context).textTheme.bodySmall),
             ],
             if (!compact) ...[
               const SizedBox(height: 4),
@@ -569,7 +573,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                         },
                         onPay: () => _runPaymentTransition(
                             _pay, _PaymentTransition.openingCheckout),
-                        onRefresh: () => _checkPayment()),
+                        onRefresh: () => _checkPayment(),
+                        onReceipt: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    BookingReceiptScreen(booking: booking)))),
                   ],
                   if (booking.pickupLatitude != null &&
                       booking.pickupLongitude != null)

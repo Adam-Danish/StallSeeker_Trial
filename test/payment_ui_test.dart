@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:stallseeker/core/models/demo_order.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
 import 'package:stallseeker/features/shared/booking_payment_card.dart';
+import 'package:stallseeker/features/shared/booking_receipt_screen.dart';
 import 'package:stallseeker/features/vendor/dashboard/vendor_demo_sales.dart';
 
 DemoOrder order(
@@ -116,6 +118,17 @@ void main() {
         isFalse);
   });
 
+  test('receipts require a recorded test payment and survive refunds', () {
+    final paidAt = DateTime.utc(2026, 10, 20);
+    expect(order(payment: 'pending').hasReceipt, isFalse);
+    expect(order(payment: 'paid').hasReceipt, isFalse);
+    expect(order(payment: 'paid', paidAt: paidAt).hasReceipt, isTrue);
+    expect(
+        order(mode: null, payment: 'paid', paidAt: paidAt).hasReceipt, isFalse);
+    expect(order(payment: 'refunded', paidAt: paidAt, refund: 1250).hasReceipt,
+        isTrue);
+  });
+
   test(
       'demo sales exclude other stalls, old bookings, unpaid and refunded orders',
       () {
@@ -182,6 +195,92 @@ void main() {
         onPay: () => fail('Must not start another payment'))));
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
         isNull);
+  });
+
+  testWidgets('customer can open a paid booking receipt with itemized amounts',
+      (tester) async {
+    final booking = DemoOrder(
+      id: 'booking-123',
+      customerId: 'buyer',
+      vendorId: 'seller',
+      customerName: 'Adam',
+      stallName: 'Nasi Lemak Kak Ani',
+      status: 'collected',
+      items: const [
+        DemoOrderItem(
+            itemId: 'dish',
+            name: 'Nasi Lemak',
+            unitPriceCents: 625,
+            quantity: 2),
+      ],
+      totalCents: 1250,
+      createdAt: DateTime.utc(2026, 10, 20),
+      paymentMode: 'test',
+      paymentStatus: 'refunded',
+      paymentReference: 'cs_test_123',
+      paymentPaidAt: DateTime.utc(2026, 10, 20),
+      paymentRefundedCents: 1250,
+    );
+    var opened = 0;
+    await tester.pumpWidget(app(BookingPaymentCard(
+      booking: booking,
+      isVendor: false,
+      onReceipt: () => opened++,
+    )));
+    expect(find.text('View receipt'), findsOneWidget);
+    await tester.tap(find.text('View receipt'));
+    expect(opened, 1);
+    await tester.pumpWidget(app(BookingPaymentCard(
+      booking: booking,
+      isVendor: true,
+      onReceipt: () => fail('Vendor should not see the customer receipt'),
+    )));
+    expect(find.text('View receipt'), findsNothing);
+    await tester.pumpWidget(app(BookingPaymentCard(
+      booking: order(payment: 'pending'),
+      isVendor: false,
+      onReceipt: () => fail('Unpaid booking should not have a receipt'),
+    )));
+    expect(find.text('View receipt'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: BookingReceiptScreen(booking: booking)));
+    expect(find.text('StallSeeker payment receipt'), findsOneWidget);
+    expect(find.text('Nasi Lemak Kak Ani'), findsOneWidget);
+    expect(find.text('2 × Nasi Lemak'), findsOneWidget);
+    expect(find.text('RM 6.25 each'), findsOneWidget);
+    expect(find.text('Amount paid'), findsOneWidget);
+    expect(find.text('Refunded'), findsOneWidget);
+    expect(find.text('Remaining paid'), findsOneWidget);
+    expect(find.text('cs_test_123'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('PDF export disables repeated taps and shows retryable failure',
+      (tester) async {
+    final export = Completer<void>();
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: BookingReceiptScreen(
+        booking: order(payment: 'paid', paidAt: DateTime.utc(2026, 11, 4)),
+        onExportPdf: () {
+          attempts++;
+          return export.future;
+        },
+      ),
+    ));
+    await tester.tap(find.text('Save or share PDF'));
+    await tester.pump();
+    expect(find.text('Preparing PDF…'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull);
+    expect(attempts, 1);
+    export.completeError(StateError('Offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not save the PDF receipt. Please try again.'),
+        findsOneWidget);
+    expect(find.text('Save or share PDF'), findsOneWidget);
   });
 
   testWidgets('sales card uses release wording and fits narrow screens',
