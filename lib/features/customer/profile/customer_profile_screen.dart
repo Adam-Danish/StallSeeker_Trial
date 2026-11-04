@@ -1,4 +1,5 @@
 import '../../shared/profile_page.dart';
+import '../../shared/moderation_screen.dart';
 import '../../shared/demo_orders_screen.dart';
 import '../../shared/live_booking_section.dart';
 import '../../shared/edit_profile_screen.dart';
@@ -291,6 +292,8 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           context,
           MaterialPageRoute(
               builder: (_) => const DemoOrdersScreen(isVendor: false))),
+      onReports: () => Navigator.push(context,
+          MaterialPageRoute<void>(builder: (_) => const ModerationScreen())),
       bookingSection: guest ? null : const LiveBookingSection(isVendor: false),
       onPassword: _changePassword,
       onFaq: () => Navigator.push(context,

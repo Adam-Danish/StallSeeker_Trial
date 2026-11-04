@@ -1,0 +1,507 @@
+{
+  "originalIndexesPreserved": 45,
+  "reportingIndexes": 7,
+  "temporaryDuplicateIndexes": [
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgPjChIAJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLjy8IAJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgNirtJAJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgNjaxJEJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLiIjZIJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgPigw5IJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgOi36pgJ",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgPjChIAK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgJiHgokK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgJjFvYoK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLiI64sK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgNjaxJEK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLiIjZIK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgPigw5IK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgNi4-ZIK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgJiHlpgK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgOi36pgK",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isOpen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLjy8IAL",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nameSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgLiT6IEL",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/adminDirectory/indexes/CICAgPig2YML",
+      "fields": [
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dateMissing",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dateSort",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "note": "Only duplicates created during this deployment are eligible for removal. Pre-existing index IDs and all reporting indexes are excluded."
+}

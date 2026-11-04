@@ -1,0 +1,3 @@
+deployment-backup/
+deploy-functions/node_modules/
+deployment-*-tests.log

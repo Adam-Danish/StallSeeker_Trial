@@ -1,0 +1,26 @@
+{
+  "functions": [
+    {
+      "codebase": "default",
+      "source": "C:\\Others\\SE\\Flutter Projects\\StallSeeker_Trial\\output\\vendor-moderation-patch\\deploy-functions",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.test.cjs",
+        "firebase-debug*"
+      ]
+    },
+    {
+      "codebase": "account-deletion",
+      "source": "C:\\Others\\SE\\Flutter Projects\\StallSeeker_Trial\\functions-account",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.test.cjs",
+        "firebase-debug*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "checkedAt": "2026-11-04T12:00:36.103Z",
+  "functions": [
+    {
+      "name": "submitVendorReport",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:46:33.284431305Z",
+      "entryPoint": "submitVendorReport",
+      "uri": "https://submitvendorreport-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "reviewVendorReport",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:57:53.386966052Z",
+      "entryPoint": "reviewVendorReport",
+      "uri": "https://reviewvendorreport-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "submitVendorCorrection",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:46:43.470682690Z",
+      "entryPoint": "submitVendorCorrection",
+      "uri": "https://submitvendorcorrection-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "decideVendorModeration",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:57:53.295425981Z",
+      "entryPoint": "decideVendorModeration",
+      "uri": "https://decidevendormoderation-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "finishResolvedVendorReports",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:47:11.250394852Z",
+      "entryPoint": "finishResolvedVendorReports",
+      "uri": "https://finishresolvedvendorreports-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "notifyVendorModeration",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:47:07.778869732Z",
+      "entryPoint": "notifyVendorModeration",
+      "uri": "https://notifyvendormoderation-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "notifyFollowersOnDishAvailable",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:46:48.883846466Z",
+      "entryPoint": "notifyFollowersOnDishAvailable",
+      "uri": "https://notifyfollowersondishavailable-rw2qcmklyq-as.a.run.app"
+    },
+    {
+      "name": "createBooking",
+      "region": "us-central1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:46:27.509534901Z",
+      "entryPoint": "createBooking",
+      "uri": "https://createbooking-rw2qcmklyq-uc.a.run.app"
+    },
+    {
+      "name": "cleanupDeletedAccount",
+      "region": "asia-southeast1",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-04T11:46:31.617426683Z",
+      "entryPoint": "cleanupDeletedAccount",
+      "uri": "https://cleanupdeletedaccount-rw2qcmklyq-as.a.run.app"
+    }
+  ],
+  "indexes": {
+    "total": 52,
+    "originalPreserved": true,
+    "originalCount": 45,
+    "reporting": [
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLiT6IEJ",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgPig2YMJ",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLjy8IAK",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLiT6IEK",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLjRyYIK",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/moderationCases/indexes/CICAgPig2YMK",
+        "state": "READY"
+      },
+      {
+        "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgNirtJAK",
+        "state": "READY"
+      }
+    ]
+  },
+  "rulesMatchLocal": true,
+  "unauthenticatedRequests": [
+    {
+      "name": "submitVendorReport",
+      "status": 401,
+      "error": "UNAUTHENTICATED",
+      "cors": "https://stallseeker.my"
+    },
+    {
+      "name": "reviewVendorReport",
+      "status": 401,
+      "error": "UNAUTHENTICATED",
+      "cors": "https://stallseeker.my"
+    },
+    {
+      "name": "submitVendorCorrection",
+      "status": 401,
+      "error": "UNAUTHENTICATED",
+      "cors": "https://stallseeker.my"
+    },
+    {
+      "name": "decideVendorModeration",
+      "status": 401,
+      "error": "UNAUTHENTICATED",
+      "cors": "https://stallseeker.my"
+    }
+  ],
+  "websites": [
+    {
+      "site": "stallseeker-c2ffe",
+      "url": "https://stallseeker-c2ffe.web.app",
+      "version": "projects/stallseeker-c2ffe/sites/stallseeker-c2ffe/versions/1ce0f5ad38263d01",
+      "releaseTime": "2026-11-04T11:48:58.538Z"
+    },
+    {
+      "site": "stallseeker-admin",
+      "url": "https://stallseeker-admin.web.app",
+      "version": "projects/stallseeker-c2ffe/sites/stallseeker-admin/versions/88b50aa6155330c5",
+      "releaseTime": "2026-11-04T11:48:58.624Z"
+    }
+  ]
+}

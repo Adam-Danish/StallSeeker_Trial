@@ -42,6 +42,7 @@ import '../../../core/services/vendor_service.dart';
 import '../following/customer_following_screen.dart';
 import '../profile/customer_profile_screen.dart';
 import '../../shared/profile_page.dart';
+import '../../shared/moderation_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/saved_locations_sheet.dart';
@@ -2269,6 +2270,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               ? () => _previewSelfCollect(vendor)
               : null,
           onDetails: () => _openVendorDetails(vendor),
+          onReport: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ReportStallScreen(vendor: vendor))),
           onClose: _closeStallPreview,
           onExtentChanged: (extent) {
             if ((_previewExtent.value - extent).abs() > .0001) {

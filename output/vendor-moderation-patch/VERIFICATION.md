@@ -1,5 +1,7 @@
 # Verification — 4 November 2026
 
+This file records the original isolated patch checks. The feature has since been applied and deployed; see `DEPLOYMENT.md` for the current release checks and compatibility fix.
+
 All implementation and build checks used isolated working copies. The original app/admin source files were not patched and no production deployment was made.
 
 ## Passed

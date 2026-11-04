@@ -4,6 +4,7 @@ const ACTIVE = new Set(['requested', 'confirmed', 'preparing', 'ready']);
 const TERMINAL = new Set(['collected', 'rejected', 'cancelled', 'expired']);
 
 function vendorAvailable(vendor, now) {
+  if (vendor?.listingStatus === 'suspended') return false;
   if (vendor?.selfCollectEnabled !== true || vendor.isOpen !== true) return false;
   const lat = vendor.latitude;
   const lng = vendor.longitude;

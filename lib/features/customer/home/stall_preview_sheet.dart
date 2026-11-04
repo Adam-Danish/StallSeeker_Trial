@@ -17,6 +17,7 @@ class StallPreviewSheet extends StatefulWidget {
     required this.onViewMenu,
     required this.onSelfCollect,
     required this.onDetails,
+    this.onReport,
     required this.onClose,
     required this.onExtentChanged,
     this.horizontalInset = 0,
@@ -30,6 +31,7 @@ class StallPreviewSheet extends StatefulWidget {
   final bool following;
   final VoidCallback? onFollow, onSelfCollect;
   final VoidCallback onDirections, onViewMenu, onDetails, onClose;
+  final VoidCallback? onReport;
   final ValueChanged<double> onExtentChanged;
   final double horizontalInset, bottomInset;
 
@@ -248,6 +250,12 @@ class _StallPreviewSheetState extends State<StallPreviewSheet> {
                                   icon: const Icon(Icons.restaurant_menu,
                                       size: 18),
                                   label: const Text('View menu')),
+                              if (widget.onReport != null)
+                                OutlinedButton.icon(
+                                    onPressed: widget.onReport,
+                                    icon: const Icon(Icons.flag_outlined,
+                                        size: 18),
+                                    label: const Text('Report this stall')),
                               if (widget.vendor.selfCollectEnabled)
                                 OutlinedButton.icon(
                                     onPressed: widget.onSelfCollect,

@@ -10,6 +10,7 @@ import '../models/vendor_model.dart';
 import 'vendor_service.dart';
 import '../../features/customer/vendor_details/vendor_details_screen.dart';
 import '../../features/shared/booking_detail_screen.dart';
+import '../../features/shared/moderation_screen.dart';
 
 // Runs in its own isolate when a push arrives while the app is backgrounded
 // or fully closed. Android shows the system notification on its own from
@@ -57,6 +58,8 @@ class NotificationService {
   String? _pendingVendorId;
   String? _pendingItemId;
   String? _pendingBookingId;
+  String? _pendingCaseId;
+  String? _pendingCaseRecipient;
   String? _pendingBookingRecipient;
   bool _pendingBookingVendor = false;
   bool _navigationReady = false;
@@ -73,6 +76,13 @@ class NotificationService {
 
   void setNavigationReady(bool ready) {
     _navigationReady = ready;
+    if (ready && _pendingCaseId != null) {
+      final id = _pendingCaseId!;
+      final recipient = _pendingCaseRecipient;
+      _pendingCaseId = null;
+      _pendingCaseRecipient = null;
+      unawaited(_openModeration(id, recipientId: recipient));
+    }
     if (ready && _pendingBookingId != null) {
       final id = _pendingBookingId!;
       final recipient = _pendingBookingRecipient;
@@ -103,7 +113,10 @@ class NotificationService {
 
     if (kIsWeb) {
       final data = Uri.base.queryParameters;
-      if (data['bookingId'] != null) {
+      if (data['caseId'] != null) {
+        _pendingCaseId = data['caseId'];
+        _pendingCaseRecipient = data['recipientId'];
+      } else if (data['bookingId'] != null) {
         _pendingBookingId = data['bookingId'];
         _pendingBookingRecipient = data['recipientId'];
         _pendingBookingVendor = data['role'] == 'vendor';
@@ -154,7 +167,11 @@ class NotificationService {
               action: SnackBarAction(
                   label: 'View',
                   onPressed: () {
-                    if (bookingId is String) {
+                    if (message.data['caseId'] is String) {
+                      unawaited(_openModeration(
+                          message.data['caseId'] as String,
+                          recipientId: message.data['recipientId'] as String?));
+                    } else if (bookingId is String) {
                       unawaited(_openBooking(bookingId,
                           recipientId: message.data['recipientId'] as String?,
                           isVendor: message.data['role'] == 'vendor'));
@@ -180,25 +197,32 @@ class NotificationService {
               priority: Priority.high,
             ),
           ),
-          payload: bookingId is String
-              ? jsonEncode({
-                  'bookingId': bookingId,
-                  'recipientId': message.data['recipientId'],
-                  'role': message.data['role'],
-                })
-              : vendorId == null
-                  ? null
-                  : jsonEncode({
-                      'vendorId': vendorId,
-                      if (message.data['itemId'] is String)
-                        'itemId': message.data['itemId'],
-                    }),
+          payload: message.data['caseId'] is String
+              ? jsonEncode(message.data)
+              : bookingId is String
+                  ? jsonEncode({
+                      'bookingId': bookingId,
+                      'recipientId': message.data['recipientId'],
+                      'role': message.data['role'],
+                    })
+                  : vendorId == null
+                      ? null
+                      : jsonEncode({
+                          'vendorId': vendorId,
+                          if (message.data['itemId'] is String)
+                            'itemId': message.data['itemId'],
+                        }),
         );
       }
     });
 
     // App was backgrounded and the user tapped the notification.
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      if (message.data['caseId'] is String) {
+        unawaited(_openModeration(message.data['caseId'] as String,
+            recipientId: message.data['recipientId'] as String?));
+        return;
+      }
       final bookingId = message.data['bookingId'];
       if (bookingId is String) {
         unawaited(_openBooking(bookingId,
@@ -217,6 +241,11 @@ class NotificationService {
 
     // App was fully closed and got launched by tapping the notification.
     final initialMessage = await _messaging.getInitialMessage();
+    if (initialMessage?.data['caseId'] is String) {
+      unawaited(_openModeration(initialMessage!.data['caseId'] as String,
+          recipientId: initialMessage.data['recipientId'] as String?));
+      return;
+    }
     final initialBookingId = initialMessage?.data['bookingId'];
     if (initialBookingId is String) {
       unawaited(_openBooking(initialBookingId,
@@ -457,6 +486,11 @@ class NotificationService {
   void _openPayload(String payload) {
     try {
       final data = jsonDecode(payload);
+      if (data is Map && data['caseId'] is String) {
+        unawaited(_openModeration(data['caseId'] as String,
+            recipientId: data['recipientId'] as String?));
+        return;
+      }
       if (data is Map && data['bookingId'] is String) {
         unawaited(_openBooking(data['bookingId'] as String,
             recipientId: data['recipientId'] as String?,
@@ -473,6 +507,31 @@ class NotificationService {
       // Existing notifications used the plain vendor ID as their payload.
     }
     unawaited(_openVendorDetails(payload));
+  }
+
+  Future<void> _openModeration(String caseId, {String? recipientId}) async {
+    final nav = _navigatorKey?.currentState;
+    if (!_navigationReady || nav == null) {
+      _pendingCaseId = caseId;
+      _pendingCaseRecipient = recipientId;
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || (recipientId != null && uid != recipientId)) return;
+    try {
+      final profile =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (profile.data()?['role'] != 'vendor' ||
+          !_navigationReady ||
+          FirebaseAuth.instance.currentUser?.uid != uid) {
+        return;
+      }
+      nav.push(MaterialPageRoute<void>(
+          builder: (_) =>
+              ModerationScreen(isVendor: true, initialCaseId: caseId)));
+    } catch (_) {
+      // The dashboard notice remains available when an offline link cannot open.
+    }
   }
 
   Future<void> _openVendorDetails(String vendorId, {String? itemId}) async {

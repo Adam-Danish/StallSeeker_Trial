@@ -113,10 +113,10 @@ index 0000000..e554b69
 +  await assert.rejects(service.review('admin', {reportId: id, decision: 'verify', reason: 'Evidence checked.'}), {code: 'not-found'});
 +});
 diff --git a/firebase-tests/rules.test.cjs b/firebase-tests/rules.test.cjs
-index d6f820c..e3a7276 100644
+index d6f820c..1f3930d 100644
 --- a/firebase-tests/rules.test.cjs
 +++ b/firebase-tests/rules.test.cjs
-@@ -72,6 +72,57 @@ beforeEach(async () => {
+@@ -72,6 +72,65 @@ beforeEach(async () => {
  
  after(async () => { if (env) await env.cleanup(); });
  
@@ -140,6 +140,14 @@ index d6f820c..e3a7276 100644
 +  await assertSucceeds(getDocs(query(collection(vendor, 'moderationCases'), where('vendorId', '==', 'vendor-a'))));
 +  await assertSucceeds(getDocs(collection(admin, 'vendorReports')));
 +  await assertSucceeds(getDocs(collection(admin, 'moderationCases')));
++  const existingAdmin = client('admin-a', false).firestore();
++  await assertSucceeds(getDocs(collection(existingAdmin, 'vendorReports')));
++  await assertSucceeds(getDocs(collection(existingAdmin, 'moderationCases')));
++  await assertSucceeds(getDoc(doc(existingAdmin, 'vendorModeration/vendor-a')));
++  await assertFails(getDoc(doc(client('customer-a', false).firestore(), 'vendorReports/report-a')));
++  await assertFails(getDoc(doc(client('vendor-a', false).firestore(), 'moderationCases/case-a')));
++  await assertFails(getDocs(collection(client('customer-a', false).firestore(), 'vendorReports')));
++  await assertFails(updateDoc(doc(existingAdmin, 'moderationCases/case-a'), {status: 'resolved'}));
 +  for (const clientDb of [customer, vendor, admin]) {
 +    await assertFails(updateDoc(doc(clientDb, 'vendorReports/report-a'), {status: 'verified'}));
 +    await assertFails(updateDoc(doc(clientDb, 'moderationCases/case-a'), {status: 'resolved'}));
@@ -175,12 +183,1157 @@ index d6f820c..e3a7276 100644
    await env.withSecurityRulesDisabled(async (context) => {
      const db = context.firestore();
 diff --git a/firestore.indexes.json b/firestore.indexes.json
-index 92bd566..46b93ac 100644
+index 92bd566..1e8a793 100644
 --- a/firestore.indexes.json
 +++ b/firestore.indexes.json
-@@ -1,5 +1,115 @@
+@@ -1,44 +1,1247 @@
  {
    "indexes": [
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
+     {
+       "collectionGroup": "bookings",
+       "queryScope": "COLLECTION",
+       "fields": [
+-        {"fieldPath": "status", "order": "ASCENDING"},
+-        {"fieldPath": "paymentStatus", "order": "ASCENDING"},
+-        {"fieldPath": "paymentExpiresAt", "order": "ASCENDING"}
++        {
++          "fieldPath": "vendorId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "createdAt",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "DESCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
+       ]
+     },
+     {
+       "collectionGroup": "bookings",
+       "queryScope": "COLLECTION",
+       "fields": [
+-        {"fieldPath": "customerId", "order": "ASCENDING"},
+-        {"fieldPath": "createdAt", "order": "DESCENDING"}
++        {
++          "fieldPath": "status",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "paymentStatus",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "paymentExpiresAt",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
+       ]
+     },
+     {
+       "collectionGroup": "bookings",
+       "queryScope": "COLLECTION",
+       "fields": [
+-        {"fieldPath": "vendorId", "order": "ASCENDING"},
+-        {"fieldPath": "createdAt", "order": "DESCENDING"}
++        {
++          "fieldPath": "status",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "expiresAt",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
+       ]
+     },
+     {
+       "collectionGroup": "bookings",
+       "queryScope": "COLLECTION",
+       "fields": [
+-        {"fieldPath": "status", "order": "ASCENDING"},
+-        {"fieldPath": "expiresAt", "order": "ASCENDING"}
++        {
++          "fieldPath": "customerId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "createdAt",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "DESCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
+       ]
+     },
+     {
+       "collectionGroup": "dishFollows",
+       "queryScope": "COLLECTION_GROUP",
+       "fields": [
+-        {"fieldPath": "vendorId", "order": "ASCENDING"},
+-        {"fieldPath": "itemId", "order": "ASCENDING"}
++        {
++          "fieldPath": "vendorId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "itemId",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "dateMissing",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "dateSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "role",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "searchTokens",
++          "arrayConfig": "CONTAINS"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "DESCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "queryScope": "COLLECTION",
++      "fields": [
++        {
++          "fieldPath": "kind",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "category",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "isOpen",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "nameSort",
++          "order": "ASCENDING"
++        },
++        {
++          "fieldPath": "__name__",
++          "order": "ASCENDING"
++        }
++      ]
++    },
 +    {
 +      "collectionGroup": "vendorReports",
 +      "queryScope": "COLLECTION",
@@ -289,13 +1442,57 @@ index 92bd566..46b93ac 100644
 +          "fieldPath": "status",
 +          "order": "ASCENDING"
 +        }
-+      ]
-+    },
+       ]
+     }
+   ],
+@@ -47,17 +1250,41 @@
+       "collectionGroup": "dishFollows",
+       "fieldPath": "vendorId",
+       "indexes": [
+-        {"order": "ASCENDING", "queryScope": "COLLECTION"},
+-        {"order": "DESCENDING", "queryScope": "COLLECTION"},
+-        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"}
++        {
++          "order": "ASCENDING",
++          "queryScope": "COLLECTION"
++        },
++        {
++          "order": "DESCENDING",
++          "queryScope": "COLLECTION"
++        },
++        {
++          "order": "ASCENDING",
++          "queryScope": "COLLECTION_GROUP"
++        }
+       ]
+     },
      {
-       "collectionGroup": "bookings",
-       "queryScope": "COLLECTION",
+       "collectionGroup": "entries",
+       "fieldPath": "customerId",
+       "indexes": [
+-        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"}
++        {
++          "order": "ASCENDING",
++          "queryScope": "COLLECTION_GROUP"
++        }
+       ]
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "fieldPath": "record",
++      "ttl": false,
++      "indexes": []
++    },
++    {
++      "collectionGroup": "adminDirectory",
++      "fieldPath": "searchTexts",
++      "ttl": false,
++      "indexes": []
+     }
+   ]
+ }
 diff --git a/firestore.rules b/firestore.rules
-index a243550..01ebf89 100644
+index a243550..1f2c477 100644
 --- a/firestore.rules
 +++ b/firestore.rules
 @@ -162,11 +162,45 @@ service cloud.firestore {
@@ -305,22 +1502,22 @@ index a243550..01ebf89 100644
 +    // Moderation: reports are private, cases contain only vendor-safe summaries.
 +    // Client writes are denied; authenticated callable functions validate them.
 +    match /vendorReports/{reportId} {
-+      allow read: if verifiedAccount() && (directoryAdmin()
-+          || resource.data.customerId == request.auth.uid);
++      allow read: if signedIn() && (directoryAdmin()
++          || (verifiedAccount() && resource.data.customerId == request.auth.uid));
 +      allow write: if false;
 +    }
 +    match /moderationCases/{caseId} {
-+      allow read: if verifiedAccount() && (directoryAdmin()
-+          || resource.data.vendorId == request.auth.uid);
++      allow read: if signedIn() && (directoryAdmin()
++          || (verifiedAccount() && resource.data.vendorId == request.auth.uid));
 +      allow write: if false;
 +      match /responses/{responseId} {
-+        allow read: if verifiedAccount() && (directoryAdmin()
-+            || get(/databases/$(database)/documents/moderationCases/$(caseId)).data.vendorId == request.auth.uid);
++        allow read: if signedIn() && (directoryAdmin()
++            || (verifiedAccount() && get(/databases/$(database)/documents/moderationCases/$(caseId)).data.vendorId == request.auth.uid));
 +        allow write: if false;
 +      }
 +    }
 +    match /vendorModeration/{vendorId} {
-+      allow read: if verifiedAccount() && (directoryAdmin() || request.auth.uid == vendorId);
++      allow read: if signedIn() && (directoryAdmin() || (verifiedAccount() && request.auth.uid == vendorId));
 +      allow write: if false;
 +    }
 +    match /moderationRateLimits/{key} { allow read, write: if false; }
@@ -347,7 +1544,7 @@ index a243550..01ebf89 100644
            && request.resource.data.get('selfCollectEnabled', false) is bool;
        allow delete: if false;
 diff --git a/functions-account/account-deletion.cjs b/functions-account/account-deletion.cjs
-index 6aa1f70..c255b9e 100644
+index 5de42d8..41bf17a 100644
 --- a/functions-account/account-deletion.cjs
 +++ b/functions-account/account-deletion.cjs
 @@ -30,6 +30,7 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
@@ -358,7 +1555,7 @@ index 6aa1f70..c255b9e 100644
        `_emailVerificationCodes/${uid}_registration`,
        `_emailVerificationCodes/${uid}_email_change`,
      ]) targets.set(path, db.doc(path));
-@@ -41,7 +42,12 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
+@@ -41,6 +42,11 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
        db.collection('stalls').where('vendorId', '==', uid),
        db.collection('bookings').where('customerId', '==', uid),
        db.collection('bookings').where('vendorId', '==', uid),
@@ -370,7 +1567,6 @@ index 6aa1f70..c255b9e 100644
        db.collection('transactionEmailOutbox').where('booking.customerId', '==', uid),
      ];
      for (const query of queries) {
-       const snapshot = await query.get();
 diff --git a/functions/booking-core.cjs b/functions/booking-core.cjs
 index 2647573..35a8587 100644
 --- a/functions/booking-core.cjs
@@ -397,7 +1593,7 @@ index 4578c97..fd8d48d 100644
      before, after, eventTime: event.time, stallName: vendor.data().stallName});
    if (!alert) return;
 diff --git a/functions/index.js b/functions/index.js
-index fa24f33..6758894 100644
+index 0cd9e12..18ed63b 100644
 --- a/functions/index.js
 +++ b/functions/index.js
 @@ -9,6 +9,7 @@ const {getStorage} = require("firebase-admin/storage");
@@ -410,15 +1606,22 @@ index fa24f33..6758894 100644
  // vendor transitions from closed to open -- editing other fields (name,
 diff --git a/functions/moderation-core.cjs b/functions/moderation-core.cjs
 new file mode 100644
-index 0000000..e3f3d27
+index 0000000..04e0a57
 --- /dev/null
 +++ b/functions/moderation-core.cjs
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,53 @@
 +'use strict';
 +const DAY_MS = 24 * 60 * 60 * 1000;
 +const WINDOW_MS = 30 * DAY_MS;
 +const FIX_MS = 48 * 60 * 60 * 1000;
 +const REASONS = ['wrong_location', 'opening_status', 'menu_prices', 'stall_details', 'other'];
++// Admin identity is authorized again by the trusted profile role in the
++// transaction. Existing dashboard admins do not require email verification.
++function validCaller(auth, adminOperation = false) {
++  return typeof auth?.uid === 'string' && auth.uid.length > 0 && !!auth.token
++    && auth.token.firebase?.sign_in_provider !== 'anonymous'
++    && (adminOperation || auth.token.email_verified === true);
++}
 +function fail(code, message) { const error = new Error(message); error.code = code; throw error; }
 +function text(value, max, label) {
 +  if (typeof value !== 'string' || !value.trim() || value.trim().length > max) {
@@ -459,19 +1662,29 @@ index 0000000..e3f3d27
 +    fail('failed-precondition', 'There is no correction awaiting review.');
 +  }
 +}
-+module.exports = {WINDOW_MS, FIX_MS, REASONS, fail, text, identifier, reportInput, eligibleReports, assertCaseAction};
++module.exports = {WINDOW_MS, FIX_MS, REASONS, validCaller, fail, text, identifier, reportInput, eligibleReports, assertCaseAction};
 diff --git a/functions/moderation-core.test.cjs b/functions/moderation-core.test.cjs
 new file mode 100644
-index 0000000..a82328b
+index 0000000..75cd2f4
 --- /dev/null
 +++ b/functions/moderation-core.test.cjs
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,40 @@
 +'use strict';
 +const {test} = require('node:test');
 +const assert = require('node:assert/strict');
 +const {WINDOW_MS, FIX_MS, reportInput, eligibleReports, assertCaseAction} = require('./moderation-core.cjs');
++const {validCaller} = require('./moderation-core.cjs');
 +const now = Date.UTC(2026, 10, 4, 4);
 +const stamp = (value) => ({toMillis: () => value});
++test('admin operations retain role-based sign-in; customer and vendor operations require verification', () => {
++  const auth = {uid: 'signed-in-user', token: {email_verified: false, firebase: {sign_in_provider: 'password'}}};
++  assert.equal(validCaller(auth), false);
++  assert.equal(validCaller(auth, true), true);
++  assert.equal(validCaller({...auth, token: {...auth.token, email_verified: true}}), true);
++  assert.equal(validCaller(null, true), false);
++  assert.equal(validCaller({uid: 'missing-token'}, true), false);
++  assert.equal(validCaller({...auth, token: {...auth.token, firebase: {sign_in_provider: 'anonymous'}}}, true), false);
++});
 +test('only distinct recent unconsumed verified complaints count', () => {
 +  const base = {status: 'verified', caseId: null, customerId: 'a', createdAt: stamp(now)};
 +  const reports = [base, {...base}, {...base, customerId: 'b', createdAt: stamp(now - WINDOW_MS)},
@@ -688,7 +1901,7 @@ index 0000000..9353183
 +module.exports = {moderationService};
 diff --git a/functions/moderation.cjs b/functions/moderation.cjs
 new file mode 100644
-index 0000000..7673f57
+index 0000000..d70fbb1
 --- /dev/null
 +++ b/functions/moderation.cjs
 @@ -0,0 +1,64 @@
@@ -698,15 +1911,15 @@ index 0000000..7673f57
 +const {getFirestore, Timestamp} = require('firebase-admin/firestore');
 +const {getMessaging} = require('firebase-admin/messaging');
 +const {moderationService} = require('./moderation-service.cjs');
++const {validCaller} = require('./moderation-core.cjs');
 +const {notificationTokens} = require('./notification-tokens.cjs');
 +const db = getFirestore();
 +const service = moderationService({db, Timestamp});
-+function callable(method) {
++function callable(method, adminOperation = false) {
 +  return onCall({region: 'asia-southeast1'}, async (request) => {
 +    const uid = request.auth?.uid;
-+    if (!uid || request.auth.token.email_verified !== true ||
-+        request.auth.token.firebase?.sign_in_provider === 'anonymous') {
-+      throw new HttpsError('unauthenticated', 'Sign in with a verified account.');
++    if (!validCaller(request.auth, adminOperation)) {
++      throw new HttpsError('unauthenticated', adminOperation ? 'Sign in with an administrator account.' : 'Sign in with a verified account.');
 +    }
 +    try { return await service[method](uid, request.data); }
 +    catch (error) {
@@ -718,9 +1931,9 @@ index 0000000..7673f57
 +  });
 +}
 +exports.submitVendorReport = callable('submit');
-+exports.reviewVendorReport = callable('review');
++exports.reviewVendorReport = callable('review', true);
 +exports.submitVendorCorrection = callable('correction');
-+exports.decideVendorModeration = callable('decide');
++exports.decideVendorModeration = callable('decide', true);
 +exports.finishResolvedVendorReports = onDocumentUpdated({region: 'asia-southeast1',
 +  document: 'moderationCases/{caseId}', retry: true}, async (event) => {
 +  if (event.data?.after.data().status !== 'resolved') return;
@@ -1121,6 +2334,62 @@ index 7ffb210..96614f2 100644
                final loading =
                    dishSnapshot.connectionState == ConnectionState.waiting ||
                        vendorSnapshot.connectionState == ConnectionState.waiting;
+diff --git a/lib/features/customer/home/customer_home_screen.dart b/lib/features/customer/home/customer_home_screen.dart
+index ba86c62..c946e6a 100644
+--- a/lib/features/customer/home/customer_home_screen.dart
++++ b/lib/features/customer/home/customer_home_screen.dart
+@@ -42,6 +42,7 @@ import '../../../core/services/vendor_service.dart';
+ import '../following/customer_following_screen.dart';
+ import '../profile/customer_profile_screen.dart';
+ import '../../shared/profile_page.dart';
++import '../../shared/moderation_screen.dart';
+ import '../vendor_details/vendor_details_screen.dart';
+ import '../../shared/manual_location_dialog.dart';
+ import '../../shared/saved_locations_sheet.dart';
+@@ -2269,6 +2270,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
+               ? () => _previewSelfCollect(vendor)
+               : null,
+           onDetails: () => _openVendorDetails(vendor),
++          onReport: () => Navigator.push(
++              context,
++              MaterialPageRoute(
++                  builder: (_) => ReportStallScreen(vendor: vendor))),
+           onClose: _closeStallPreview,
+           onExtentChanged: (extent) {
+             if ((_previewExtent.value - extent).abs() > .0001) {
+diff --git a/lib/features/customer/home/stall_preview_sheet.dart b/lib/features/customer/home/stall_preview_sheet.dart
+index 0cdd938..f5dbbac 100644
+--- a/lib/features/customer/home/stall_preview_sheet.dart
++++ b/lib/features/customer/home/stall_preview_sheet.dart
+@@ -17,6 +17,7 @@ class StallPreviewSheet extends StatefulWidget {
+     required this.onViewMenu,
+     required this.onSelfCollect,
+     required this.onDetails,
++    this.onReport,
+     required this.onClose,
+     required this.onExtentChanged,
+     this.horizontalInset = 0,
+@@ -30,6 +31,7 @@ class StallPreviewSheet extends StatefulWidget {
+   final bool following;
+   final VoidCallback? onFollow, onSelfCollect;
+   final VoidCallback onDirections, onViewMenu, onDetails, onClose;
++  final VoidCallback? onReport;
+   final ValueChanged<double> onExtentChanged;
+   final double horizontalInset, bottomInset;
+ 
+@@ -248,6 +250,12 @@ class _StallPreviewSheetState extends State<StallPreviewSheet> {
+                                   icon: const Icon(Icons.restaurant_menu,
+                                       size: 18),
+                                   label: const Text('View menu')),
++                              if (widget.onReport != null)
++                                OutlinedButton.icon(
++                                    onPressed: widget.onReport,
++                                    icon: const Icon(Icons.flag_outlined,
++                                        size: 18),
++                                    label: const Text('Report this stall')),
+                               if (widget.vendor.selfCollectEnabled)
+                                 OutlinedButton.icon(
+                                     onPressed: widget.onSelfCollect,
 diff --git a/lib/features/customer/profile/customer_profile_screen.dart b/lib/features/customer/profile/customer_profile_screen.dart
 index 1b00c47..bd7ea64 100644
 --- a/lib/features/customer/profile/customer_profile_screen.dart
@@ -1141,7 +2410,7 @@ index 1b00c47..bd7ea64 100644
        onPassword: _changePassword,
        onFaq: () => Navigator.push(context,
 diff --git a/lib/features/customer/vendor_details/vendor_details_screen.dart b/lib/features/customer/vendor_details/vendor_details_screen.dart
-index 7ee9dfd..8066cb5 100644
+index 7ee9dfd..17e23e8 100644
 --- a/lib/features/customer/vendor_details/vendor_details_screen.dart
 +++ b/lib/features/customer/vendor_details/vendor_details_screen.dart
 @@ -1,4 +1,5 @@
@@ -1150,9 +2419,9 @@ index 7ee9dfd..8066cb5 100644
  import '../../../core/widgets/app_page_app_bar.dart';
  import '../../../core/widgets/menu_photo.dart';
  import 'dart:async';
-@@ -393,6 +394,14 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
-           '$action requires an account. Log in or register to continue.',
-         ),
+@@ -471,6 +472,14 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
+         backgroundColor: Colors.white,
+         surfaceTintColor: Colors.transparent,
          actions: [
 +          if (!widget.previewOnly && !_vendorDeleted)
 +            IconButton(
@@ -1162,9 +2431,9 @@ index 7ee9dfd..8066cb5 100644
 +                    context,
 +                    MaterialPageRoute(
 +                        builder: (_) => ReportStallScreen(vendor: _vendor)))),
-           TextButton(
-             onPressed: () => Navigator.pop(dialogContext),
-             child: const Text('Not Now'),
+           if (!widget.draftPreview)
+             IconButton(
+               icon: _isRefreshing
 @@ -503,15 +512,21 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
          ],
        ),
@@ -1771,6 +3040,106 @@ index b56ad33..54fb65d 100644
                        _statusCard(context),
                        if (vendor == null ||
                            vendor!.stallName.trim().isEmpty ||
+diff --git a/test/clear_discovery_filters_test.dart b/test/clear_discovery_filters_test.dart
+index 556a4e3..abd0899 100644
+--- a/test/clear_discovery_filters_test.dart
++++ b/test/clear_discovery_filters_test.dart
+@@ -21,6 +21,7 @@ import 'package:stallseeker/features/customer/home/discovery_options.dart';
+ import 'package:stallseeker/features/customer/home/stall_preview_sheet.dart';
+ import 'package:stallseeker/features/customer/profile/customer_profile_screen.dart';
+ import 'package:stallseeker/features/shared/manual_location_dialog.dart';
++import 'package:stallseeker/features/shared/moderation_screen.dart';
+ 
+ class _SignedOutAuth extends FirebaseAuthPlatform {
+   @override
+@@ -129,14 +130,17 @@ class _InteractiveMaps extends MethodChannelGoogleMapsFlutter {
+           ? const ScreenCoordinate(x: 100, y: 100)
+           : const ScreenCoordinate(x: -1000, y: -1000);
+   @override
+-  Future<void> moveCamera(CameraUpdate cameraUpdate, {required int mapId}) async {
++  Future<void> moveCamera(CameraUpdate cameraUpdate,
++      {required int mapId}) async {
+     immediateCameraMoves.add(cameraUpdate);
+   }
++
+   @override
+   Future<void> updateMapConfiguration(MapConfiguration configuration,
+       {required int mapId}) async {
+     configurations.add(configuration);
+   }
++
+   @override
+   Future<void> animateCamera(CameraUpdate cameraUpdate,
+       {required int mapId}) async {
+@@ -182,8 +186,47 @@ void main() {
+         'guest_search_history_v1': ['Previous search'],
+       }));
+ 
++  for (final width in [360.0, 960.0]) {
++    testWidgets(
++        'customer can open Report this stall from the preview at $width',
++        (tester) async {
++      GoogleMapsFlutterPlatform.instance = _InteractiveMaps();
++      addTearDown(
++          () => GoogleMapsFlutterPlatform.instance = _PlaceholderMaps());
++      tester.view.physicalSize = Size(width, 844);
++      tester.view.devicePixelRatio = 1;
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++      await tester.pumpWidget(MaterialApp(
++          theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
++      await tester.pumpAndSettle();
++      await tester.runAsync(
++          () => Future<void>.delayed(const Duration(milliseconds: 100)));
++      await tester.pumpAndSettle();
++      GoogleMap map() => tester.widget<GoogleMap>(find.byType(GoogleMap));
++      map().onCameraMove!(
++          const CameraPosition(target: LatLng(3.139, 101.6869), zoom: 16));
++      map().onCameraIdle!();
++      await tester.pumpAndSettle();
++      map().markers.single.infoWindow.onTap!();
++      await tester.pumpAndSettle();
++      final report = find.text('Report this stall');
++      expect(report, findsOneWidget);
++      await tester.ensureVisible(report);
++      await tester.tap(report);
++      await tester.pumpAndSettle();
++      expect(find.byType(ReportStallScreen), findsOneWidget);
++      expect(find.textContaining('Sign in with a verified account'),
++          findsOneWidget);
++      expect(find.text('Create an Account'), findsNothing);
++      expect(tester.takeException(), isNull);
++      await tester.pumpWidget(const SizedBox.shrink());
++    });
++  }
++
+   for (final width in [390.0, 1280.0]) {
+-    testWidgets('real stall profile keeps map stationary while scrolling at $width',
++    testWidgets(
++        'real stall profile keeps map stationary while scrolling at $width',
+         (tester) async {
+       tester.view.physicalSize = Size(width, 844);
+       tester.view.devicePixelRatio = 1;
+@@ -234,7 +277,8 @@ void main() {
+       maps.pendingZoom!.complete(16);
+       await tester.pumpAndSettle();
+       expect(maps.cameraMoves, isEmpty,
+-          reason: 'A delayed marker focus must be cancelled when the profile opens.');
++          reason:
++              'A delayed marker focus must be cancelled when the profile opens.');
+       final cameraCommands = maps.immediateCameraMoves.length;
+       maps.configurations.clear();
+       final list = find.descendant(
+@@ -256,7 +300,8 @@ void main() {
+       expect(maps.immediateCameraMoves, hasLength(cameraCommands));
+       expect(maps.created, hasLength(1));
+       expect(maps.configurations.where((config) => config.padding != null),
+-          isEmpty, reason: 'Profile scrolling must not update the map viewport.');
++          isEmpty,
++          reason: 'Profile scrolling must not update the map viewport.');
+       expect(tester.takeException(), isNull);
+     });
+   }
 diff --git a/test/moderation_test.dart b/test/moderation_test.dart
 new file mode 100644
 index 0000000..0aee929

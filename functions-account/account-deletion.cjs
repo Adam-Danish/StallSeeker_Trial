@@ -30,6 +30,7 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
     const targets = new Map();
     for (const path of [
       `users/${uid}`, `vendors/${uid}`, `stallReviews/${uid}`, `stalls/${uid}`,
+      `vendorModeration/${uid}`,
       `_emailVerificationCodes/${uid}_registration`,
       `_emailVerificationCodes/${uid}_email_change`,
     ]) targets.set(path, db.doc(path));
@@ -41,6 +42,11 @@ function createAccountDeletionService({db, auth, bucket, timestamp}) {
       db.collection('stalls').where('vendorId', '==', uid),
       db.collection('bookings').where('customerId', '==', uid),
       db.collection('bookings').where('vendorId', '==', uid),
+      db.collection('vendorReports').where('customerId', '==', uid),
+      db.collection('vendorReports').where('vendorId', '==', uid),
+      db.collection('moderationRateLimits').where('customerId', '==', uid),
+      db.collection('moderationRateLimits').where('vendorId', '==', uid),
+      db.collection('moderationCases').where('vendorId', '==', uid),
       db.collection('transactionEmailOutbox').where('booking.customerId', '==', uid),
     ];
     for (const query of queries) {

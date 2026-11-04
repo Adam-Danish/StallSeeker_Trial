@@ -39,7 +39,7 @@ exports.notifyFollowersOnDishAvailable = onDocumentUpdated({
   if (before?.status !== 'out_of_stock' ||
       !['available', 'low_stock'].includes(after?.status)) return;
   const vendor = await db.collection('vendors').doc(vendorId).get();
-  if (!vendor.exists) return;
+  if (!vendor.exists || vendor.data().listingStatus === 'suspended') return;
   const alert = dishAvailabilityAlert({eventId: event.id, vendorId, itemId,
     before, after, eventTime: event.time, stallName: vendor.data().stallName});
   if (!alert) return;

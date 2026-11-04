@@ -2,7 +2,7 @@
 self.addEventListener('notificationclick', function (event) {
   const data = event.notification.data?.FCM_MSG?.data || event.notification.data || {};
   const url = new URL(self.location.origin);
-  for (const key of ['bookingId', 'recipientId', 'role', 'vendorId', 'itemId']) {
+  for (const key of ['bookingId', 'recipientId', 'role', 'vendorId', 'itemId', 'caseId']) {
     if (typeof data[key] === 'string') url.searchParams.set(key, data[key]);
   }
   event.notification.close();

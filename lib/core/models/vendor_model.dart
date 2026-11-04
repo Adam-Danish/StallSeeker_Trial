@@ -27,10 +27,12 @@ class VendorModel {
   final DateTime? locationUpdatedAt;
   final bool locationSharingActive;
   final bool selfCollectEnabled;
+  final String listingStatus;
+  bool get isSuspended => listingStatus == 'suspended';
 
   bool get isTemporarilyClosed =>
       temporaryClosures.any((c) => c.contains(DateTime.now()));
-  bool get isOpenNow => isOpen && !isTemporarilyClosed;
+  bool get isOpenNow => !isSuspended && isOpen && !isTemporarilyClosed;
   bool isScheduledOpenAt(DateTime instant) =>
       isWithinStallSchedule(instant, weeklyHours, temporaryClosures);
 
@@ -83,6 +85,7 @@ class VendorModel {
     this.locationUpdatedAt,
     this.locationSharingActive = false,
     this.selfCollectEnabled = false,
+    this.listingStatus = 'active',
   });
 
   /// Editable information only. Operational state belongs to the selling session.
@@ -152,6 +155,8 @@ class VendorModel {
       locationUpdatedAt: (map['locationUpdatedAt'] as Timestamp?)?.toDate(),
       locationSharingActive: map['locationSharingActive'] == true,
       selfCollectEnabled: map['selfCollectEnabled'] == true,
+      listingStatus:
+          map['listingStatus'] == 'suspended' ? 'suspended' : 'active',
     );
   }
 
@@ -191,6 +196,7 @@ class VendorModel {
       locationUpdatedAt: locationUpdatedAt,
       locationSharingActive: locationSharingActive,
       selfCollectEnabled: selfCollectEnabled ?? this.selfCollectEnabled,
+      listingStatus: listingStatus,
     );
   }
 }

@@ -1,0 +1,56 @@
+[
+  {
+    "url": "https://stallseeker.my/index.html",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker.my/main.dart.js",
+    "error": "fetch failed",
+    "status": 200,
+    "receivedBytes": 775507,
+    "expectedBytes": 4336733,
+    "prefixMatchesBuild": true,
+    "verificationLimit": "Full download timed out on this verification connection; the default Firebase domain passed the complete hash check."
+  },
+  {
+    "url": "https://stallseeker.my/firebase-messaging-sw.js",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker-c2ffe.web.app/index.html",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker-c2ffe.web.app/main.dart.js",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker-c2ffe.web.app/firebase-messaging-sw.js",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://admin.stallseeker.my/index.html",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://admin.stallseeker.my/assets/index-XbXpdBOP.js",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker-admin.web.app/index.html",
+    "status": 200,
+    "matchesBuild": true
+  },
+  {
+    "url": "https://stallseeker-admin.web.app/assets/index-XbXpdBOP.js",
+    "status": 200,
+    "matchesBuild": true
+  }
+]

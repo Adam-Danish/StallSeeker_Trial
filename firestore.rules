@@ -162,11 +162,45 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Moderation: reports are private, cases contain only vendor-safe summaries.
+    // Client writes are denied; authenticated callable functions validate them.
+    match /vendorReports/{reportId} {
+      allow read: if signedIn() && (directoryAdmin()
+          || (verifiedAccount() && resource.data.customerId == request.auth.uid));
+      allow write: if false;
+    }
+    match /moderationCases/{caseId} {
+      allow read: if signedIn() && (directoryAdmin()
+          || (verifiedAccount() && resource.data.vendorId == request.auth.uid));
+      allow write: if false;
+      match /responses/{responseId} {
+        allow read: if signedIn() && (directoryAdmin()
+            || (verifiedAccount() && get(/databases/$(database)/documents/moderationCases/$(caseId)).data.vendorId == request.auth.uid));
+        allow write: if false;
+      }
+    }
+    match /vendorModeration/{vendorId} {
+      allow read: if signedIn() && (directoryAdmin() || (verifiedAccount() && request.auth.uid == vendorId));
+      allow write: if false;
+    }
+    match /moderationRateLimits/{key} { allow read, write: if false; }
+
+    function validVendorModeration(data) {
+      return data.get('listingStatus', 'active') in ['active', 'suspended']
+          && (data.get('listingStatus', 'active') != 'suspended'
+              || (data.get('isOpen', false) == false
+                  && data.get('locationSharingActive', false) == false));
+    }
+
     match /vendors/{vendorId} {
       allow read: if true;
-      allow create: if initialVendorRecord(vendorId) || (ownsVendor(vendorId)
-          && request.resource.data.vendorId == vendorId);
+      allow create: if validVendorModeration(request.resource.data)
+          && request.resource.data.get('listingStatus', 'active') == 'active'
+          && (initialVendorRecord(vendorId) || (ownsVendor(vendorId)
+              && request.resource.data.vendorId == vendorId));
       allow update: if ownsVendor(vendorId)
+          && validVendorModeration(request.resource.data)
+          && request.resource.data.get('listingStatus', 'active') == resource.data.get('listingStatus', 'active')
           && request.resource.data.vendorId == vendorId
           && request.resource.data.get('selfCollectEnabled', false) is bool;
       allow delete: if false;

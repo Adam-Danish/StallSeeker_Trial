@@ -34,6 +34,7 @@ class VendorDashboardView extends StatelessWidget {
     required this.onAdvanceBooking,
     this.now,
     this.reviewsCard,
+    this.moderationCard,
   });
 
   final VendorModel? vendor;
@@ -58,6 +59,7 @@ class VendorDashboardView extends StatelessWidget {
   final ValueChanged<DemoOrder> onAdvanceBooking;
   final DateTime? now;
   final Widget? reviewsCard;
+  final Widget? moderationCard;
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +110,7 @@ class VendorDashboardView extends StatelessWidget {
                     children: [
                       _header(context),
                       const SizedBox(height: 20),
+                      if (moderationCard != null) moderationCard!,
                       _statusCard(context),
                       if (vendor == null ||
                           vendor!.stallName.trim().isEmpty ||

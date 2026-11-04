@@ -1,0 +1,31 @@
+{
+  "verifiedModules": [
+    "booking-core.cjs",
+    "bookings.cjs",
+    "dish-notifications-core.cjs",
+    "dish-notifications.cjs",
+    "history-core.cjs",
+    "moderation-core.cjs",
+    "moderation-service.cjs",
+    "moderation.cjs",
+    "notification-tokens.cjs",
+    "package-lock.json",
+    "package.json",
+    "stripe-payment-core.cjs"
+  ],
+  "selectedFunctions": [
+    "submitVendorReport",
+    "reviewVendorReport",
+    "submitVendorCorrection",
+    "decideVendorModeration",
+    "finishResolvedVendorReports",
+    "notifyVendorModeration",
+    "createBooking",
+    "notifyFollowersOnDishAvailable"
+  ],
+  "definitionsIdentical": true,
+  "packageLockIdentical": true,
+  "unrelatedEmailExportsExcluded": true,
+  "productionFunctionDeletionRequested": false,
+  "explanation": "Only the entrypoint differs. Every loaded module, dependency manifest, and selected function definition matches the applied source. Deployment is restricted to the listed functions plus account-deletion:cleanupDeletedAccount."
+}

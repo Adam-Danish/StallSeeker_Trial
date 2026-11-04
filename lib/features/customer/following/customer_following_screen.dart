@@ -145,12 +145,13 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final guest = user == null || user.isAnonymous;
-    final sorted = _profiles.values.toList()
-      ..sort((a, b) {
-        final comparison =
-            a.stallName.toLowerCase().compareTo(b.stallName.toLowerCase());
-        return _ascending ? comparison : -comparison;
-      });
+    final sorted =
+        _profiles.values.where((vendor) => !vendor.isSuspended).toList()
+          ..sort((a, b) {
+            final comparison =
+                a.stallName.toLowerCase().compareTo(b.stallName.toLowerCase());
+            return _ascending ? comparison : -comparison;
+          });
     final open = sorted.where((vendor) => vendor.isOpenNow).toList();
     final closed = sorted.where((vendor) => !vendor.isOpenNow).toList();
     return ColoredBox(

@@ -160,7 +160,11 @@ class AuthService {
     try {
       final UserCredential userCredential;
       if (kIsWeb) {
-        userCredential = await _auth.signInWithPopup(GoogleAuthProvider());
+        // Browser Back can leave the popup Future pending after the user
+        // abandons Google sign-in. Always return control to the login UI.
+        userCredential = await _auth
+            .signInWithPopup(GoogleAuthProvider())
+            .timeout(const Duration(seconds: 25));
       } else {
         await _ensureGoogleSignInReady();
         final googleUser = await _googleSignIn
@@ -206,7 +210,8 @@ class AuthService {
       return e.description ?? "Google sign-in failed.";
     } on FirebaseAuthException catch (e) {
       if (e.code == 'popup-closed-by-user' ||
-          e.code == 'cancelled-popup-request') {
+          e.code == 'cancelled-popup-request' ||
+          e.code == 'redirect-cancelled-by-user') {
         return 'cancelled';
       }
       if (e.code == 'popup-blocked') {

@@ -16,6 +16,7 @@ import '../../shared/demo_orders_screen.dart';
 import '../../shared/booking_detail_screen.dart';
 import '../../customer/vendor_details/vendor_details_screen.dart';
 import 'vendor_dashboard_view.dart';
+import '../../shared/moderation_screen.dart';
 import '../reviews/vendor_reviews_dashboard_card.dart';
 import '../../../core/utils/vendor_phone.dart';
 import 'vendor_demo_sales.dart';
@@ -131,6 +132,11 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     }
     if (open && (_vendor?.isTemporarilyClosed ?? false)) {
       _message('Remove the active temporary closure before opening.');
+      return;
+    }
+    if (open && _vendor?.isSuspended == true) {
+      _message(
+          'Your listing is suspended. Submit a correction for admin review.');
       return;
     }
     if (open) {
@@ -304,6 +310,9 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
       stream: _bookings,
       builder: (context, snapshot) => VendorDashboardView(
         vendor: _vendor,
+        moderationCard: _vendor == null
+            ? null
+            : VendorModerationBanner(vendorId: _vendor!.vendorId),
         reviewsCard: _vendor == null
             ? null
             : VendorReviewsDashboardCard(

@@ -158,6 +158,7 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
             builder: (context, vendorSnapshot) {
               final dish = dishSnapshot.data;
               final vendor = vendorSnapshot.data;
+              if (vendor?.isSuspended == true) return const SizedBox.shrink();
               final loading =
                   dishSnapshot.connectionState == ConnectionState.waiting ||
                       vendorSnapshot.connectionState == ConnectionState.waiting;

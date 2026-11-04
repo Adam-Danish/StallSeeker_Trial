@@ -1,12 +1,14 @@
 # Vendor reporting — unified diff patches
 
-These patches have **not been applied** to the original projects. Nothing has been deployed.
+**Applied and deployed on 4 November 2026.** See `DEPLOYMENT.md` for live URLs, checks, and the Android APK. The patches now describe the released source, including existing-admin compatibility and preserved live indexes. Do not apply them again to these working copies.
 
 ## Files
 
 - `app-backend.patch`: apply in `StallSeeker_Trial`. Includes shared Flutter web/Android screens, Firebase functions, rules, indexes, account-cleanup changes, and tests.
 - `admin.patch`: apply in `StallSeeker-Admin`. Includes report review, warning/correction history, and working suspension/restoration controls.
 - `VERIFICATION.md`: checks performed and remaining limitations.
+- `DEPLOY.md`: complete PowerShell commands for application and deployment.
+- `DEPLOYMENT.md`: completed release status and verification results.
 - `admin-preview.png`, `vendor-preview.png`, and `customer-preview.png`: local demo browser evidence. No live customer or vendor accounts were used.
 
 ## Behavior

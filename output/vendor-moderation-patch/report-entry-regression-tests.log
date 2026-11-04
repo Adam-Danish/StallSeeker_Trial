@@ -1,0 +1,18 @@
+00:00 +0: loading C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart
+00:00 +0: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: preview slides in from the bottom at 390.0
+00:00 +1: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: preview slides in from the bottom at 390.0
+00:00 +2: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: preview slides in from the bottom at 390.0
+00:00 +3: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/moderation_test.dart: warning response is readable at width 360.0 with large text
+00:01 +4: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/moderation_test.dart: warning response is readable at width 360.0 with large text
+00:01 +5: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/moderation_test.dart: warning response is readable at width 360.0 with large text
+00:01 +6: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/moderation_test.dart: warning response is readable at width 360.0 with large text
+00:01 +7: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: fullscreen animates and restores navigation at Size(390.0, 844.0)
+00:01 +8: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: fullscreen animates and restores navigation at Size(390.0, 844.0)
+00:01 +9: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: fullscreen animates and restores navigation at Size(390.0, 844.0)
+00:01 +10: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: fullscreen animates and restores navigation at Size(960.0, 800.0)
+00:02 +11: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: fullscreen animates and restores navigation at Size(844.0, 390.0)
+00:02 +12: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: PointerDeviceKind.touch drag expands, scrolls, and dismisses to cards
+00:03 +13: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: PointerDeviceKind.mouse drag expands, scrolls, and dismisses to cards
+00:03 +14: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: dragging the preview to the bottom dismisses it
+00:03 +15: C:/Others/SE/Flutter Projects/StallSeeker_Trial/test/stall_preview_sheet_test.dart: reduced motion expands immediately and Back collapses then closes
+00:03 +16: All tests passed!

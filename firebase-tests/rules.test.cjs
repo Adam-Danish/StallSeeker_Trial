@@ -72,6 +72,65 @@ beforeEach(async () => {
 
 after(async () => { if (env) await env.cleanup(); });
 
+test('moderation reports are private and all moderation decisions are server-only', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'users/admin-a'), {role: 'admin'});
+    await setDoc(doc(context.firestore(), 'vendorReports/report-a'), {customerId: 'customer-a', vendorId: 'vendor-a', status: 'pending'});
+    await setDoc(doc(context.firestore(), 'moderationCases/case-a'), {vendorId: 'vendor-a', status: 'warning'});
+    await setDoc(doc(context.firestore(), 'vendorModeration/vendor-a'), {vendorId: 'vendor-a', currentCaseId: 'case-a'});
+  });
+  const customer = client('customer-a').firestore();
+  const vendor = client('vendor-a').firestore();
+  const admin = client('admin-a').firestore();
+  await assertSucceeds(getDoc(doc(customer, 'vendorReports/report-a')));
+  await assertSucceeds(getDocs(query(collection(customer, 'vendorReports'), where('customerId', '==', 'customer-a'))));
+  await assertFails(getDocs(collection(customer, 'vendorReports')));
+  await assertFails(getDoc(doc(client('customer-b').firestore(), 'vendorReports/report-a')));
+  await assertFails(getDoc(doc(vendor, 'vendorReports/report-a')));
+  await assertFails(getDoc(doc(customer, 'moderationCases/case-a')));
+  await assertSucceeds(getDoc(doc(vendor, 'moderationCases/case-a')));
+  await assertSucceeds(getDocs(query(collection(vendor, 'moderationCases'), where('vendorId', '==', 'vendor-a'))));
+  await assertSucceeds(getDocs(collection(admin, 'vendorReports')));
+  await assertSucceeds(getDocs(collection(admin, 'moderationCases')));
+  const existingAdmin = client('admin-a', false).firestore();
+  await assertSucceeds(getDocs(collection(existingAdmin, 'vendorReports')));
+  await assertSucceeds(getDocs(collection(existingAdmin, 'moderationCases')));
+  await assertSucceeds(getDoc(doc(existingAdmin, 'vendorModeration/vendor-a')));
+  await assertFails(getDoc(doc(client('customer-a', false).firestore(), 'vendorReports/report-a')));
+  await assertFails(getDoc(doc(client('vendor-a', false).firestore(), 'moderationCases/case-a')));
+  await assertFails(getDocs(collection(client('customer-a', false).firestore(), 'vendorReports')));
+  await assertFails(updateDoc(doc(existingAdmin, 'moderationCases/case-a'), {status: 'resolved'}));
+  for (const clientDb of [customer, vendor, admin]) {
+    await assertFails(updateDoc(doc(clientDb, 'vendorReports/report-a'), {status: 'verified'}));
+    await assertFails(updateDoc(doc(clientDb, 'moderationCases/case-a'), {status: 'resolved'}));
+    await assertFails(updateDoc(doc(clientDb, 'vendorModeration/vendor-a'), {currentCaseId: null}));
+  }
+});
+
+test('vendors cannot bypass suspension but can edit details, menu and existing bookings access', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'vendors/vendor-a'), {vendorId: 'vendor-a', stallName: 'Old name',
+      listingStatus: 'suspended', isOpen: false, locationSharingActive: false});
+    await setDoc(doc(context.firestore(), 'bookings/existing'), {vendorId: 'vendor-a', customerId: 'customer-a', status: 'preparing'});
+  });
+  const vendor = client('vendor-a').firestore();
+  await assertFails(updateDoc(doc(vendor, 'vendors/vendor-a'), {listingStatus: 'active'}));
+  await assertFails(updateDoc(doc(vendor, 'vendors/vendor-a'), {listingStatus: deleteField()}));
+  await assertFails(updateDoc(doc(vendor, 'vendors/vendor-a'), {isOpen: true}));
+  await assertFails(updateDoc(doc(vendor, 'vendors/vendor-a'), {locationSharingActive: true}));
+  await assertFails(setDoc(doc(vendor, 'vendors/vendor-a'), {vendorId: 'vendor-a', isOpen: true}));
+  await assertSucceeds(updateDoc(doc(vendor, 'vendors/vendor-a'), {stallName: 'Corrected name'}));
+  await assertSucceeds(setDoc(doc(vendor, 'vendors/vendor-a/menu/new'), {name: 'Corrected dish', price: 8}));
+  await assertSucceeds(getDoc(doc(vendor, 'bookings/existing')));
+  await assertSucceeds(getDoc(doc(client('customer-a').firestore(), 'bookings/existing')));
+});
+
+test('vendors cannot set suspension status when creating a listing', async () => {
+  await assertFails(setDoc(doc(client('vendor-a').firestore(), 'vendors/vendor-a'), {
+    vendorId: 'vendor-a', isOpen: false, listingStatus: 'suspended',
+  }));
+});
+
 test('production admin directory access remains admin-only and server-written', async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();

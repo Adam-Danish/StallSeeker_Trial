@@ -1,0 +1,21 @@
+{
+  "firestore": {
+    "rules": "C:\\Others\\SE\\Flutter Projects\\StallSeeker_Trial\\firestore.rules",
+    "indexes": "C:\\Others\\SE\\Flutter Projects\\StallSeeker_Trial\\firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "C:\\Others\\SE\\Flutter Projects\\StallSeeker_Trial\\storage.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8280
+    },
+    "storage": {
+      "port": 9299
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": false
+  }
+}

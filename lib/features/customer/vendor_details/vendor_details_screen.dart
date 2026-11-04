@@ -1,4 +1,5 @@
 import '../../shared/stall_review_card.dart';
+import '../../shared/moderation_screen.dart';
 import '../../../core/widgets/app_page_app_bar.dart';
 import '../../../core/widgets/menu_photo.dart';
 import 'dart:async';
@@ -471,6 +472,14 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
+          if (!widget.previewOnly && !_vendorDeleted)
+            IconButton(
+                tooltip: 'Report this stall',
+                icon: const Icon(Icons.flag_outlined),
+                onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ReportStallScreen(vendor: _vendor)))),
           if (!widget.draftPreview)
             IconButton(
               icon: _isRefreshing
@@ -503,15 +512,21 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         ],
       ),
       // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
-      bottomNavigationBar: isTablet || widget.previewOnly
+      bottomNavigationBar: isTablet || widget.previewOnly || _vendor.isSuspended
           ? null
           : SafeArea(
               minimum: const EdgeInsets.all(16),
               child: _buildActionButtons(isGuest: isGuest),
             ),
-      body: isTablet
-          ? _buildTabletLayout(context, isGuest: isGuest)
-          : _buildMobileLayout(context),
+      body: _vendor.isSuspended && !widget.previewOnly
+          ? const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('This stall is temporarily unavailable.',
+                      textAlign: TextAlign.center)))
+          : isTablet
+              ? _buildTabletLayout(context, isGuest: isGuest)
+              : _buildMobileLayout(context),
     );
   }
 

@@ -21,6 +21,7 @@ import 'package:stallseeker/features/customer/home/discovery_options.dart';
 import 'package:stallseeker/features/customer/home/stall_preview_sheet.dart';
 import 'package:stallseeker/features/customer/profile/customer_profile_screen.dart';
 import 'package:stallseeker/features/shared/manual_location_dialog.dart';
+import 'package:stallseeker/features/shared/moderation_screen.dart';
 
 class _SignedOutAuth extends FirebaseAuthPlatform {
   @override
@@ -129,14 +130,17 @@ class _InteractiveMaps extends MethodChannelGoogleMapsFlutter {
           ? const ScreenCoordinate(x: 100, y: 100)
           : const ScreenCoordinate(x: -1000, y: -1000);
   @override
-  Future<void> moveCamera(CameraUpdate cameraUpdate, {required int mapId}) async {
+  Future<void> moveCamera(CameraUpdate cameraUpdate,
+      {required int mapId}) async {
     immediateCameraMoves.add(cameraUpdate);
   }
+
   @override
   Future<void> updateMapConfiguration(MapConfiguration configuration,
       {required int mapId}) async {
     configurations.add(configuration);
   }
+
   @override
   Future<void> animateCamera(CameraUpdate cameraUpdate,
       {required int mapId}) async {
@@ -182,8 +186,47 @@ void main() {
         'guest_search_history_v1': ['Previous search'],
       }));
 
+  for (final width in [360.0, 960.0]) {
+    testWidgets(
+        'customer can open Report this stall from the preview at $width',
+        (tester) async {
+      GoogleMapsFlutterPlatform.instance = _InteractiveMaps();
+      addTearDown(
+          () => GoogleMapsFlutterPlatform.instance = _PlaceholderMaps());
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+      await tester.pumpAndSettle();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+      GoogleMap map() => tester.widget<GoogleMap>(find.byType(GoogleMap));
+      map().onCameraMove!(
+          const CameraPosition(target: LatLng(3.139, 101.6869), zoom: 16));
+      map().onCameraIdle!();
+      await tester.pumpAndSettle();
+      map().markers.single.infoWindow.onTap!();
+      await tester.pumpAndSettle();
+      final report = find.text('Report this stall');
+      expect(report, findsOneWidget);
+      await tester.ensureVisible(report);
+      await tester.tap(report);
+      await tester.pumpAndSettle();
+      expect(find.byType(ReportStallScreen), findsOneWidget);
+      expect(find.textContaining('Sign in with a verified account'),
+          findsOneWidget);
+      expect(find.text('Create an Account'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   for (final width in [390.0, 1280.0]) {
-    testWidgets('real stall profile keeps map stationary while scrolling at $width',
+    testWidgets(
+        'real stall profile keeps map stationary while scrolling at $width',
         (tester) async {
       tester.view.physicalSize = Size(width, 844);
       tester.view.devicePixelRatio = 1;
@@ -234,7 +277,8 @@ void main() {
       maps.pendingZoom!.complete(16);
       await tester.pumpAndSettle();
       expect(maps.cameraMoves, isEmpty,
-          reason: 'A delayed marker focus must be cancelled when the profile opens.');
+          reason:
+              'A delayed marker focus must be cancelled when the profile opens.');
       final cameraCommands = maps.immediateCameraMoves.length;
       maps.configurations.clear();
       final list = find.descendant(
@@ -256,7 +300,8 @@ void main() {
       expect(maps.immediateCameraMoves, hasLength(cameraCommands));
       expect(maps.created, hasLength(1));
       expect(maps.configurations.where((config) => config.padding != null),
-          isEmpty, reason: 'Profile scrolling must not update the map viewport.');
+          isEmpty,
+          reason: 'Profile scrolling must not update the map viewport.');
       expect(tester.takeException(), isNull);
     });
   }

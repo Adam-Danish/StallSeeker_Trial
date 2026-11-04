@@ -1,0 +1,154 @@
+[
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLiT6IEJ",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "vendorId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "DESCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgPig2YMJ",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "caseId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLjy8IAK",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "vendorId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "caseId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "ASCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLiT6IEK",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "status",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "DESCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgLjRyYIK",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "customerId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "DESCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/moderationCases/indexes/CICAgPig2YMK",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "vendorId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "DESCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  },
+  {
+    "name": "projects/stallseeker-c2ffe/databases/(default)/collectionGroups/vendorReports/indexes/CICAgNirtJAK",
+    "queryScope": "COLLECTION",
+    "fields": [
+      {
+        "fieldPath": "vendorId",
+        "order": "ASCENDING"
+      },
+      {
+        "fieldPath": "createdAt",
+        "order": "DESCENDING"
+      },
+      {
+        "fieldPath": "__name__",
+        "order": "DESCENDING"
+      }
+    ],
+    "state": "READY",
+    "density": "SPARSE_ALL"
+  }
+]

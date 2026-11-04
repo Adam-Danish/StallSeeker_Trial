@@ -9,6 +9,7 @@ const {getStorage} = require("firebase-admin/storage");
 const {notificationTokens} = require("./notification-tokens.cjs");
 
 initializeApp();
+Object.assign(exports, require('./moderation.cjs'));
 
 // Fires whenever any vendor document is updated. We only act when the
 // vendor transitions from closed to open -- editing other fields (name,

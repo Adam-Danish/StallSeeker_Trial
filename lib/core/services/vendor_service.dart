@@ -96,6 +96,7 @@ class VendorService {
         (snapshot) => snapshot.docs
             .map((doc) =>
                 VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .where((vendor) => !vendor.isSuspended)
             .toList());
   }
 
@@ -103,6 +104,7 @@ class VendorService {
     return _vendorsRef.snapshots().map((snapshot) => snapshot.docs
         .map((doc) =>
             VendorModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+        .where((vendor) => !vendor.isSuspended)
         .toList());
   }
 }
