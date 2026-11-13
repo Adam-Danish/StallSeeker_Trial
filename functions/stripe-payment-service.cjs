@@ -5,7 +5,8 @@ const {TERMINAL, assertPayable, assertSession, sessionPatch} =
   require('./stripe-payment-core.cjs');
 
 // Dependencies are injected so the real transaction/retry workflow can be tested.
-function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
+function paymentService({db, stripe, stripeForMode, Timestamp, returnUrl, now = Date.now}) {
+  const getStripe = stripeForMode || (() => stripe);
   const bookingRef = (id) => db.collection('bookings').doc(id);
   const paymentRef = (id) => db.collection('bookingPayments').doc(id);
 
@@ -17,8 +18,9 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
   }
 
   async function sessionFor(id, booking, payment) {
+    const stripeClient = getStripe(booking.paymentMode);
     if (payment.sessionId) {
-      return stripe.checkout.sessions.retrieve(payment.sessionId,
+      return stripeClient.checkout.sessions.retrieve(payment.sessionId,
         {expand: ['payment_intent.latest_charge']});
     }
     // Recover a timed-out create with the exact persisted parameters/key. Never
@@ -34,7 +36,7 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
       delete payment.parameters.payment_method_types;
       await paymentRef(id).update({parameters: payment.parameters});
     }
-    const session = await stripe.checkout.sessions.create(payment.parameters,
+    const session = await stripeClient.checkout.sessions.create(payment.parameters,
       {idempotencyKey: `booking-${id}-${payment.attemptId}`});
     assertSession(id, booking, payment, session);
     await paymentRef(id).update({sessionId: session.id});
@@ -70,23 +72,24 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
   async function refund(id, session) {
     const {booking, payment} = await read(id);
     assertSession(id, booking, payment, session);
+    const stripeClient = getStripe(booking.paymentMode);
     if (booking.paymentStatus === 'refunded') return;
     const intent = typeof session.payment_intent === 'string'
       ? session.payment_intent : session.payment_intent?.id;
     if (!intent) throw new Error('Paid checkout is missing its payment reference.');
     // Read Stripe's current charge first; this also recognises dashboard refunds.
-    const pi = await stripe.paymentIntents.retrieve(intent, {expand: ['latest_charge']});
-    if (pi.livemode !== false || pi.amount !== booking.totalCents ||
+    const pi = await stripeClient.paymentIntents.retrieve(intent, {expand: ['latest_charge']});
+    if (pi.livemode !== (booking.paymentMode === 'live') || pi.amount !== booking.totalCents ||
         pi.currency !== 'myr' || pi.metadata?.bookingId !== id) {
-      throw new Error('Refund does not match this sandbox booking.');
+      throw new Error('Refund does not match this booking.');
     }
     let result;
     if (pi.latest_charge?.refunded === true) {
       result = {status: 'succeeded', id: payment.refundId || null};
     } else if (payment.refundId) {
-      result = await stripe.refunds.retrieve(payment.refundId);
+      result = await stripeClient.refunds.retrieve(payment.refundId);
     } else {
-      result = await stripe.refunds.create({payment_intent: intent,
+      result = await stripeClient.refunds.create({payment_intent: intent,
         metadata: {bookingId: id}}, {idempotencyKey: `refund-${id}-${session.id}`});
       await paymentRef(id).update({refundId: result.id});
     }
@@ -105,7 +108,8 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
 
   async function sync(id, {failed = false, close = false} = {}) {
     let {booking, payment} = await read(id);
-    if (!booking || booking.paymentMode !== 'test') return;
+    if (!booking || !['test', 'live'].includes(booking.paymentMode)) return;
+    const stripeClient = getStripe(booking.paymentMode);
     if (booking.paymentStatus === 'refunded') return;
     const due = booking.status === 'confirmed' &&
       booking.paymentExpiresAt?.toMillis() <= now() && booking.paymentStatus !== 'paid';
@@ -132,11 +136,11 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
     const shouldClose = close || due || TERMINAL.has(booking.status);
     if (shouldClose && session.status === 'open') {
       try {
-        session = await stripe.checkout.sessions.expire(session.id);
+        session = await stripeClient.checkout.sessions.expire(session.id);
       } catch (error) {
         // Payment may have completed while expiry was in flight. Check Stripe
         // again, and only suppress the error when the session really closed.
-        session = await stripe.checkout.sessions.retrieve(session.id,
+        session = await stripeClient.checkout.sessions.retrieve(session.id,
           {expand: ['payment_intent.latest_charge']});
         if (session.status === 'open') throw error;
       }
@@ -148,9 +152,9 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
     } else if (session.payment_status === 'paid') {
       // Reflect refunds initiated from the Stripe sandbox dashboard as well.
       const intent = typeof session.payment_intent === 'object' ? session.payment_intent :
-        await stripe.paymentIntents.retrieve(session.payment_intent, {expand: ['latest_charge']});
+        await stripeClient.paymentIntents.retrieve(session.payment_intent, {expand: ['latest_charge']});
       const charge = intent?.latest_charge;
-      if (intent?.livemode === false && charge?.amount_refunded > 0) {
+      if (intent?.livemode === (booking.paymentMode === 'live') && charge?.amount_refunded > 0) {
         await db.runTransaction(async (tx) => {
           const current = (await tx.get(bookingRef(id))).data();
           if (!current) return;
@@ -179,8 +183,9 @@ function paymentService({db, stripe, Timestamp, returnUrl, now = Date.now}) {
       if (payment) return;
       const attemptId = randomUUID();
       const metadata = {bookingId: id, customerId: booking.customerId,
-        vendorId: booking.vendorId, attemptId};
-      payment = {attemptId, createdAt: Timestamp.fromMillis(now()), parameters: {
+        vendorId: booking.vendorId, attemptId, paymentMode: booking.paymentMode};
+      payment = {attemptId, paymentMode: booking.paymentMode,
+        createdAt: Timestamp.fromMillis(now()), parameters: {
         mode: 'payment', allowed_payment_method_types: ['card'],
         client_reference_id: id, metadata,
         payment_intent_data: {metadata},

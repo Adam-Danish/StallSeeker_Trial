@@ -10,7 +10,7 @@ const labels = {
 };
 
 function transactionChanged(before, after) {
-  return after?.paymentMode === 'test' && !!labels[after.paymentStatus] &&
+  return ['test', 'live'].includes(after?.paymentMode) && !!labels[after.paymentStatus] &&
     (!before || before.paymentStatus !== after.paymentStatus ||
       (before.paymentRefundedCents || 0) !== (after.paymentRefundedCents || 0));
 }
@@ -27,7 +27,8 @@ async function emailMessage(id, booking, to, from, eventAt) {
     ...(eventAt ? [`Update recorded: ${new Date(eventAt).toLocaleString('en-MY', {timeZone: 'Asia/Kuala_Lumpur'})} (MYT)`] : []),
     ...(booking.paymentReference ? [`Payment reference: ${booking.paymentReference}`] : []),
     ...(booking.paymentRefundedCents > 0 ? [`Refunded: ${money(booking.paymentRefundedCents)}`] : []),
-    '', 'This is a Stripe test transaction. No live charge was made.',
+    ...(booking.paymentMode === 'test'
+      ? ['', 'This is a Stripe test transaction. No live charge was made.'] : []),
     'Open My bookings in StallSeeker to see the latest status.',
   ].join('\n');
   return {from, to, subject: `StallSeeker: ${label} (${id})`, text,

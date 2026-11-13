@@ -4,7 +4,8 @@ const path = require('node:path');
 const PDFDocument = require('pdfkit');
 
 const money = (cents) => `RM ${(Number(cents || 0) / 100).toFixed(2)}`;
-const paidReceipt = (booking) => booking?.paymentMode === 'test' && !!booking.paymentPaidAt;
+const paidReceipt = (booking) => ['test', 'live'].includes(booking?.paymentMode) &&
+  !!booking.paymentPaidAt;
 const receiptFilename = (id) => `StallSeeker-receipt-${id}.pdf`;
 
 async function receiptPdf(id, booking) {
@@ -31,7 +32,8 @@ async function receiptPdf(id, booking) {
   };
   text('StallSeeker', 22, true);
   text('PAYMENT RECEIPT', 12, true);
-  text('Stripe test payment - no live charge', 9);
+  text(booking.paymentMode === 'live' ? 'Stripe payment' :
+    'Stripe test payment - no live charge', 9);
   doc.moveDown();
   text(booking.stallName, 16, true);
   text(`Customer: ${booking.customerName}`);

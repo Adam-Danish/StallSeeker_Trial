@@ -76,9 +76,10 @@ class DemoOrder {
   final int paymentRefundedCents;
 
   bool get hasTestPayment => paymentMode == 'test';
-  bool get hasReceipt => hasTestPayment && paymentPaidAt != null;
+  bool get hasStripePayment => paymentMode == 'test' || paymentMode == 'live';
+  bool get hasReceipt => hasStripePayment && paymentPaidAt != null;
   bool get awaitingPayment =>
-      hasTestPayment &&
+      hasStripePayment &&
       status == 'confirmed' &&
       {'awaiting_payment', 'pending', 'failed'}.contains(paymentStatus);
   bool get canPay =>
@@ -86,10 +87,10 @@ class DemoOrder {
       paymentExpiresAt != null &&
       DateTime.now().isBefore(paymentExpiresAt!);
   bool get canPrepare =>
-      status == 'confirmed' && (!hasTestPayment || paymentStatus == 'paid');
+      status == 'confirmed' && (!hasStripePayment || paymentStatus == 'paid');
   bool get canCustomerCancel =>
       effectiveStatus == 'requested' ||
-      (hasTestPayment &&
+      (hasStripePayment &&
           {'confirmed', 'preparing', 'ready'}.contains(effectiveStatus));
   bool get vendorNeedsAttention =>
       vendorUnseenRequest &&

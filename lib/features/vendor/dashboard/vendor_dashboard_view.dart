@@ -581,7 +581,7 @@ class VendorDashboardView extends StatelessWidget {
         Text('Booked ${time!.day}/${time.month} at $timeLabel · MYT',
             style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ],
-      if (booking.hasTestPayment) ...[
+      if (booking.hasStripePayment) ...[
         const SizedBox(height: 4),
         Text(bookingPaymentLabel(booking),
             style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),

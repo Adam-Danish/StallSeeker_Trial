@@ -3,18 +3,26 @@
 const TERMINAL = new Set(['cancelled', 'expired', 'rejected']);
 const PAYMENT_WINDOW_MS = 10 * 60 * 1000;
 
-function requireTestKey(key) {
-  if (typeof key !== 'string' || !/^(sk|rk)_test_\S+$/.test(key.trim())) {
-    throw new Error('Stripe sandbox key required. Live payments are disabled.');
+function requireModeKey(key, mode) {
+  const suffix = mode === 'live' ? 'live' : mode === 'test' ? 'test' : null;
+  if (!suffix || typeof key !== 'string' ||
+      !new RegExp(`^(sk|rk)_${suffix}_\\S+$`).test(key.trim())) {
+    throw new Error(`A Stripe ${suffix || 'valid'} mode key is required.`);
   }
   return key.trim();
+}
+
+function requireTestKey(key) { return requireModeKey(key, 'test'); }
+
+function isStripePaymentMode(mode) {
+  return mode === 'test' || mode === 'live';
 }
 
 function assertPayable(booking, uid, now) {
   if (!booking || booking.customerId !== uid) {
     throw new Error('This is not your booking.');
   }
-  if (booking.paymentMode !== 'test' || booking.status !== 'confirmed' ||
+  if (!isStripePaymentMode(booking.paymentMode) || booking.status !== 'confirmed' ||
       !['awaiting_payment', 'pending', 'failed'].includes(booking.paymentStatus)) {
     throw new Error('This booking is not awaiting payment.');
   }
@@ -27,14 +35,18 @@ function assertPayable(booking, uid, now) {
 }
 
 function assertSession(bookingId, booking, payment, session) {
-  if (!booking || booking.paymentMode !== 'test' || !payment ||
-      session.livemode !== false || session.mode !== 'payment' ||
+  const expectedLive = booking?.paymentMode === 'live';
+  if (!booking || !isStripePaymentMode(booking.paymentMode) || !payment ||
+      session.livemode !== expectedLive || session.mode !== 'payment' ||
       session.currency !== 'myr' || session.amount_total !== booking.totalCents ||
       session.client_reference_id !== bookingId ||
       session.metadata?.bookingId !== bookingId ||
       session.metadata?.customerId !== booking.customerId ||
       session.metadata?.vendorId !== booking.vendorId ||
       session.metadata?.attemptId !== payment.attemptId ||
+      (session.metadata?.paymentMode &&
+        session.metadata.paymentMode !== booking.paymentMode) ||
+      (payment.paymentMode && payment.paymentMode !== booking.paymentMode) ||
       (payment.sessionId && payment.sessionId !== session.id)) {
     throw new Error('Payment does not match this booking.');
   }
@@ -59,5 +71,5 @@ function sessionPatch(booking, session, now, {failed = false} = {}) {
     booking.paymentStatus === 'failed' ? 'failed' : 'pending'};
 }
 
-module.exports = {TERMINAL, PAYMENT_WINDOW_MS, requireTestKey, assertPayable,
-  assertSession, sessionPatch};
+module.exports = {TERMINAL, PAYMENT_WINDOW_MS, requireModeKey, requireTestKey,
+  isStripePaymentMode, assertPayable, assertSession, sessionPatch};

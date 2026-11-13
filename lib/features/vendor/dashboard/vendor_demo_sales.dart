@@ -153,7 +153,7 @@ class _VendorPaymentHistoryScreenState
             }
             final orders = snapshot.data!
                 .where((order) =>
-                    order.hasTestPayment && order.paymentStatus != 'unpaid')
+                    order.hasStripePayment && order.paymentStatus != 'unpaid')
                 .toList();
             return ListView(padding: const EdgeInsets.all(16), children: [
               if (orders.isEmpty)
