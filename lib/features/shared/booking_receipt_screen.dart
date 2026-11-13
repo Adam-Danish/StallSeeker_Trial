@@ -88,7 +88,8 @@ class _BookingReceiptScreenState extends State<BookingReceiptScreen> {
                     ),
                   ]),
                   const SizedBox(height: 6),
-                  Text('Stripe test payment', style: theme.textTheme.bodySmall),
+                  Text(booking.hasTestPayment ? 'Stripe test payment' : 'Stripe payment',
+                      style: theme.textTheme.bodySmall),
                   const Divider(height: 32),
                   Text(booking.stallName,
                       style: theme.textTheme.titleMedium

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/whatsapp_helper.dart';
 import 'info_page.dart';
 
 enum LegalPage { privacy, terms }
@@ -47,6 +48,11 @@ class LegalScreen extends StatelessWidget {
                     color: Color(0xFF52525A),
                   ),
                 ),
+                if (section.key == 'Contact' ||
+                    section.key == 'Changes and contact') ...[
+                  const SizedBox(height: 10),
+                  const WhatsAppContactRow(),
+                ],
               ],
             ),
           ),
@@ -68,7 +74,7 @@ class LegalScreen extends StatelessWidget {
     MapEntry('Data deletion',
         'Deleting your account removes your account and related StallSeeker data. Some security or legal records may be kept only when required by law.'),
     MapEntry('Contact',
-        'For privacy questions, contact the StallSeeker team at support@stallseeker.my.'),
+        'For questions about your data, access or correction requests, or complaints, contact the StallSeeker admin.'),
   ];
 
   static const _termSections = <MapEntry<String, String>>[
@@ -87,6 +93,6 @@ class LegalScreen extends StatelessWidget {
     MapEntry('Account action',
         'We may limit or remove accounts that abuse the service or put other users at risk. You may delete your account from the Profile page.'),
     MapEntry('Changes and contact',
-        'These terms may change as the service develops. For questions, contact support@stallseeker.my.'),
+        'These terms may change as the service develops. For questions, contact the StallSeeker admin.'),
   ];
 }

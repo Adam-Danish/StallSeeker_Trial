@@ -75,11 +75,11 @@ function nextStatus(booking, action, uid, now) {
   }
   if (uid === customerId && action === 'cancel' &&
       ['confirmed', 'preparing', 'ready'].includes(status) &&
-      booking.paymentMode === 'test') {
+      ['test', 'live'].includes(booking.paymentMode)) {
     return 'cancelled';
   }
   if (uid !== vendorId) throw new Error('You cannot update this booking.');
-  if (action === 'startPreparing' && booking.paymentMode === 'test' &&
+  if (action === 'startPreparing' && ['test', 'live'].includes(booking.paymentMode) &&
       booking.paymentStatus !== 'paid') {
     throw new Error('Wait for payment to be confirmed before preparing.');
   }

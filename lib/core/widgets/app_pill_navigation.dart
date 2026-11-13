@@ -35,7 +35,7 @@ class AppPillNavigation extends StatelessWidget {
                   child: SafeArea(
                     top: false,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      padding: EdgeInsets.fromLTRB(12, 0, 12, kIsWeb ? 24 : 8),
                       child: Center(
                         heightFactor: 1,
                         child: ConstrainedBox(

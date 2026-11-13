@@ -10,7 +10,8 @@ Widget interceptMapOverlay(Widget overlay) {
   if (!kIsWeb) return overlay;
   if (overlay is Positioned &&
       overlay.child is! GoogleMap &&
-      overlay.child is! MapGestureGuard) {
+      overlay.child is! MapGestureGuard &&
+      overlay.key != const ValueKey('results-panel')) {
     return Positioned(
       key: overlay.key,
       left: overlay.left,

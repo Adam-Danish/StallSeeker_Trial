@@ -1,27 +1,21 @@
 'use strict';
 
-const Stripe = require('stripe');
 const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {onDocumentUpdated} = require('firebase-functions/v2/firestore');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
-const {defineSecret} = require('firebase-functions/params');
 const {getFirestore, Timestamp} = require('firebase-admin/firestore');
-const {requireTestKey, TERMINAL} = require('./stripe-payment-core.cjs');
+const {isStripePaymentMode, TERMINAL} = require('./stripe-payment-core.cjs');
 const {paymentService} = require('./stripe-payment-service.cjs');
+const {apiSecrets, webhookSecrets, stripeForMode, signingKeyForMode} =
+  require('./stripe-payment-config.cjs');
 
-const apiKey = defineSecret('STRIPE_SECRET_KEY');
-const signingKey = defineSecret('STRIPE_WEBHOOK_SECRET');
 const db = getFirestore();
-const options = {secrets: [apiKey], timeoutSeconds: 120, maxInstances: 5};
-
-function client() {
-  return new Stripe(requireTestKey(apiKey.value()), {maxNetworkRetries: 2, timeout: 20000});
-}
+const options = {secrets: apiSecrets, timeoutSeconds: 120, maxInstances: 5};
 
 function service() {
   const project = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   if (!project) throw new Error('Firebase project configuration is missing.');
-  return paymentService({db, stripe: client(), Timestamp,
+  return paymentService({db, stripeForMode, Timestamp,
     returnUrl: `https://us-central1-${project}.cloudfunctions.net/stripePaymentReturn`});
 }
 
@@ -52,7 +46,7 @@ exports.createStripeCheckout = onCall(options, async (request) => {
   try {
     return await service().checkout(id, uid);
   } catch (error) {
-    console.error('Test checkout unavailable', {bookingId: id, type: error.type || error.name});
+    console.error('Stripe checkout unavailable', {bookingId: id, type: error.type || error.name});
     throw new HttpsError('failed-precondition',
       'Payment could not open. Refresh the booking and try again while the payment window is open.');
   }
@@ -64,22 +58,27 @@ exports.refreshStripePayment = onCall(options, async (request) => {
     await service().sync(id);
     return {refreshed: true};
   } catch (error) {
-    console.error('Test payment refresh unavailable', {bookingId: id, type: error.type || error.name});
+    console.error('Stripe payment refresh unavailable', {bookingId: id, type: error.type || error.name});
     throw new HttpsError('unavailable', 'Payment status could not refresh. Please try again.');
   }
 });
 
-exports.stripeWebhook = onRequest({...options, secrets: [apiKey, signingKey],
+exports.stripeWebhook = onRequest({...options, secrets: webhookSecrets,
   invoker: 'public'}, async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('POST required');
   let event;
+  let expectedLive;
   try {
-    event = client().webhooks.constructEvent(req.rawBody,
-      req.get('stripe-signature'), signingKey.value());
+    const payload = JSON.parse(req.rawBody.toString('utf8'));
+    if (typeof payload.livemode !== 'boolean') throw new Error('Invalid Stripe event mode.');
+    expectedLive = payload.livemode;
+    const mode = expectedLive ? 'live' : 'test';
+    event = stripeForMode(mode).webhooks.constructEvent(req.rawBody,
+      req.get('stripe-signature'), signingKeyForMode(mode));
   } catch (_) {
     return res.status(400).send('Invalid signature');
   }
-  if (event.livemode !== false) return res.status(400).send('Sandbox events only');
+  if (event.livemode !== expectedLive) return res.status(400).send('Invalid event mode');
   const supported = new Set(['checkout.session.completed',
     'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed',
     'checkout.session.expired', 'payment_intent.payment_failed', 'charge.refunded', 'refund.updated']);
@@ -102,7 +101,7 @@ exports.closeCancelledStripePayment = onDocumentUpdated({...options,
   document: 'bookings/{bookingId}', retry: true}, async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
-  if (after.paymentMode !== 'test' || !TERMINAL.has(after.status) ||
+  if (!isStripePaymentMode(after.paymentMode) || !TERMINAL.has(after.status) ||
       ['refunded', 'refund_failed'].includes(after.paymentStatus) ||
       (before.status === after.status && before.paymentStatus === after.paymentStatus)) return;
   await service().sync(event.params.bookingId, {close: true});
@@ -113,7 +112,7 @@ exports.expireStripePayments = onSchedule({...options, schedule: 'every 1 minute
     .where('paymentStatus', 'in', ['awaiting_payment', 'pending', 'failed'])
     .where('paymentExpiresAt', '<=', Timestamp.now()).limit(100).get();
   for (const doc of due.docs) {
-    if (doc.data().paymentMode !== 'test' || doc.data().paymentStatus === 'paid') continue;
+    if (!isStripePaymentMode(doc.data().paymentMode) || doc.data().paymentStatus === 'paid') continue;
     try {
       await service().sync(doc.id);
     } catch (error) {

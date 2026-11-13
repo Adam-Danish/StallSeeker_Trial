@@ -1,10 +1,15 @@
-# StallSeeker Stripe prototype
+# StallSeeker Stripe payments
 
-This integration accepts **sandbox keys only**. Customers pay as soon as they
-place a self-collect booking. Vendor acceptance is not required. The vendor
-sees the new booking after server-verified payment and must wait for that
-confirmation before preparing it. New bookings require at least RM2.00 and
-give customers 10 minutes to pay. Older bookings keep their original flow.
+The backend supports Stripe test and live modes. `STRIPE_PAYMENT_MODE` selects
+the mode used for new bookings; it defaults to `test` for non-production
+projects. The StallSeeker production project rejects any mode except `live`.
+Each booking stores its
+mode, and reconciliation/refunds continue using that mode's Stripe account.
+Customers pay as soon as they place a self-collect booking. Vendor acceptance
+is not required. The vendor sees the new booking after server-verified payment
+and must wait for that confirmation before preparing it. New bookings require
+at least RM2.00 and give customers 10 minutes to pay. Older bookings keep their
+original flow.
 
 ## Try it
 
@@ -18,22 +23,40 @@ give customers 10 minutes to pay. Older bookings keep their original flow.
 6. Vendor: see the paid booking, start preparing, mark ready, then collected.
    Demo sales and payment history show the simulated payment.
 7. Either customer or vendor can cancel before collection, including after
-   payment. The server requests a full test refund to the original payment
-   method. Failed refunds show a status requiring administrator attention.
+   payment. The server requests a full refund in the original Stripe mode.
+   Failed refunds show a status requiring administrator attention.
 
-There are **no vendor bank deposits, transfers, Stripe Connect accounts, or real
-payouts**. Vendors need only their normal StallSeeker account for this prototype.
-The platform's Stripe sandbox contains the test transactions; the app attributes
-each booking to its vendor. Do not treat demo sales as a withdrawable balance.
+There are **no vendor bank deposits, transfers, Stripe Connect accounts, or
+vendor payouts**. Direct charges settle to the platform Stripe account. The app
+attributes each booking to its vendor, but that does not transfer funds or
+create a withdrawable vendor balance.
 
 ## Configuration
 
 Firebase project: `stallseeker-c2ffe`. Callable/HTTP/scheduled functions use
 `us-central1`; the Firestore cancellation trigger uses the database region,
 `asia-southeast1`.
-Store `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in Google Secret Manager.
-Never place either in Flutter, Git, screenshots, or logs. Hosted Checkout needs
-no Stripe publishable key in this Flutter app.
+Store test credentials as `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, and
+live credentials as `STRIPE_LIVE_SECRET_KEY` and
+`STRIPE_LIVE_WEBHOOK_SECRET` in Google Secret Manager. The test secrets remain
+available to reconcile old test bookings after switching new bookings to live.
+Never place any secret in Flutter, Git, screenshots, or logs. Hosted Checkout
+needs no Stripe publishable key in this Flutter app.
+
+After the Stripe live account and live webhook endpoint are ready, run these
+commands from the repository root. The Firebase CLI prompts for the secret
+values; do not put them in command arguments:
+
+```powershell
+firebase functions:secrets:set STRIPE_LIVE_SECRET_KEY --project stallseeker-c2ffe
+firebase functions:secrets:set STRIPE_LIVE_WEBHOOK_SECRET --project stallseeker-c2ffe
+Set-Content functions/.env.stallseeker-c2ffe "STRIPE_PAYMENT_MODE=live"
+firebase deploy --only functions --project stallseeker-c2ffe
+```
+
+The `.env.*` files are git-ignored. This project is set to `live` for real card
+payments. Configure `test` only for an isolated development/test deployment.
+Do not deploy until both live secrets and the live webhook are ready.
 
 Webhook URL:
 `https://us-central1-stallseeker-c2ffe.cloudfunctions.net/stripeWebhook`
@@ -49,6 +72,8 @@ On Windows it finds firebase-tools in `%APPDATA%/npm/node_modules`; set
 `FIREBASE_TOOLS_ROOT` for a different installation. It creates a sandbox webhook
 and stores its signing secret. If an endpoint already exists, the helper leaves
 it unchanged; keep the matching signing secret. It never switches to live mode.
+Create the live webhook endpoint separately in Stripe's Live mode and store its
+own signing secret as `STRIPE_LIVE_WEBHOOK_SECRET`.
 
 ## Backend behavior
 
@@ -60,7 +85,7 @@ it unchanged; keep the matching signing secret. It never switches to live mode.
 - `expireStripePayments`: closes unpaid checkout sessions after the app deadline.
   Stripe's own session expiry is longer, so a scheduled task enforces this window.
 - `closeCancelledStripePayment`: closes cancelled sessions and refunds late or
-  already-completed test payments. Full dashboard refunds cancel active bookings;
+  already-completed payments in the booking's mode. Full dashboard refunds cancel active bookings;
   partial refunds reduce demo sales. Collected bookings retain their history.
 - Public booking documents contain payment status and reference. Checkout attempt
   data is in server-only `bookingPayments`; existing default-deny rules protect it.

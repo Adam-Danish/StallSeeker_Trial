@@ -4,7 +4,7 @@
 **Code version:** `1.0.3+4`; Git HEAD `2721f1c`  
 **Scope:** Current application source, all 82 Dart files under `lib`, the three configured Cloud Functions codebases, Firestore/Storage rules and indexes, platform configuration, and supporting tests/scripts. Generated builds, conversation exports, and Repomix exports are not treated as the application source of truth.
 
-This is a source-based product and technical inventory. “Fully Implemented” means that the described capability has a concrete implementation and is connected to its stated flow; it does **not** certify production deployment, credentials, device permissions, or successful operation on every platform. Payment functionality is explicitly a Stripe sandbox implementation. Reachable features, retained legacy implementations, and unreachable screens are identified separately.
+This is a source-based product and technical inventory. “Fully Implemented” means that the described capability has a concrete implementation and is connected to its stated flow; it does **not** certify production deployment, credentials, device permissions, or successful operation on every platform. Stripe supports test and live payment modes in source; the configured default remains test until `STRIPE_PAYMENT_MODE=live` and live credentials/webhook secrets are configured and deployed. Reachable features, retained legacy implementations, and unreachable screens are identified separately.
 
 ## Key findings
 
@@ -649,7 +649,7 @@ This is a source-based product and technical inventory. “Fully Implemented” 
 - **Vendor Start preparing:** move confirmed → preparing; for test-payment bookings it is unavailable until payment is paid.
 - **Vendor Mark ready:** move preparing → ready and trigger customer-ready attention/push.
 - **Vendor Mark collected:** move ready → collected.
-- **Customer Cancel booking / Cancel and refund:** available for requested bookings and supported test bookings before collection.
+- **Customer Cancel booking / Cancel and refund:** available for requested bookings and Stripe bookings before collection.
 - **Vendor Cancel booking / Cancel and refund:** available in confirmed/preparing/ready UI; legacy requested records can be rejected.
 - Cancellation confirmation offers **Keep booking** and **Cancel booking / Cancel and refund** with appropriate payment explanation.
 - **Self-collect location:** open Google Maps for the pickup coordinates snapshotted when the booking was created.
@@ -661,16 +661,16 @@ This is a source-based product and technical inventory. “Fully Implemented” 
 
 **Primary sources:** [booking_payment_card.dart][paymentCard], [booking_detail_screen.dart][bookingDetails], [stripe-payments.cjs][stripeEndpoints], [stripe-payment-service.cjs][stripeService].
 
-- Show TEST MODE, booking amount, payment state, payment reference, and refunded amount where recorded.
+- Show booking amount, payment state, payment reference, and refunded amount where recorded; test bookings are identified as test payments.
 - Display paid, awaiting/pending, failed, expired, cancelled, refund pending, refund failed, refunded, and partially refunded labels.
 - For legacy requested bookings, explain payment is available after acceptance.
 - Display remaining time in the ten-minute payment window; vendor wording explains preparation is waiting for payment.
-- **Pay RM…:** create/reuse Stripe test Checkout and open it in an external application/browser.
+- **Pay RM…:** create/reuse Checkout in the booking's Stripe mode and open it in an external application/browser.
 - The client rejects non-HTTPS/non-`checkout.stripe.com` checkout URLs.
 - Display a blocking progress view while opening secure checkout or checking payment, with accessible live-region messaging.
 - If checkout launch fails, show **Try again** to reopen the returned URL.
-- Show test-card instructions and explicit no-real-money text.
-- **Check payment:** ask the backend to retrieve and reconcile actual Stripe sandbox state.
+- Test mode uses Stripe test cards; live mode processes real card payments.
+- **Check payment:** ask the backend to retrieve and reconcile the booking's Stripe state.
 - Automatically recheck on app resume and once on opening a relevant booking; queue a resume recheck if another operation is busy.
 - Repaint countdown every second for payment bookings.
 - Stripe success/cancel URLs go to a small hosted HTML return page telling the user to return to the app and check the booking.
@@ -923,27 +923,27 @@ This is a source-based product and technical inventory. “Fully Implemented” 
 
 **Lifecycle labels implemented:** requested, confirmed, preparing, ready, collected, rejected, cancelled, expired. New checkout-first UI displays confirmed/unpaid as Awaiting payment and confirmed/paid as Paid · awaiting preparation.
 
-### 2.6 Stripe test payment and refund functions
+### 2.6 Stripe payment and refund functions
 
 **Primary sources:** [stripe-payments.cjs][stripeEndpoints], [stripe-payment-service.cjs][stripeService], [stripe-payment-core.cjs][stripeCore].
 
-- Enforce sandbox `sk_test_` / `rk_test_` keys; reject live keys. API/webhook keys are declared as backend secrets.
+- Keep test and live API/webhook keys in separate backend secrets. Require the key prefix and Stripe object mode to match each booking's stored mode; new bookings use `STRIPE_PAYMENT_MODE` (default `test`).
 - Validate participant identity/role on refresh and customer-only ownership on checkout creation.
-- `assertPayable`: check owner, test mode, confirmed status, supported unpaid status, safe integer total ≥200 cents, and unexpired deadline.
+- `assertPayable`: check owner, supported Stripe mode, confirmed status, supported unpaid status, safe integer total ≥200 cents, and unexpired deadline.
 - Persist one checkout attempt/UUID and its exact Stripe parameters under `bookingPayments/{bookingId}` before making the external call.
 - Use an idempotency key for Checkout session creation, reusing it after uncertain/time-out responses or cross-device retries.
 - Support repair of an older uncreated attempt's retired parameter spelling; do not recover a missing session blindly after 23 hours.
 - Create card-only MYR Checkout with booking/customer/vendor/attempt metadata, aggregate order total, and success/cancel return URLs.
-- `assertSession`: verify test mode, payment mode, currency, amount, buyer/vendor/booking/attempt metadata, client reference, and known session identity before applying results.
-- Webhook verifies raw-body Stripe signature, accepts only sandbox events, and recognizes completed, async success/failure, expired, payment-intent failure, charge-refunded, and refund-updated event types.
+- `assertSession`: verify Stripe mode, payment mode, currency, amount, buyer/vendor/booking/attempt metadata, client reference, and known session identity before applying results.
+- Webhook verifies the raw-body Stripe signature with the secret matching the event's mode, and recognizes completed, async success/failure, expired, payment-intent failure, charge-refunded, and refund-updated event types.
 - Re-read Stripe's latest state rather than trusting webhook arrival order; paid/refunded states do not regress because of stale unpaid events.
 - Update paid reference/timestamp and checkout-first vendor attention transactionally; avoid writing unchanged fields to prevent trigger loops.
 - Expire open sessions on cancellation or unpaid deadline. If payment completes during expiry, re-read Stripe and preserve/reconcile the payment.
 - A late success for an already cancelled/expired/rejected booking enters refund handling.
-- Full test refund uses its own stable idempotency key and records refund identity/status; recognize Stripe-dashboard refunds and partial refunded cents.
-- Full dashboard refund can also cancel an active booking. Vendor simulated sales subtract recorded refunds.
+- Full refund uses its own stable idempotency key and records refund identity/status; recognize Stripe-dashboard refunds and partial refunded cents.
+- Full dashboard refund can also cancel an active booking. Simulated demo sales remain test-mode only.
 - Refund errors expose pending/failed statuses; no administrative refund-retry UI is present.
-- Each minute, process up to 100 due confirmed/unpaid test bookings. Callables/triggers have 120-second timeout and at most five instances in their configured options.
+- Each minute, process up to 100 due confirmed/unpaid Stripe bookings. Callables/triggers have 120-second timeout and at most five instances in their configured options.
 - Return page sets no-store and restrictive content-security headers; it does not write payment success based on browser parameters.
 
 **Not implemented as commercial payments:** live charges, connected vendor accounts, bank onboarding, transfers/payouts, settlement reports, payment-method saving, downloadable receipts/invoices, fees/commissions, and financial reconciliation across account deletion.
@@ -1032,7 +1032,7 @@ There are **18 exported application backend entry points** across the three conf
 | Geocoding | Address lookup, reverse-geocoding, and fallback search. | Used with bounded timeouts and fallback labels. |
 | URL Launcher | Google Maps/Waze/browser directions, phone dialer, Stripe checkout, pickup map. | No in-app web checkout, custom payment return deep link, or general file downloader. |
 | Image Picker | Gallery single image and review multi-selection. | The camera icon does not mean camera capture is enabled; source is gallery. |
-| Stripe Node SDK | Sandbox card Checkout, signature verification, session/payment/refund reconciliation. | Live keys deliberately rejected; no payout/Connect. |
+| Stripe Node SDK | Test/live card Checkout, signature verification, session/payment/refund reconciliation. | Live deployment still requires live account activation and secrets; no vendor payout/Connect. |
 | SharedPreferences | Guest preferences and retained legacy booking state. | Not a cloud-sync system for guests. |
 
 **Platform detail:** Android manifest includes network, foreground/background location, foreground-service location, wake lock, and notification permissions; Maps metadata and navigation-app queries are configured. iOS includes background-location descriptions/mode and navigation-app queries, but the inspected AppDelegate does not register a Maps API key, Info.plist does not declare a photo-library usage description, and local notification initialization supplies Android settings only. Web/desktop directories and Firebase options exist, but native plugin use, `dart:io` image handling, web Maps/FCM setup, and platform-specific initialization are not completed as a unified supported flow. Treat iOS/web/desktop readiness as partial, not proven feature parity.
@@ -1238,8 +1238,8 @@ The table consolidates capabilities described above; the detailed controls and c
 | Participant unread flags/mark viewed/badges | Bookings | Fully Implemented | [demo_order_service.dart][orderService], [bookings.cjs][bookings] |
 | Paid-booking vendor push and ready/cancellation/status pushes | Booking notification backend | Partially Implemented | [bookings.cjs][bookings] |
 | Legacy request expiry scheduler | Booking backend | Fully Implemented | [bookings.cjs][bookings] |
-| Stripe card Checkout and MYR payment as a financial capability | Test checkout | Hardcoded/Mock | [stripe-payments.cjs][stripeEndpoints], [stripe-payment-service.cjs][stripeService] |
-| Test-only key enforcement and participant payment authorization | Payment backend | Fully Implemented | [stripe-payment-core.cjs][stripeCore], [stripe-payments.cjs][stripeEndpoints] |
+| Stripe card Checkout and MYR payment as a financial capability | Test/live Checkout backend; test mode is default | Fully Implemented | [stripe-payments.cjs][stripeEndpoints], [stripe-payment-service.cjs][stripeService] |
+| Test/live key and webhook-mode enforcement and participant payment authorization | Payment backend | Fully Implemented | [stripe-payment-core.cjs][stripeCore], [stripe-payments.cjs][stripeEndpoints] |
 | Persisted checkout attempt and session idempotency/recovery | Payment backend | Fully Implemented | [stripe-payment-service.cjs][stripeService] |
 | Webhook signature/mode/amount/currency/metadata verification | Payment backend | Fully Implemented | [stripe-payments.cjs][stripeEndpoints], [stripe-payment-core.cjs][stripeCore] |
 | Payment reconciliation, stale-event protection, race handling | Payment backend | Fully Implemented | [stripe-payment-service.cjs][stripeService], [stripe-payment-core.cjs][stripeCore] |

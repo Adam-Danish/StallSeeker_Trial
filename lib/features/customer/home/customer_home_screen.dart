@@ -1932,6 +1932,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                   ),
                 ...[
                   Positioned(
+                    key: const ValueKey('results-panel'),
                     left: geometry.panelLeft,
                     bottom: navClearance,
                     width: panelWidth,
@@ -1944,137 +1945,139 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                           opacity: preview == null
                               ? 1
                               : (1 - extent / .28).clamp(0.0, 1.0),
-                          child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (event) =>
-                                  _trackResultPointer(event.pointer, true),
-                              onPointerUp: (event) =>
-                                  _trackResultPointer(event.pointer, false),
-                              onPointerCancel: (event) =>
-                                  _trackResultPointer(event.pointer, false),
-                              child: MouseRegion(
-                                  onEnter: (_) {
-                                    if (kIsWeb) {
-                                      setState(
-                                          () => _pointerOverResults = true);
-                                    }
-                                  },
-                                  onExit: (_) {
-                                    if (kIsWeb) {
-                                      setState(
-                                          () => _pointerOverResults = false);
-                                    }
-                                  },
-                                  child: Column(children: [
-                                    DiscoveryResultsHeader(
-                                      countLabel:
-                                          '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
-                                      actionLabel: snapshot.hasError
-                                          ? 'Retry'
-                                          : 'View all',
-                                      onViewAll: snapshot.hasError
-                                          ? () => setState(
-                                              () => _vendors = _watchVendors())
-                                          : () => showingDishResults
-                                              ? _showAllDishes(
-                                                  cards, filteredVendorById)
-                                              : _showAllStalls(onScreenVendors),
-                                      onSearchHere: _showSearchArea
-                                          ? _searchThisArea
-                                          : null,
-                                    ),
-                                    Expanded(
-                                      child: searching
-                                          ? const Center(
-                                              child:
-                                                  CircularProgressIndicator())
-                                          : resultCount == 0
-                                              ? Padding(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 16),
-                                                  child: Material(
-                                                    color: AppColors.cardColor,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            23),
-                                                    child: Center(
-                                                      child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(18),
-                                                          child: Text(
-                                                              snapshot.hasError
-                                                                  ? 'Could not load stalls. Check your connection and retry.'
-                                                                  : _dishSearchError !=
-                                                                              null &&
-                                                                          (query
-                                                                                  .isNotEmpty ||
-                                                                              _priceRange !=
-                                                                                  null)
-                                                                      ? _dishSearchError!
-                                                                      : _dishesLoading &&
-                                                                              (query.isNotEmpty ||
-                                                                                  _priceRange !=
-                                                                                      null)
-                                                                          ? 'Loading dishes and prices…'
-                                                                          : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
-                                                              textAlign:
-                                                                  TextAlign
-                                                                      .center,
-                                                              style: const TextStyle(
-                                                                  fontSize: 13,
-                                                                  color: AppColors
-                                                                      .textMuted))),
-                                                    ),
-                                                  ))
-                                              : StallCardCarousel(
-                                                  key: ValueKey(
-                                                      showingDishResults
-                                                          ? 'dish-map-cards'
-                                                          : 'stall-map-cards'),
-                                                  ids: ids,
-                                                  selectedId: selectedCard,
-                                                  viewportFraction:
-                                                      geometry.viewportFraction,
-                                                  cardsPerPage:
-                                                      geometry.cardsPerPage,
-                                                  itemBuilder: (_, index) =>
-                                                      showingDishResults
-                                                          ? _dishCard(
-                                                              cards[index],
-                                                              filteredVendorById[
-                                                                  cards[index]
-                                                                      .vendorId]!)
-                                                          : StallMapCard(
-                                                              onDoubleTap: () =>
-                                                                  _openStallPreview(
-                                                                      onScreenVendors[
-                                                                          index]),
-                                                              vendor:
+                          child: Column(children: [
+                            DiscoveryResultsHeader(
+                              countLabel:
+                                  '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
+                              actionLabel: snapshot.hasError
+                                  ? 'Retry'
+                                  : 'View all',
+                              onViewAll: snapshot.hasError
+                                  ? () => setState(
+                                      () => _vendors = _watchVendors())
+                                  : () => showingDishResults
+                                      ? _showAllDishes(
+                                          cards, filteredVendorById)
+                                      : _showAllStalls(onScreenVendors),
+                              onSearchHere: _showSearchArea
+                                  ? _searchThisArea
+                                  : null,
+                            ),
+                            Expanded(
+                              child: searching
+                                  ? const Center(
+                                      child:
+                                          CircularProgressIndicator())
+                                  : resultCount == 0
+                                      ? Padding(
+                                          padding: const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 16),
+                                          child: Material(
+                                            color: AppColors.cardColor,
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    23),
+                                            child: Center(
+                                              child: Padding(
+                                                  padding:
+                                                      const EdgeInsets
+                                                          .all(18),
+                                                  child: Text(
+                                                      snapshot.hasError
+                                                          ? 'Could not load stalls. Check your connection and retry.'
+                                                          : _dishSearchError !=
+                                                                      null &&
+                                                                  (query
+                                                                          .isNotEmpty ||
+                                                                      _priceRange !=
+                                                                          null)
+                                                              ? _dishSearchError!
+                                                              : _dishesLoading &&
+                                                                      (query.isNotEmpty ||
+                                                                          _priceRange !=
+                                                                              null)
+                                                                  ? 'Loading dishes and prices…'
+                                                                  : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
+                                                      textAlign:
+                                                          TextAlign
+                                                              .center,
+                                                      style: const TextStyle(
+                                                          fontSize: 13,
+                                                          color: AppColors
+                                                              .textMuted))),
+                                            ),
+                                          ))
+                                      : Listener(
+                                          behavior: HitTestBehavior.deferToChild,
+                                          onPointerDown: (event) =>
+                                              _trackResultPointer(event.pointer, true),
+                                          onPointerUp: (event) =>
+                                              _trackResultPointer(event.pointer, false),
+                                          onPointerCancel: (event) =>
+                                              _trackResultPointer(event.pointer, false),
+                                          child: MouseRegion(
+                                            onEnter: (_) {
+                                              if (kIsWeb) {
+                                                setState(
+                                                    () => _pointerOverResults = true);
+                                              }
+                                            },
+                                            onExit: (_) {
+                                              if (kIsWeb) {
+                                                setState(
+                                                    () => _pointerOverResults = false);
+                                              }
+                                            },
+                                            child: StallCardCarousel(
+                                              key: ValueKey(
+                                                  showingDishResults
+                                                      ? 'dish-map-cards'
+                                                      : 'stall-map-cards'),
+                                              ids: ids,
+                                              selectedId: selectedCard,
+                                              viewportFraction:
+                                                  geometry.viewportFraction,
+                                              cardsPerPage:
+                                                  geometry.cardsPerPage,
+                                              itemBuilder: (_, index) =>
+                                                  showingDishResults
+                                                      ? _dishCard(
+                                                          cards[index],
+                                                          filteredVendorById[
+                                                              cards[index]
+                                                                  .vendorId]!)
+                                                      : StallMapCard(
+                                                          onDoubleTap: () =>
+                                                              _openStallPreview(
                                                                   onScreenVendors[
-                                                                      index],
-                                                              selected: onScreenVendors[
-                                                                          index]
-                                                                      .vendorId ==
-                                                                  _selectedVendorId,
-                                                              onTap: () {
-                                                                final vendor =
-                                                                    onScreenVendors[
-                                                                        index];
-                                                                if (vendor
-                                                                        .vendorId ==
-                                                                    _selectedVendorId) {
-                                                                  _openStallPreview(
-                                                                      vendor);
-                                                                } else {
-                                                                  _selectVendor(
-                                                                      vendor);
-                                                                }
-                                                              }),
-                                                ),
-                                    ),
-                                  ]))),
+                                                                      index]),
+                                                          vendor:
+                                                              onScreenVendors[
+                                                                  index],
+                                                          selected: onScreenVendors[
+                                                                      index]
+                                                                  .vendorId ==
+                                                              _selectedVendorId,
+                                                          onTap: () {
+                                                            final vendor =
+                                                                onScreenVendors[
+                                                                    index];
+                                                            if (vendor
+                                                                    .vendorId ==
+                                                                _selectedVendorId) {
+                                                              _openStallPreview(
+                                                                  vendor);
+                                                            } else {
+                                                              _selectVendor(
+                                                                  vendor);
+                                                            }
+                                                          }),
+                                            ),
+                                          ),
+                                        ),
+                            ),
+                          ]),
                         ),
                       ),
                     ),

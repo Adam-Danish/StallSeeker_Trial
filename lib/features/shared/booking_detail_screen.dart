@@ -66,7 +66,7 @@ class BookingSummaryCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(bookingStatusLabel(booking),
                 style: TextStyle(color: color, fontWeight: FontWeight.w700)),
-            if (booking.hasTestPayment) ...[
+            if (booking.hasStripePayment) ...[
               const SizedBox(height: 4),
               Text(bookingPaymentLabel(booking),
                   style: Theme.of(context).textTheme.bodySmall),
@@ -126,7 +126,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
   bool _busy = false;
   bool _viewing = false;
   bool _initialPaymentCheck = false;
-  bool _hasTestPayment = false;
+  bool _hasStripePayment = false;
   bool _checkoutLaunched = false;
   bool _refreshOnResume = false;
   bool _refreshWithTransition = false;
@@ -146,7 +146,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
       });
     }
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _hasTestPayment) setState(() {});
+      if (mounted && _hasStripePayment) setState(() {});
     });
   }
 
@@ -159,7 +159,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _hasTestPayment) {
+    if (state == AppLifecycleState.resumed && _hasStripePayment) {
       final showTransition = _checkoutLaunched && !widget.isVendor;
       _checkoutLaunched = false;
       if (_busy) {
@@ -416,7 +416,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
         'requested',
         'confirmed',
       ],
-      if (booking.hasTestPayment) 'payment_confirmed',
+      if (booking.hasStripePayment) 'payment_confirmed',
       'preparing',
       'ready',
       'collected'
@@ -426,7 +426,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
       position = steps.indexOf(booking.paymentStatus == 'paid'
           ? 'payment_confirmed'
           : 'checkout_started');
-    } else if (booking.hasTestPayment &&
+    } else if (booking.hasStripePayment &&
         booking.status == 'confirmed' &&
         booking.paymentStatus == 'paid') {
       position = steps.indexOf('payment_confirmed');
@@ -475,9 +475,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                   return const Center(child: Text('Booking not found.'));
                 }
                 _viewIfNeeded(booking);
-                _hasTestPayment = booking.hasTestPayment;
+                _hasStripePayment = booking.hasStripePayment;
                 if (!_initialPaymentCheck &&
-                    booking.hasTestPayment &&
+                    booking.hasStripePayment &&
                     booking.paymentStatus != 'unpaid') {
                   _initialPaymentCheck = true;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -558,7 +558,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                     BookingSpecialInstructionsCard(
                         instructions: booking.specialInstructions),
                   ],
-                  if (booking.hasTestPayment) ...[
+                  if (booking.hasStripePayment) ...[
                     const SizedBox(height: 12),
                     BookingPaymentCard(
                         booking: booking,
@@ -591,7 +591,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                   const SizedBox(height: 10),
                   Wrap(spacing: 8, runSpacing: 4, children: _actions(booking)),
                   const SizedBox(height: 8),
-                  if (!booking.hasTestPayment)
+                  if (!booking.hasStripePayment)
                     const Text(
                         'This earlier booking uses payment arranged directly with the stall.'),
                 ]);

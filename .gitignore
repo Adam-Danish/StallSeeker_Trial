@@ -18,6 +18,7 @@ build/
 # Firebase local configurations
 **/.secret.local
 **/.env.local
+**/.env.*
 /firebase-debug.log
 /firebase-debug.*.log
 android/app/google-services.json

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/whatsapp_helper.dart';
 
 /// iOS-style grouped settings, with StallSeeker's existing account actions.
 class ProfilePage extends StatelessWidget {
@@ -368,6 +369,13 @@ class ProfilePage extends StatelessWidget {
                   _group([
                     _row(CupertinoIcons.question_circle_fill,
                         const Color(0xFFAD55E8), 'Help & FAQ', onFaq),
+                    _row(
+                      CupertinoIcons.chat_bubble_2_fill,
+                      const Color(0xFF25D366),
+                      'WhatsApp Admin',
+                      () => openWhatsAppAdmin(context),
+                      subtitle: kAdminWhatsAppDisplay,
+                    ),
                     _row(CupertinoIcons.info_circle_fill,
                         const Color(0xFF8288EF), 'About StallSeeker', onAbout),
                   ]),

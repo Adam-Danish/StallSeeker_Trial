@@ -10,6 +10,7 @@ const {getMessaging} = require('firebase-admin/messaging');
 const {vendorAvailable, bookingItems, specialInstructions, nextStatus,
   paidCheckoutBecameVisible} = require('./booking-core.cjs');
 const {PAYMENT_WINDOW_MS} = require('./stripe-payment-core.cjs');
+const {currentPaymentMode} = require('./stripe-payment-config.cjs');
 const {notificationTokens} = require('./notification-tokens.cjs');
 
 if (!getApps().length) initializeApp();
@@ -115,7 +116,7 @@ exports.createBooking = onCall(async (request) => {
       customerId: uid, vendorId, customerName: name || 'Customer', stallName,
       status: 'confirmed', items: priced.items, totalCents: priced.totalCents,
       specialInstructions: instructions,
-      paymentMode: 'test', paymentProvider: 'stripe', paymentStatus: 'awaiting_payment',
+      paymentMode: currentPaymentMode(), paymentProvider: 'stripe', paymentStatus: 'awaiting_payment',
       checkoutFirst: true,
       paymentExpiresAt: Timestamp.fromMillis(now + PAYMENT_WINDOW_MS),
       pickupLatitude: stall.latitude, pickupLongitude: stall.longitude,
@@ -157,9 +158,9 @@ exports.updateBooking = onCall(async (request) => {
     }
     tx.update(ref, {
       status, updatedAt: Timestamp.fromMillis(now),
-      ...(status === 'cancelled' && booking.paymentMode === 'test' &&
+      ...(status === 'cancelled' && ['test', 'live'].includes(booking.paymentMode) &&
         booking.paymentStatus === 'paid' ? {paymentStatus: 'refund_pending'} : {}),
-      ...(status === 'confirmed' && booking.paymentMode === 'test'
+      ...(status === 'confirmed' && ['test', 'live'].includes(booking.paymentMode)
         ? {paymentStatus: 'awaiting_payment',
           paymentExpiresAt: Timestamp.fromMillis(now + PAYMENT_WINDOW_MS)} : {}),
       vendorUnseenRequest: status === 'requested' && booking.vendorUnseenRequest === true,

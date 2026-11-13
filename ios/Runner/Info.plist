@@ -38,6 +38,7 @@
 	<array>
 		<string>comgooglemaps</string>
 		<string>waze</string>
+		<string>whatsapp</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
