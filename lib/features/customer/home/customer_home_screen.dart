@@ -1969,7 +1969,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                       child:
                                           CircularProgressIndicator())
                                   : resultCount == 0
-                                      ? Padding(
+                                      ? PointerInterceptor(
+                                          child: Padding(
                                           padding: const EdgeInsets
                                               .symmetric(
                                               horizontal: 16),
@@ -2007,9 +2008,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                                           color: AppColors
                                                               .textMuted))),
                                             ),
-                                          ))
-                                      : Listener(
-                                          behavior: HitTestBehavior.deferToChild,
+                                          )))
+                                      : PointerInterceptor(
+                                          child: Listener(
+                                            behavior: HitTestBehavior.deferToChild,
                                           onPointerDown: (event) =>
                                               _trackResultPointer(event.pointer, true),
                                           onPointerUp: (event) =>
@@ -2076,6 +2078,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                             ),
                                           ),
                                         ),
+                                      ),
                             ),
                           ]),
                         ),
