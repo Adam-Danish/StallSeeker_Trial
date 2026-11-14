@@ -162,11 +162,20 @@ class AuthService {
       if (kIsWeb) {
         // Browser Back can leave the popup Future pending after the user
         // abandons Google sign-in. Always return control to the login UI.
+        final provider = GoogleAuthProvider();
+        provider.setCustomParameters({
+          'prompt': 'select_account',
+        });
         userCredential = await _auth
-            .signInWithPopup(GoogleAuthProvider())
+            .signInWithPopup(provider)
             .timeout(const Duration(seconds: 25));
       } else {
         await _ensureGoogleSignInReady();
+        // Clear any previous sign-in session so the user is always prompted
+        // to pick an account on Android and iOS.
+        try {
+          await _googleSignIn.signOut();
+        } catch (_) {}
         final googleUser = await _googleSignIn
             .authenticate()
             .timeout(const Duration(seconds: 25));
@@ -300,7 +309,8 @@ class AuthService {
       debugPrint('Notification cleanup could not finish.');
     }
     try {
-      if (!kIsWeb && _googleSignInReady) {
+      if (!kIsWeb) {
+        await _ensureGoogleSignInReady();
         await _googleSignIn.signOut();
       }
     } catch (_) {
