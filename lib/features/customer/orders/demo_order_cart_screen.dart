@@ -10,6 +10,7 @@ import '../../../core/models/vendor_model.dart';
 import '../../../core/services/demo_order_service.dart';
 import '../../../core/services/menu_service.dart';
 import '../../shared/booking_detail_screen.dart';
+import '../../auth/resume_navigation.dart';
 
 class DemoOrderCartScreen extends StatefulWidget {
   const DemoOrderCartScreen({super.key, required this.vendor});
@@ -66,6 +67,7 @@ class _DemoOrderCartScreenState extends State<DemoOrderCartScreen> {
       Navigator.pushReplacement(
           context,
           MaterialPageRoute(
+              settings: ResumePage('booking', bookingId),
               builder: (_) => BookingDetailScreen(
                   bookingId: bookingId,
                   isVendor: false,

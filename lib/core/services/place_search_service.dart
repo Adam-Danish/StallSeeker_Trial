@@ -4,6 +4,7 @@ import 'package:flutter_google_places_sdk/flutter_google_places_sdk.dart'
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../constants/web_maps_config.dart';
 import 'browser_geocoding.dart';
+import 'web_maps_loader.dart';
 
 class LocationSelection {
   const LocationSelection({
@@ -33,13 +34,14 @@ class PlaceSuggestion {
 
 class PlaceSearchService {
   PlaceSearchService({FlutterGooglePlacesSdk? places})
-      : _places = places ??
-            FlutterGooglePlacesSdk(
-              kIsWeb ? webMapsApiKey : 'AIzaSyDV0UDXXVwuXQw3dVAb8RHmcql3bTlysNE',
-              useNewApi: true,
-            );
+      : _providedPlaces = places;
 
-  final FlutterGooglePlacesSdk _places;
+  final FlutterGooglePlacesSdk? _providedPlaces;
+  late final _places = _providedPlaces ??
+      FlutterGooglePlacesSdk(
+        kIsWeb ? webMapsApiKey : 'AIzaSyDV0UDXXVwuXQw3dVAb8RHmcql3bTlysNE',
+        useNewApi: true,
+      );
 
   void dispose() {}
 
@@ -48,6 +50,7 @@ class PlaceSearchService {
     if (trimmed.length < 2) return [];
 
     try {
+      if (kIsWeb && _providedPlaces == null) await loadWebMaps();
       final response = await _places.findAutocompletePredictions(
         trimmed,
         countries: ['my'],

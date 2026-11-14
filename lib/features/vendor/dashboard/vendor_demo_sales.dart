@@ -6,6 +6,7 @@ import '../../../core/models/demo_order.dart';
 import '../../../core/services/demo_order_service.dart';
 import '../../shared/booking_detail_screen.dart';
 import '../../shared/booking_payment_card.dart';
+import '../../auth/resume_navigation.dart';
 
 class DemoSalesSummary {
   const DemoSalesSummary(
@@ -71,6 +72,7 @@ class _VendorDemoSalesState extends State<VendorDemoSales> {
                   onHistory: () => Navigator.push(
                       context,
                       MaterialPageRoute(
+                          settings: const ResumePage('payments'),
                           builder: (_) => const VendorPaymentHistoryScreen())));
             }));
   }
@@ -172,6 +174,7 @@ class _VendorPaymentHistoryScreenState
                         onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
+                                settings: ResumePage('booking', order.id),
                                 builder: (_) => BookingDetailScreen(
                                     bookingId: order.id, isVendor: true))))),
             ]);

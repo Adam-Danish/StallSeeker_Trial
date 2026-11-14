@@ -15,10 +15,7 @@ _flutter.loader.load({
   config,
   onEntrypointLoaded: async function (engineInitializer) {
     try {
-      const [appRunner] = await Promise.all([
-        engineInitializer.initializeEngine(config),
-        window.stallSeekerMapsReady,
-      ]);
+      const appRunner = await engineInitializer.initializeEngine(config);
       await appRunner.runApp();
     } catch (error) {
       console.error('StallSeeker startup failed:', error);

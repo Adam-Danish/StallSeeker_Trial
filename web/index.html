@@ -32,6 +32,7 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>StallSeeker</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -75,7 +76,7 @@
       };
       window.addEventListener('flutter-first-frame', window.stallSeekerStartup.complete, {once: true});
       window.addEventListener('error', (event) => {
-        if (event.target instanceof HTMLScriptElement) {
+        if (event.target instanceof HTMLScriptElement && !event.target.stallSeekerOptional) {
           fail('StallSeeker could not download a required file. Check your connection and retry.');
         }
       }, true);
@@ -83,6 +84,40 @@
         fail('StallSeeker could not start. Check your connection and retry.');
       });
     })();
+
+    // Claim an active in-app edge swipe before Safari starts browser navigation.
+    window.stallSeekerRegisterTabBackGesture = (canGoBack, goBack) => {
+      let start;
+      const begin = event => {
+        start = undefined;
+        if (!event.cancelable || event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        const fromLeft = touch.clientX <= 20;
+        if (!fromLeft && touch.clientX < window.innerWidth - 20) return;
+        if (!canGoBack(fromLeft)) return;
+        event.preventDefault();
+        start = {id: touch.identifier, x: touch.clientX, y: touch.clientY, fromLeft};
+      };
+      const end = event => {
+        const gesture = start;
+        start = undefined;
+        if (!gesture || event.touches.length) return;
+        const touch = Array.from(event.changedTouches).find(t => t.identifier === gesture.id);
+        if (!touch) return;
+        const dx = (touch.clientX - gesture.x) * (gesture.fromLeft ? 1 : -1);
+        const dy = Math.abs(touch.clientY - gesture.y);
+        if (dx >= 64 && dx > dy && canGoBack(gesture.fromLeft)) goBack();
+      };
+      const cancel = () => { start = undefined; };
+      window.addEventListener('touchstart', begin, {capture: true, passive: false});
+      window.addEventListener('touchend', end, true);
+      window.addEventListener('touchcancel', cancel, true);
+      return () => {
+        window.removeEventListener('touchstart', begin, true);
+        window.removeEventListener('touchend', end, true);
+        window.removeEventListener('touchcancel', cancel, true);
+      };
+    };
 
     // Flutter supplies a new build identifier for each release build.
     window.stallSeekerRelease = {{flutter_service_worker_version}};

@@ -52,7 +52,7 @@ class ProfilePage extends StatelessWidget {
   final bool isLoadingLocation;
   final Future<void> Function() onRefresh;
   final VoidCallback onLocation;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
   final VoidCallback onPassword;
   final VoidCallback onFaq;
   final VoidCallback onAbout;
@@ -183,7 +183,7 @@ class ProfilePage extends StatelessWidget {
     IconData icon,
     Color iconColor,
     String label,
-    VoidCallback onTap, {
+    VoidCallback? onTap, {
     String? value,
     String? subtitle,
     Widget? trailing,

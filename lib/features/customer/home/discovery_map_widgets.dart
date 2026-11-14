@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/vendor_model.dart';
@@ -366,22 +365,20 @@ class DiscoveryResultsHeader extends StatelessWidget {
         Widget search() => SizedBox(
               height: rowHeight,
               width: searchWidth,
-              child: PointerInterceptor(
-                child: ElevatedButton(
-                  key: const ValueKey('search-here'),
-                  onPressed: onSearchHere,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.cardColor,
-                    foregroundColor: AppColors.textDark,
-                    elevation: 3,
-                    minimumSize: Size(0, rowHeight),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    textStyle: _actionStyle,
-                  ),
-                  child: const Text('Search here', maxLines: 1, softWrap: false),
+              child: ElevatedButton(
+                key: const ValueKey('search-here'),
+                onPressed: onSearchHere,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cardColor,
+                  foregroundColor: AppColors.textDark,
+                  elevation: 3,
+                  minimumSize: Size(0, rowHeight),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  textStyle: _actionStyle,
                 ),
+                child: const Text('Search here', maxLines: 1, softWrap: false),
               ),
             );
         final count = IgnorePointer(
@@ -390,18 +387,16 @@ class DiscoveryResultsHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
         );
-        final viewAll = PointerInterceptor(
-          child: TextButton(
-            key: const ValueKey('view-all-stalls'),
-            onPressed: onViewAll,
-            style: TextButton.styleFrom(
-              minimumSize: Size(_textWidth(context, actionLabel) + 24, rowHeight),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              textStyle: _actionStyle,
-            ),
-            child: Text(actionLabel, maxLines: 1, softWrap: false),
+        final viewAll = TextButton(
+          key: const ValueKey('view-all-stalls'),
+          onPressed: onViewAll,
+          style: TextButton.styleFrom(
+            minimumSize: Size(_textWidth(context, actionLabel) + 24, rowHeight),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            textStyle: _actionStyle,
           ),
+          child: Text(actionLabel, maxLines: 1, softWrap: false),
         );
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),

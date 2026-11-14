@@ -1,3 +1,4 @@
+import '../../auth/resume_navigation.dart';
 import '../../shared/profile_page.dart';
 import '../../shared/moderation_screen.dart';
 import '../../shared/demo_orders_screen.dart';
@@ -70,7 +71,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
+    if (user != null && !user.isAnonymous) {
       final userData = await _authService.getUserData(user.uid);
       if (mounted) {
         setState(() {
@@ -261,9 +262,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
     final user = FirebaseAuth.instance.currentUser;
     final guest = user?.isAnonymous ?? true;
     final name = guest
@@ -286,31 +284,44 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
       onLocation: _chooseLocation,
       onHomeLocation: widget.onHomeLocation,
       onCustomLocation: widget.onCustomLocation,
-      onEdit: _editProfile,
-      onPersonalInformation: _personalInformation,
+      onEdit: _isLoading ? null : _editProfile,
+      onPersonalInformation: _isLoading ? null : _personalInformation,
       onOrders: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('bookings'),
               builder: (_) => const DemoOrdersScreen(isVendor: false))),
-      onReports: () => Navigator.push(context,
-          MaterialPageRoute<void>(builder: (_) => const ModerationScreen())),
+      onReports: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+              settings: const ResumePage('reports'),
+              builder: (_) => const ModerationScreen())),
       bookingSection: guest ? null : const LiveBookingSection(isVendor: false),
       onPassword: _changePassword,
-      onFaq: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: false))),
+      onFaq: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              settings: const ResumePage('faq'),
+              builder: (_) => const FaqScreen(isVendor: false))),
       onAbout: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+          context,
+          MaterialPageRoute(
+              settings: const ResumePage('about'),
+              builder: (_) => const AboutScreen())),
       onNotificationSettings: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('notification-settings'),
               builder: (_) => const NotificationSettingsScreen())),
       onPrivacyPolicy: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('privacy'),
               builder: (_) => const LegalScreen(page: LegalPage.privacy))),
       onTerms: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('terms'),
               builder: (_) => const LegalScreen(page: LegalPage.terms))),
       onDeleteAccount: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),

@@ -2,6 +2,7 @@ import '../../core/widgets/app_page_app_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/web_map_loader.dart';
 import 'manual_location_dialog.dart';
 
 class PinLocationScreen extends StatefulWidget {
@@ -67,30 +68,33 @@ class _PinLocationScreenState extends State<PinLocationScreen> {
                   label: const Text('Search for a place'))),
           Expanded(
               child: Stack(alignment: Alignment.center, children: [
-            GoogleMap(
-              initialCameraPosition:
-                  CameraPosition(target: _position, zoom: 16),
-              onMapCreated: (controller) {
-                _controller = controller;
-                if (mounted) setState(() => _mapReady = true);
-              },
-              onCameraMove: (camera) {
-                if (_saving) return;
-                if ((_position.latitude - camera.target.latitude).abs() >
-                        .00001 ||
-                    (_position.longitude - camera.target.longitude).abs() >
-                        .00001) {
-                  _address = null;
-                }
-                _position = camera.target;
-              },
-              scrollGesturesEnabled: !_saving,
-              zoomGesturesEnabled: !_saving,
-              rotateGesturesEnabled: false,
-              tiltGesturesEnabled: false,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-            ),
+            WebMapLoader(
+                builder: (_) => GoogleMap(
+                      initialCameraPosition:
+                          CameraPosition(target: _position, zoom: 16),
+                      onMapCreated: (controller) {
+                        _controller = controller;
+                        if (mounted) setState(() => _mapReady = true);
+                      },
+                      onCameraMove: (camera) {
+                        if (_saving) return;
+                        if ((_position.latitude - camera.target.latitude)
+                                    .abs() >
+                                .00001 ||
+                            (_position.longitude - camera.target.longitude)
+                                    .abs() >
+                                .00001) {
+                          _address = null;
+                        }
+                        _position = camera.target;
+                      },
+                      scrollGesturesEnabled: !_saving,
+                      zoomGesturesEnabled: !_saving,
+                      rotateGesturesEnabled: false,
+                      tiltGesturesEnabled: false,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                    )),
             const IgnorePointer(
                 child: Padding(
                     padding: EdgeInsets.only(bottom: 48),

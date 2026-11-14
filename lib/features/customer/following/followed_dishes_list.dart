@@ -1,3 +1,4 @@
+import '../../auth/resume_navigation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
@@ -227,6 +228,8 @@ class _FollowedDishRowState extends State<_FollowedDishRow> {
                     : () => Navigator.push(
                         context,
                         MaterialPageRoute(
+                            settings: ResumePage(
+                                'stall', vendor.vendorId, widget.follow.itemId),
                             builder: (_) => VendorDetailsScreen(
                                 vendor: vendor,
                                 initialDishId: widget.follow.itemId))),

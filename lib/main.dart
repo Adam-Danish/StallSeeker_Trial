@@ -7,7 +7,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/notification_service.dart';
-import 'features/splash/splash_screen.dart';
+import 'core/services/last_tab.dart';
+import 'features/auth/auth_wrapper.dart';
+import 'features/auth/resume_navigation.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -30,9 +32,10 @@ Future<void> main() async {
   try {
     // Initialize before querying apps: the web SDK is loaded by this call.
     // Reading Firebase.apps first relies on browser-specific TypeError text.
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    await Future.wait([
+      Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform),
+      loadLastTabs(),
+    ], eagerError: true);
   } catch (e) {
     debugPrint('StallSeeker startup failed: $e');
     runApp(MaterialApp(
@@ -71,10 +74,11 @@ class StallSeekerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      navigatorObservers: [resumeNavigation],
       title: 'StallSeeker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const SplashScreen(),
+      home: const AuthWrapper(),
     );
   }
 }

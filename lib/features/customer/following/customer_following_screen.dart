@@ -1,3 +1,4 @@
+import '../../auth/resume_navigation.dart';
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -302,6 +303,7 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
         onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
+                settings: ResumePage('stall', vendor.vendorId),
                 builder: (_) => VendorDetailsScreen(vendor: vendor))),
       );
 

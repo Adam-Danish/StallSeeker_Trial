@@ -2,6 +2,7 @@ import 'dart:js_interop';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'place_search_service.dart';
+import 'web_maps_loader.dart';
 
 @JS('google.maps.Geocoder')
 extension type _Geocoder._(JSObject _) implements JSObject {
@@ -38,6 +39,7 @@ extension type _Place._(JSObject _) implements JSObject {
 }
 
 Future<LatLng?> findBrowserPlaceCoordinates(String placeId) async {
+  await loadWebMaps();
   final place = _Place({'id': placeId}.jsify()! as JSObject);
   await place
       .fetchFields({
@@ -50,6 +52,7 @@ Future<LatLng?> findBrowserPlaceCoordinates(String placeId) async {
 }
 
 Future<List<_GeocodeResult>> _geocode(Map<String, Object> request) async {
+  await loadWebMaps();
   final response = await _Geocoder()
       .geocode(request.jsify()! as JSObject)
       .toDart

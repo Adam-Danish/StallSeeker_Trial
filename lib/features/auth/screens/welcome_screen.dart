@@ -5,9 +5,7 @@ import '../../../core/services/auth_service.dart';
 import 'login_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key, this.onGuestAccessGranted});
-
-  final VoidCallback? onGuestAccessGranted;
+  const WelcomeScreen({super.key});
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -35,11 +33,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       return;
     }
 
-    if (_auth.currentUser?.isAnonymous == true) {
-      widget.onGuestAccessGranted?.call();
-      return;
-    }
-
     setState(() => _busy = true);
     final error = await _auth.signInAsGuest();
     if (!mounted) {
@@ -48,10 +41,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     setState(() => _busy = false);
     if (error != null) {
       _showError(error);
-      return;
     }
-
-    widget.onGuestAccessGranted?.call();
   }
 
   void _showError(String message) =>

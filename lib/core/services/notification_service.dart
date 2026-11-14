@@ -11,6 +11,7 @@ import 'vendor_service.dart';
 import '../../features/customer/vendor_details/vendor_details_screen.dart';
 import '../../features/shared/booking_detail_screen.dart';
 import '../../features/shared/moderation_screen.dart';
+import '../../features/auth/resume_navigation.dart';
 
 // Runs in its own isolate when a push arrives while the app is backgrounded
 // or fully closed. Android shows the system notification on its own from
@@ -527,6 +528,7 @@ class NotificationService {
         return;
       }
       nav.push(MaterialPageRoute<void>(
+          settings: ResumePage('reports', caseId),
           builder: (_) =>
               ModerationScreen(isVendor: true, initialCaseId: caseId)));
     } catch (_) {
@@ -552,6 +554,7 @@ class NotificationService {
 
     navState.push(
       MaterialPageRoute(
+          settings: ResumePage('stall', vendorId, itemId),
           builder: (_) =>
               VendorDetailsScreen(vendor: vendor, initialDishId: itemId)),
     );
@@ -569,6 +572,7 @@ class NotificationService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || (recipientId != null && uid != recipientId)) return;
     navState.push(MaterialPageRoute(
+        settings: ResumePage('booking', bookingId),
         builder: (_) =>
             BookingDetailScreen(bookingId: bookingId, isVendor: isVendor)));
   }

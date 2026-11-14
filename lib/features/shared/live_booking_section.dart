@@ -5,6 +5,7 @@ import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
 import 'booking_detail_screen.dart';
 import 'demo_orders_screen.dart';
+import '../auth/resume_navigation.dart';
 
 class LiveBookingSection extends StatefulWidget {
   const LiveBookingSection({super.key, required this.isVendor});
@@ -24,6 +25,7 @@ class _LiveBookingSectionState extends State<LiveBookingSection> {
   void _openAll() => Navigator.push(
       context,
       MaterialPageRoute(
+          settings: const ResumePage('bookings'),
           builder: (_) => DemoOrdersScreen(isVendor: widget.isVendor)));
 
   @override
@@ -80,6 +82,7 @@ class _LiveBookingSectionState extends State<LiveBookingSection> {
                         onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
+                                settings: ResumePage('booking', order.id),
                                 builder: (_) => BookingDetailScreen(
                                     bookingId: order.id,
                                     isVendor: widget.isVendor))),

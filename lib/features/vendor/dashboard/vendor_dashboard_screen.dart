@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../auth/resume_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -272,8 +273,9 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
     await fetchVendorDetails();
   }
 
-  void _push(Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  void _push(Widget screen, [ResumePage? page]) {
+    Navigator.push(
+        context, MaterialPageRoute(settings: page, builder: (_) => screen));
   }
 
   Future<void> _advanceBooking(DemoOrder booking) async {
@@ -336,12 +338,16 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
           }
         },
         onEditStall: () => _push(const EditStallScreen()),
-        onMenu: () => _push(const VendorMenuScreen()),
-        onStock: () => _push(const VendorMenuScreen(stockOnly: true)),
-        onBookings: () => _push(const DemoOrdersScreen(isVendor: true)),
-        onPaymentHistory: () => _push(const VendorPaymentHistoryScreen()),
-        onOpenBooking: (booking) =>
-            _push(BookingDetailScreen(bookingId: booking.id, isVendor: true)),
+        onMenu: () => _push(const VendorMenuScreen(), const ResumePage('menu')),
+        onStock: () => _push(
+            const VendorMenuScreen(stockOnly: true), const ResumePage('stock')),
+        onBookings: () => _push(const DemoOrdersScreen(isVendor: true),
+            const ResumePage('bookings')),
+        onPaymentHistory: () => _push(
+            const VendorPaymentHistoryScreen(), const ResumePage('payments')),
+        onOpenBooking: (booking) => _push(
+            BookingDetailScreen(bookingId: booking.id, isVendor: true),
+            ResumePage('booking', booking.id)),
         onAdvanceBooking: _advanceBooking,
       ),
     );

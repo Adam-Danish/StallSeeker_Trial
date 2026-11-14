@@ -5,6 +5,8 @@ import '../../../core/services/stall_review_service.dart';
 import '../../../core/services/saved_search_service.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/demo_order_service.dart';
+import '../../../core/services/last_tab.dart';
+import '../../auth/resume_navigation.dart';
 import '../notifications/customer_notifications_screen.dart';
 import 'dart:async'; // bawak time, future dan unawaited
 import 'dart:math' as math;
@@ -12,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/widgets/map_overlay.dart';
 import '../../../core/widgets/map_gesture_guard.dart';
+import '../../../core/widgets/web_map_loader.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -19,6 +22,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/app_pill_navigation.dart';
+import '../../../core/widgets/tab_navigation_history.dart';
 import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
@@ -56,7 +60,7 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TabNavigationHistory<CustomerHomeScreen> {
   final _vendorService = VendorService(); // loads vendor
   final _authService = AuthService(); // loads customer info
   final _dishSearchService = DishSearchService();
@@ -66,7 +70,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   Stream<int>? _unreadCount;
   Stream<int>? _bookingUnreadCount;
 
-  int _selectedIndex = 0;
+  late final _accountId = FirebaseAuth.instance.currentUser?.uid;
+  late int _selectedIndex = lastTab(_accountId, 'customer', _tabTitles.length);
   String _searchQuery = '';
   GoogleMapController? _mapController; // move the map dan zoom
   LatLng? _customerPosition;
@@ -192,6 +197,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshGpsDisplay());
     _vendors = _watchVendors();
+    if (kIsWeb) unawaited(_loadGpsDotIcon());
     unawaited(_loadMapMarkerIcons());
     _searchFocus.addListener(_onSearchFocusChanged);
     _dishSubscription = _dishSearchService.watchAllDishes().listen(
@@ -342,6 +348,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   bool _locationRequestActive = false;
   int _locationSelectionVersion = 0;
 
+  static const _gpsSettings = LocationSettings(accuracy: LocationAccuracy.high);
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) unawaited(_refreshGpsDisplay());
@@ -351,38 +359,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     if (_checkingGps) return;
     _checkingGps = true;
     try {
-      final permission = await Geolocator.checkPermission();
+      final permission = await Geolocator.checkPermission()
+          .timeout(const Duration(seconds: 8));
       final granted = permission == LocationPermission.whileInUse ||
           permission == LocationPermission.always;
       if (!mounted) return;
-      setState(() => _locationPermissionGranted = granted);
-      if (!granted) {
-        await _gpsSubscription?.cancel();
-        _gpsSubscription = null;
-        return;
+      if (!kIsWeb) {
+        // Native Google Maps draws the GPS dot after permission is granted.
+        setState(() => _locationPermissionGranted = granted);
+      } else if (granted) {
+        _watchWebGps();
       }
-      // Native Google Maps draws its own GPS dot. The web implementation
-      // needs a dot sourced from real GPS, independently of the search area.
-      if (kIsWeb) {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high),
-        ).timeout(const Duration(seconds: 12));
-        if (!mounted) return;
-        setState(
-            () => _gpsPosition = LatLng(position.latitude, position.longitude));
-        _gpsSubscription ??= Geolocator.getPositionStream().listen((position) {
-          if (mounted) {
-            setState(() =>
-                _gpsPosition = LatLng(position.latitude, position.longitude));
-          }
-        }, onError: (Object _) {});
-      }
+      // On web, an inconclusive permission query must not override a fix.
+      // The browser reports revocation through the active location watch.
     } catch (_) {
       // A temporary GPS failure must not change the selected search area.
     } finally {
       _checkingGps = false;
     }
+  }
+
+  void _watchWebGps() {
+    _gpsSubscription ??=
+        Geolocator.getPositionStream(locationSettings: _gpsSettings).listen(
+      (position) {
+        if (!mounted) return;
+        setState(
+            () => _gpsPosition = LatLng(position.latitude, position.longitude));
+      },
+      onError: (Object error) {
+        if (mounted && error is PermissionDeniedException) _clearWebGps();
+      },
+      onDone: () => _gpsSubscription = null,
+    );
+  }
+
+  void _clearWebGps() {
+    unawaited(_gpsSubscription?.cancel());
+    _gpsSubscription = null;
+    setState(() => _gpsPosition = null);
   }
 
   Future<void> _initializeCustomerLocation() async {
@@ -474,7 +489,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   }
 
   Future<void> _getCustomerLocation() async {
-    if (_isLocatingCustomer && _locationRequestActive) {
+    if (_locationRequestActive) {
       return;
     }
     _locationRequestActive = true;
@@ -486,39 +501,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       });
     }
     try {
-      bool serviceEnabled =
-          await Geolocator.isLocationServiceEnabled(); // check gps bukak ke tak
-      if (!serviceEnabled) {
-        throw StateError('Turn on GPS, or browse the map manually.');
+      if (!kIsWeb) {
+        if (!await Geolocator.isLocationServiceEnabled()) {
+          throw StateError('Turn on GPS, or browse the map manually.');
+        }
+
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          if (mounted) setState(() => _locationPermissionGranted = false);
+          throw StateError(permission == LocationPermission.deniedForever
+              ? 'Allow location access in phone settings, or browse manually.'
+              : 'Location access denied. You can still browse the map.');
+        }
+        if (!mounted) return;
+        setState(() => _locationPermissionGranted = true);
       }
 
-      LocationPermission permission =
-          await Geolocator.checkPermission(); // check gps permission
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied || // customer reject
-          permission == LocationPermission.deniedForever) {
-        // customer kena allow gps thru setting phone
-        throw StateError(permission == LocationPermission.deniedForever
-            ? 'Allow location access in phone settings, or browse manually.'
-            : 'Location access denied. You can still browse the map.');
-      }
-
+      // On web the position request itself prompts for permission and returns
+      // the coordinates, even when the Permissions API is unavailable.
       final position = await Geolocator.getCurrentPosition(
-        // read coordinate lepas allow gps, 12s limit kalau x, set manual
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: _gpsSettings,
       ).timeout(const Duration(seconds: 12));
       if (!mounted) {
         return;
       }
       final coordinates = LatLng(position.latitude, position.longitude);
-      setState(() {
-        _locationPermissionGranted = true;
-        _gpsPosition = coordinates;
-      });
-      unawaited(_refreshGpsDisplay());
+      if (kIsWeb) {
+        setState(() => _gpsPosition = coordinates);
+        _watchWebGps();
+      }
       String label;
       try {
         label = await describeLocation(coordinates);
@@ -531,11 +546,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
         false,
       );
     } catch (error) {
+      if (kIsWeb && mounted && error is PermissionDeniedException) {
+        _clearWebGps();
+      }
       if (mounted && selectionVersion == _locationSelectionVersion) {
         setState(() {
-          _locationError = error is StateError
-              ? error.message.toString()
-              : 'Could not find your location. Retry or browse the map manually.';
+          _locationError = switch (error) {
+            StateError() => error.message.toString(),
+            PermissionDeniedException() when kIsWeb =>
+              'Allow location access in your browser, then try again.',
+            _ =>
+              'Could not find your location. Retry or browse the map manually.',
+          };
         });
       }
     } finally {
@@ -904,6 +926,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     return '${(meters / 1000).toStringAsFixed(1)} km away';
   }
 
+  void _selectTab(int index) {
+    final previousIndex = _selectedIndex;
+    if (index != previousIndex) {
+      rememberTabChange(() => _showTab(previousIndex));
+    }
+    _showTab(index);
+  }
+
+  void _showTab(int index) {
+    setState(() {
+      _selectedIndex = index;
+      if (index != 0) {
+        _previewVendorId = null;
+        _previewCamera = null;
+      }
+    });
+    unawaited(saveLastTab(_accountId, 'customer', index));
+    if (index == 0) unawaited(_loadGreeting());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -920,24 +962,27 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               centerTitle: true,
               systemOverlayStyle: SystemUiOverlayStyle.dark,
             ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          SafeArea(top: true, bottom: false, child: _buildMapTab()),
-          const CustomerFollowingScreen(),
-          const CustomerNotificationsScreen(),
-          CustomerProfileScreen(
-            location: _customerPosition == null
-                ? null
-                : LocationSelection(
-                    coordinates: _customerPosition!,
-                    label: _customerLocationLabel ?? 'Selected location',
-                  ),
-            onLocationChanged: _applyCustomerLocation,
-            onHomeLocation: () => _chooseSavedLocation(type: 'home'),
-            onCustomLocation: () => _chooseSavedLocation(type: 'custom'),
-          ),
-        ],
+      body: withTabBackGesture(
+        context,
+        IndexedStack(
+          index: _selectedIndex,
+          children: [
+            SafeArea(top: true, bottom: false, child: _buildMapTab()),
+            const CustomerFollowingScreen(),
+            const CustomerNotificationsScreen(),
+            CustomerProfileScreen(
+              location: _customerPosition == null
+                  ? null
+                  : LocationSelection(
+                      coordinates: _customerPosition!,
+                      label: _customerLocationLabel ?? 'Selected location',
+                    ),
+              onLocationChanged: _applyCustomerLocation,
+              onHomeLocation: () => _chooseSavedLocation(type: 'home'),
+              onCustomLocation: () => _chooseSavedLocation(type: 'custom'),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: ValueListenableBuilder<double>(
         valueListenable: _previewExtent,
@@ -946,19 +991,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               ? 1 - StallPreviewSheet.expansionProgress(extent)
               : 1,
           selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              _selectedIndex = index;
-              if (index != 0) {
-                _previewVendorId = null;
-                _previewCamera = null;
-              }
-            });
-
-            if (index == 0) {
-              unawaited(_loadGreeting());
-            }
-          },
+          onDestinationSelected: _selectTab,
           destinations: [
             const NavigationDestination(
               icon: Icon(Icons.home_outlined),
@@ -1044,7 +1077,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           shape: const CircleBorder(),
           child: IconButton(
             tooltip: 'Notifications',
-            onPressed: () => setState(() => _selectedIndex = 2),
+            onPressed: () => _selectTab(2),
             icon: _notificationIcon(false),
           ),
         ),
@@ -1632,15 +1665,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               ),
             )
             .toSet();
-        if (kIsWeb &&
-            _locationPermissionGranted &&
-            _gpsPosition != null &&
-            _gpsDotIcon != null) {
+        final gpsPosition = _gpsPosition;
+        if (kIsWeb && gpsPosition != null) {
           markers.add(Marker(
             markerId: const MarkerId('current-gps-location'),
-            position: _gpsPosition!,
-            icon: _gpsDotIcon!,
-            anchor: const Offset(.5, .5),
+            position: gpsPosition,
+            icon: _gpsDotIcon ?? BitmapDescriptor.defaultMarker,
+            anchor: _gpsDotIcon == null
+                ? const Offset(.5, 1)
+                : const Offset(.5, .5),
             zIndexInt: 3,
             infoWindow: const InfoWindow(title: 'Your current location'),
           ));
@@ -1747,72 +1780,74 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                         blocked: _blockMapGestures ||
                             preview != null ||
                             _selectedIndex != 0,
-                        builder: (context, blocked) => GoogleMap(
-                              style: _mapStyle,
-                              initialCameraPosition: CameraPosition(
-                                target: _lastCameraPosition?.target ??
-                                    _searchCenter ??
-                                    _customerPosition ??
-                                    _defaultPosition.target,
-                                zoom: _lastCameraPosition?.zoom ?? 14,
-                              ),
-                              markers: markers,
-                              clusterManagers: {
-                                ClusterManager(
-                                    clusterManagerId: _clusterId,
-                                    onClusterTap: _zoomToCluster)
-                              },
-                              myLocationEnabled: _locationPermissionGranted,
-                              myLocationButtonEnabled: false,
-                              zoomControlsEnabled: false,
-                              mapToolbarEnabled: false,
-                              compassEnabled: false,
-                              webGestureHandling: blocked
-                                  ? WebGestureHandling.none
-                                  : WebGestureHandling.auto,
-                              scrollGesturesEnabled: !blocked,
-                              zoomGesturesEnabled: !blocked,
-                              rotateGesturesEnabled: !blocked,
-                              tiltGesturesEnabled: !blocked,
-                              padding: mapPadding,
-                              onMapCreated: (controller) {
-                                _mapController = controller;
-                                if (_lastCameraPosition != null) {
-                                  _expectProgrammaticCameraMove();
-                                  controller.moveCamera(
-                                      CameraUpdate.newCameraPosition(
-                                          _lastCameraPosition!));
-                                } else if (_customerPosition != null) {
-                                  _expectProgrammaticCameraMove();
-                                  controller.animateCamera(
-                                      CameraUpdate.newLatLngZoom(
-                                          _customerPosition!, 15));
-                                }
-                                _updateVisibleBounds();
-                              },
-                              onCameraMove: (position) {
-                                _mapCenter = position.target;
-                                _lastCameraPosition = position;
-                                _scheduleViewportRefresh();
-                                if ((_mapBearing.value - position.bearing)
-                                        .abs() >
-                                    .1) {
-                                  _mapBearing.value = position.bearing;
-                                }
-                              },
-                              onCameraMoveStarted: () {
-                                _boundsRequest++;
-                                if (!_programmaticCameraMove) {
-                                  _cameraMovedByUser = true;
-                                }
-                              },
-                              onCameraIdle: () {
-                                _viewportRefreshTimer?.cancel();
-                                _viewportRefreshTimer = null;
-                                _updateVisibleBounds();
-                              },
-                              onTap: (_) => _searchFocus.unfocus(),
-                            ))),
+                        builder: (context, blocked) => WebMapLoader(
+                            builder: (_) => GoogleMap(
+                                  style: _mapStyle,
+                                  initialCameraPosition: CameraPosition(
+                                    target: _lastCameraPosition?.target ??
+                                        _searchCenter ??
+                                        _customerPosition ??
+                                        _defaultPosition.target,
+                                    zoom: _lastCameraPosition?.zoom ?? 14,
+                                  ),
+                                  markers: markers,
+                                  clusterManagers: {
+                                    ClusterManager(
+                                        clusterManagerId: _clusterId,
+                                        onClusterTap: _zoomToCluster)
+                                  },
+                                  myLocationEnabled:
+                                      !kIsWeb && _locationPermissionGranted,
+                                  myLocationButtonEnabled: false,
+                                  zoomControlsEnabled: false,
+                                  mapToolbarEnabled: false,
+                                  compassEnabled: false,
+                                  webGestureHandling: blocked
+                                      ? WebGestureHandling.none
+                                      : WebGestureHandling.auto,
+                                  scrollGesturesEnabled: !blocked,
+                                  zoomGesturesEnabled: !blocked,
+                                  rotateGesturesEnabled: !blocked,
+                                  tiltGesturesEnabled: !blocked,
+                                  padding: mapPadding,
+                                  onMapCreated: (controller) {
+                                    _mapController = controller;
+                                    if (_lastCameraPosition != null) {
+                                      _expectProgrammaticCameraMove();
+                                      controller.moveCamera(
+                                          CameraUpdate.newCameraPosition(
+                                              _lastCameraPosition!));
+                                    } else if (_customerPosition != null) {
+                                      _expectProgrammaticCameraMove();
+                                      controller.animateCamera(
+                                          CameraUpdate.newLatLngZoom(
+                                              _customerPosition!, 15));
+                                    }
+                                    _updateVisibleBounds();
+                                  },
+                                  onCameraMove: (position) {
+                                    _mapCenter = position.target;
+                                    _lastCameraPosition = position;
+                                    _scheduleViewportRefresh();
+                                    if ((_mapBearing.value - position.bearing)
+                                            .abs() >
+                                        .1) {
+                                      _mapBearing.value = position.bearing;
+                                    }
+                                  },
+                                  onCameraMoveStarted: () {
+                                    _boundsRequest++;
+                                    if (!_programmaticCameraMove) {
+                                      _cameraMovedByUser = true;
+                                    }
+                                  },
+                                  onCameraIdle: () {
+                                    _viewportRefreshTimer?.cancel();
+                                    _viewportRefreshTimer = null;
+                                    _updateVisibleBounds();
+                                  },
+                                  onTap: (_) => _searchFocus.unfocus(),
+                                )))),
                 Positioned(
                     top: 10,
                     left: 12,
@@ -1883,12 +1918,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                           child: Row(children: [
                             const Icon(Icons.location_off_outlined, size: 18),
                             const SizedBox(width: 8),
-                            const Expanded(
-                                child: Text(
-                                    'Location unavailable. Browse the map or set a location.',
+                            Expanded(
+                                child: Text(_locationError!,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 11))),
+                                    style: const TextStyle(fontSize: 11))),
                             TextButton(
                                 onPressed: _chooseLocationSource,
                                 child: const Text('Set location')),
@@ -1949,48 +1983,40 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                             DiscoveryResultsHeader(
                               countLabel:
                                   '$resultCount ${showingDishResults ? 'dishes' : 'stalls'} nearby',
-                              actionLabel: snapshot.hasError
-                                  ? 'Retry'
-                                  : 'View all',
+                              actionLabel:
+                                  snapshot.hasError ? 'Retry' : 'View all',
                               onViewAll: snapshot.hasError
-                                  ? () => setState(
-                                      () => _vendors = _watchVendors())
+                                  ? () =>
+                                      setState(() => _vendors = _watchVendors())
                                   : () => showingDishResults
                                       ? _showAllDishes(
                                           cards, filteredVendorById)
                                       : _showAllStalls(onScreenVendors),
-                              onSearchHere: _showSearchArea
-                                  ? _searchThisArea
-                                  : null,
+                              onSearchHere:
+                                  _showSearchArea ? _searchThisArea : null,
                             ),
                             Expanded(
                               child: searching
                                   ? const Center(
-                                      child:
-                                          CircularProgressIndicator())
+                                      child: CircularProgressIndicator())
                                   : resultCount == 0
-                                      ? PointerInterceptor(
-                                          child: Padding(
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 16),
                                           child: Material(
                                             color: AppColors.cardColor,
                                             borderRadius:
-                                                BorderRadius.circular(
-                                                    23),
+                                                BorderRadius.circular(23),
                                             child: Center(
                                               child: Padding(
                                                   padding:
-                                                      const EdgeInsets
-                                                          .all(18),
+                                                      const EdgeInsets.all(18),
                                                   child: Text(
                                                       snapshot.hasError
                                                           ? 'Could not load stalls. Check your connection and retry.'
                                                           : _dishSearchError !=
                                                                       null &&
-                                                                  (query
-                                                                          .isNotEmpty ||
+                                                                  (query.isNotEmpty ||
                                                                       _priceRange !=
                                                                           null)
                                                               ? _dishSearchError!
@@ -2001,41 +2027,43 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                                                   ? 'Loading dishes and prices…'
                                                                   : 'No matching stalls in this area. Move the map, expand the distance, or reset filters.',
                                                       textAlign:
-                                                          TextAlign
-                                                              .center,
+                                                          TextAlign.center,
                                                       style: const TextStyle(
                                                           fontSize: 13,
                                                           color: AppColors
                                                               .textMuted))),
                                             ),
-                                          )))
-                                      : PointerInterceptor(
-                                          child: Listener(
-                                            behavior: HitTestBehavior.deferToChild,
+                                          ))
+                                      : Listener(
+                                          behavior:
+                                              HitTestBehavior.deferToChild,
                                           onPointerDown: (event) =>
-                                              _trackResultPointer(event.pointer, true),
+                                              _trackResultPointer(
+                                                  event.pointer, true),
                                           onPointerUp: (event) =>
-                                              _trackResultPointer(event.pointer, false),
+                                              _trackResultPointer(
+                                                  event.pointer, false),
                                           onPointerCancel: (event) =>
-                                              _trackResultPointer(event.pointer, false),
+                                              _trackResultPointer(
+                                                  event.pointer, false),
                                           child: MouseRegion(
                                             onEnter: (_) {
                                               if (kIsWeb) {
-                                                setState(
-                                                    () => _pointerOverResults = true);
+                                                setState(() =>
+                                                    _pointerOverResults = true);
                                               }
                                             },
                                             onExit: (_) {
                                               if (kIsWeb) {
-                                                setState(
-                                                    () => _pointerOverResults = false);
+                                                setState(() =>
+                                                    _pointerOverResults =
+                                                        false);
                                               }
                                             },
                                             child: StallCardCarousel(
-                                              key: ValueKey(
-                                                  showingDishResults
-                                                      ? 'dish-map-cards'
-                                                      : 'stall-map-cards'),
+                                              key: ValueKey(showingDishResults
+                                                  ? 'dish-map-cards'
+                                                  : 'stall-map-cards'),
                                               ids: ids,
                                               selectedId: selectedCard,
                                               viewportFraction:
@@ -2078,7 +2106,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                             ),
                                           ),
                                         ),
-                                      ),
                             ),
                           ]),
                         ),
@@ -2191,9 +2218,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   String _markerCategory(VendorModel vendor) =>
       vendor.allCategories.where(stallCategories.contains).firstOrNull ?? '';
 
+  Future<void> _loadGpsDotIcon() async {
+    try {
+      final icon = await _markerCache.currentLocationDot();
+      if (mounted) setState(() => _gpsDotIcon = icon);
+    } catch (_) {
+      // Keep the default GPS marker if the custom bitmap cannot be drawn.
+    }
+  }
+
   Future<void> _loadMapMarkerIcons() async {
     try {
-      if (kIsWeb) _gpsDotIcon = await _markerCache.currentLocationDot();
       final entries = await Future.wait([
         for (final category in ['', ...stallCategories])
           for (final selected in [false, true])
@@ -2725,6 +2760,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(
+          settings: ResumePage('stall', vendor.vendorId, dishId),
           builder: (_) =>
               VendorDetailsScreen(vendor: vendor, initialDishId: dishId)),
     );

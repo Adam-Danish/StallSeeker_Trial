@@ -1,3 +1,4 @@
+import '../../auth/resume_navigation.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -82,6 +83,7 @@ class _CustomerNotificationsScreenState
       await Navigator.push(
           context,
           MaterialPageRoute(
+              settings: ResumePage('stall', vendor.vendorId, item.itemId),
               builder: (_) => VendorDetailsScreen(
                   vendor: vendor, initialDishId: item.itemId)));
     } catch (_) {
@@ -154,9 +156,8 @@ class _CustomerNotificationsScreenState
             if (snapshot.hasError) {
               return _errorState(snapshot.error!);
             }
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            final loading = !snapshot.hasData &&
+                snapshot.connectionState == ConnectionState.waiting;
             final all = (snapshot.data ?? [])
                 .where((item) => !_removedIds.contains(item.id))
                 .toList();
@@ -209,7 +210,9 @@ class _CustomerNotificationsScreenState
                         child: Text('STALL UPDATES',
                             style: TextStyle(
                                 fontSize: 12, color: Color(0xFF8E8E93)))),
-                    if (visible.isEmpty)
+                    if (loading)
+                      const LinearProgressIndicator()
+                    else if (visible.isEmpty)
                       Padding(
                           padding: const EdgeInsets.all(32),
                           child: Column(children: [

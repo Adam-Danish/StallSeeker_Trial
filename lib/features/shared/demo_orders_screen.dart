@@ -6,6 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/models/demo_order.dart';
 import '../../core/services/demo_order_service.dart';
 import 'booking_detail_screen.dart';
+import '../auth/resume_navigation.dart';
 
 class DemoOrdersScreen extends StatefulWidget {
   const DemoOrdersScreen(
@@ -42,6 +43,7 @@ class _DemoOrdersScreenState extends State<DemoOrdersScreen> {
           onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
+                  settings: ResumePage('booking', booking.id),
                   builder: (_) => BookingDetailScreen(
                       bookingId: booking.id, isVendor: widget.isVendor))),
         );

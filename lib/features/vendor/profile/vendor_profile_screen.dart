@@ -1,4 +1,5 @@
 import 'edit_stall_screen.dart';
+import '../../auth/resume_navigation.dart';
 import '../../shared/profile_page.dart';
 import '../../shared/edit_profile_screen.dart';
 import '../../shared/personal_information_screen.dart';
@@ -165,9 +166,6 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
     final user = FirebaseAuth.instance.currentUser;
     final guest = user?.isAnonymous ?? true;
     final name = guest
@@ -189,20 +187,28 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       isLoadingLocation: _isLoadingLocation,
       onRefresh: _loadUserData,
       onLocation: _loadLocation,
-      onEdit: _editProfile,
-      onPersonalInformation: _personalInformation,
+      onEdit: _isLoading ? null : _editProfile,
+      onPersonalInformation: _isLoading ? null : _personalInformation,
       onPassword: _changePassword,
-      onFaq: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const FaqScreen(isVendor: true))),
+      onFaq: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              settings: const ResumePage('faq'),
+              builder: (_) => const FaqScreen(isVendor: true))),
       onAbout: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const AboutScreen())),
+          context,
+          MaterialPageRoute(
+              settings: const ResumePage('about'),
+              builder: (_) => const AboutScreen())),
       onPrivacyPolicy: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('privacy'),
               builder: (_) => const LegalScreen(page: LegalPage.privacy))),
       onTerms: () => Navigator.push(
           context,
           MaterialPageRoute(
+              settings: const ResumePage('terms'),
               builder: (_) => const LegalScreen(page: LegalPage.terms))),
       onDeleteAccount: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),

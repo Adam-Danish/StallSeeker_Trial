@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/app_pill_navigation.dart';
+import '../../core/widgets/tab_navigation_history.dart';
 import '../../core/services/demo_order_service.dart';
+import '../../core/services/last_tab.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
 import 'profile/vendor_profile_screen.dart';
 import '../shared/profile_page.dart';
@@ -16,11 +20,25 @@ class VendorMainScreen extends StatefulWidget {
   State<VendorMainScreen> createState() => _VendorMainScreenState();
 }
 
-class _VendorMainScreenState extends State<VendorMainScreen> {
-  int _selectedIndex = 0;
+class _VendorMainScreenState extends State<VendorMainScreen>
+    with TabNavigationHistory<VendorMainScreen> {
+  late final _accountId = FirebaseAuth.instance.currentUser?.uid;
+  late int _selectedIndex = lastTab(_accountId, 'vendor', 2);
   late final Stream<int> _newBookings = DemoOrderService().watchUnseenCount(
       FirebaseAuth.instance.currentUser?.uid ?? '',
       isVendor: true);
+
+  void _selectTab(int index) {
+    final previousIndex = _selectedIndex;
+    if (index == previousIndex) return;
+    rememberTabChange(() => _showTab(previousIndex));
+    _showTab(index);
+  }
+
+  void _showTab(int index) {
+    setState(() => _selectedIndex = index);
+    unawaited(saveLastTab(_accountId, 'vendor', index));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,18 +48,20 @@ class _VendorMainScreenState extends State<VendorMainScreen> {
           _selectedIndex == 1 ? ProfilePage.background : AppColors.background,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.dark,
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            const SafeArea(bottom: false, child: VendorDashboardScreen()),
-            const VendorProfileScreen(),
-          ],
+        child: withTabBackGesture(
+          context,
+          IndexedStack(
+            index: _selectedIndex,
+            children: [
+              const SafeArea(bottom: false, child: VendorDashboardScreen()),
+              const VendorProfileScreen(),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: AppPillNavigation(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: _selectTab,
         destinations: [
           NavigationDestination(
             icon: _dashboardIcon(false),
