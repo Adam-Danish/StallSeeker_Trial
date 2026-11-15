@@ -308,7 +308,7 @@ void main() {
         },
       ),
     ));
-    await tester.tap(find.text('Save or share PDF'));
+    await tester.tap(find.text('Download PDF'));
     await tester.pump();
     expect(find.text('Preparing PDF…'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
@@ -316,9 +316,9 @@ void main() {
     expect(attempts, 1);
     export.completeError(StateError('Offline'));
     await tester.pumpAndSettle();
-    expect(find.text('Could not save the PDF receipt. Please try again.'),
+    expect(find.text('Could not download the PDF receipt. Please try again.'),
         findsOneWidget);
-    expect(find.text('Save or share PDF'), findsOneWidget);
+    expect(find.text('Download PDF'), findsOneWidget);
   });
 
   testWidgets('sales card uses release wording and fits narrow screens',

@@ -69,7 +69,7 @@ Future<Uint8List> buildBookingReceiptPdf(DemoOrder booking) async {
 
   await addLine('StallSeeker payment receipt', size: 21, strong: true);
   await addLine(booking.hasTestPayment
-      ? 'Stripe test payment (no live charge)'
+      ? 'Stripe checkout (no live charge)'
       : 'Stripe payment');
   await addLine('Generated from saved booking details', size: 9);
   content.add(pdf.Divider());
@@ -77,7 +77,7 @@ Future<Uint8List> buildBookingReceiptPdf(DemoOrder booking) async {
   await addLine('Customer: ${booking.customerName}');
   await addLine('Paid on: $paidOn');
   await addLine('Booking ID: ${booking.id}');
-  if (reference != null && reference.isNotEmpty) {
+  if (!booking.hasTestPayment && reference != null && reference.isNotEmpty) {
     await addLine('Payment reference: $reference');
   }
   content.add(pdf.Divider());

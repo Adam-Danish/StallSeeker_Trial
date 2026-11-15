@@ -1,9 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/demo_order.dart';
+import '../../core/services/booking_receipt_download.dart';
 import '../../core/services/booking_receipt_service.dart';
-import '../../core/services/booking_receipt_share.dart';
 import '../../core/widgets/app_page_app_bar.dart';
 import 'booking_payment_card.dart';
 
@@ -21,13 +20,8 @@ class BookingReceiptScreen extends StatefulWidget {
 class _BookingReceiptScreenState extends State<BookingReceiptScreen> {
   DemoOrder get booking => widget.booking;
   bool _exporting = false;
-  BookingReceiptFile? _receipt;
 
-  Future<void> _exportPdf(BuildContext buttonContext) async {
-    final button = buttonContext.findRenderObject() as RenderBox?;
-    final bounds = button != null && button.hasSize
-        ? button.localToGlobal(Offset.zero) & button.size
-        : null;
+  Future<void> _exportPdf() async {
     setState(() => _exporting = true);
     try {
       final export = widget.onExportPdf;
@@ -35,24 +29,18 @@ class _BookingReceiptScreenState extends State<BookingReceiptScreen> {
         await export();
         return;
       }
-      final receipt = _receipt;
-      if (receipt != null) {
-        await shareBookingReceipt(receipt, bounds);
-        return;
-      }
-      final prepared = await BookingReceiptService().preparePdf(booking);
+      final receipt = await BookingReceiptService().preparePdf(booking);
       if (!mounted) return;
-      if (kIsWeb) {
-        // A fresh tap opens the browser share sheet after PDF preparation.
-        _receipt = prepared;
-      } else {
-        await shareBookingReceipt(prepared, bounds);
+      final message = await downloadBookingReceipt(receipt);
+      if (mounted && message != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content:
-                Text('Could not save the PDF receipt. Please try again.')));
+                Text('Could not download the PDF receipt. Please try again.')));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -84,21 +72,15 @@ class _BookingReceiptScreenState extends State<BookingReceiptScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Builder(
-            builder: (buttonContext) => FilledButton.icon(
-              onPressed: _exporting ? null : () => _exportPdf(buttonContext),
-              icon: _exporting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.picture_as_pdf_outlined),
-              label: Text(_exporting
-                  ? (_receipt == null ? 'Preparing PDF.' : 'Opening PDF.')
-                  : kIsWeb && _receipt == null
-                      ? 'Prepare PDF'
-                      : 'Save or share PDF'),
-            ),
+          FilledButton.icon(
+            onPressed: _exporting ? null : _exportPdf,
+            icon: _exporting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.download_outlined),
+            label: Text(_exporting ? 'Preparing PDF.' : 'Download PDF'),
           ),
           const SizedBox(height: 12),
           Card(

@@ -33,14 +33,16 @@ async function receiptPdf(id, booking) {
   text('StallSeeker', 22, true);
   text('PAYMENT RECEIPT', 12, true);
   text(booking.paymentMode === 'live' ? 'Stripe payment' :
-    'Stripe test payment - no live charge', 9);
+    'Stripe checkout (no live charge)', 9);
   doc.moveDown();
   text(booking.stallName, 16, true);
   text(`Customer: ${booking.customerName}`);
   text(`Booking ID: ${id}`);
   const date = booking.paymentPaidAt.toDate?.() ?? new Date(booking.paymentPaidAt);
   text(`Paid on: ${date.toLocaleString('en-MY', {timeZone: 'Asia/Kuala_Lumpur'})} (MYT)`);
-  if (booking.paymentReference) text(`Payment reference: ${booking.paymentReference}`);
+  if (booking.paymentMode === 'live' && booking.paymentReference) {
+    text(`Payment reference: ${booking.paymentReference}`);
+  }
   doc.moveDown();
   text('ITEMS', 11, true);
   for (const item of booking.items || []) {

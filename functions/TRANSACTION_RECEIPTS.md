@@ -9,8 +9,9 @@ admin Booking history page use this same callable.
 payment status or refunded cents, including the initial awaiting-payment state.
 Preparing/ready/collected updates do not create financial emails. The recipient
 comes from Firebase Auth's verified customer email. Once payment is recorded,
-updates include a PDF attachment. Test-mode emails and PDFs clearly say test
-payment; live-mode receipts describe the live Stripe payment.
+updates include a PDF attachment. Test-mode emails identify the mode. Their PDF
+receipts say no live charge was made and omit the Stripe reference. Live receipts
+include the payment reference when available.
 Existing bookings are not emailed retrospectively on deployment.
 
 `sendTransactionEmail` attempts delivery, and `retryTransactionEmails` retries due
