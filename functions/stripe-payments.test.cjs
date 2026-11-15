@@ -3,7 +3,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {Timestamp} = require('firebase-admin/firestore');
-const {requireModeKey, assertPayable, assertSession, sessionPatch} = require('./stripe-payment-core.cjs');
+const {requireModeKey, requireTestKey, assertPayable, assertSession, sessionPatch} = require('./stripe-payment-core.cjs');
 const {paymentService} = require('./stripe-payment-service.cjs');
 
 function fixture({checkoutFirst = false} = {}) {
@@ -93,6 +93,8 @@ function fixture({checkoutFirst = false} = {}) {
 
 test('Stripe secret keys must match the selected payment mode', () => {
   assert.equal(requireModeKey(' sk_test_example ', 'test'), 'sk_test_example');
+  assert.equal(requireTestKey('rk_test_example'), 'rk_test_example');
+  assert.equal(requireModeKey(' sk_live_example ', 'live'), 'sk_live_example');
   assert.equal(requireModeKey('rk_live_example', 'live'), 'rk_live_example');
   assert.throws(() => requireModeKey('sk_live_example', 'test'));
   assert.throws(() => requireModeKey('sk_test_example', 'live'));
@@ -108,7 +110,7 @@ test('checkout rejects wrong owner, ineligible bookings, small totals and expire
   assert.doesNotThrow(() => assertPayable({...booking, paymentMode: 'live'}, 'buyer', time));
   assert.throws(() => assertPayable(booking, 'other', time));
   for (const patch of [{status: 'requested'}, {paymentStatus: 'paid'},
-    {paymentMode: 'unknown'}, {totalCents: 199}, {totalCents: 1250.5}, {paymentExpiresAt: null}]) {
+    {paymentMode: 'unknown'}, {paymentMode: null}, {totalCents: 199}, {totalCents: 1250.5}, {paymentExpiresAt: null}]) {
     assert.throws(() => assertPayable({...booking, ...patch}, 'buyer', time));
   }
   assert.throws(() => assertPayable(booking, 'buyer', time + 600001));

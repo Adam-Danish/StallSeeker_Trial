@@ -96,7 +96,7 @@ class DemoOrder {
       vendorUnseenRequest &&
       (effectiveStatus == 'requested' ||
           (checkoutFirst && paymentStatus == 'paid'));
-  int get demoSalesCents => hasTestPayment && paymentStatus == 'paid'
+  int get demoSalesCents => hasStripePayment && paymentStatus == 'paid'
       ? (totalCents - paymentRefundedCents).clamp(0, totalCents)
       : 0;
   final bool vendorUnseenRequest;

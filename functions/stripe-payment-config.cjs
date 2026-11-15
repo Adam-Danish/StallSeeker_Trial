@@ -4,14 +4,12 @@ const Stripe = require('stripe');
 const {defineSecret, defineString} = require('firebase-functions/params');
 const {requireModeKey} = require('./stripe-payment-core.cjs');
 
-const configuredMode = defineString('STRIPE_PAYMENT_MODE', {default: 'test'});
-const testApiKey = defineSecret('STRIPE_SECRET_KEY');
-const testSigningKey = defineSecret('STRIPE_WEBHOOK_SECRET');
-const liveApiKey = defineSecret('STRIPE_LIVE_SECRET_KEY');
-const liveSigningKey = defineSecret('STRIPE_LIVE_WEBHOOK_SECRET');
+const configuredMode = defineString('STRIPE_PAYMENT_MODE', {default: 'live'});
+const apiKey = defineSecret('STRIPE_SECRET_KEY');
+const signingKey = defineSecret('STRIPE_WEBHOOK_SECRET');
 
-const apiSecrets = [testApiKey, liveApiKey];
-const webhookSecrets = [...apiSecrets, testSigningKey, liveSigningKey];
+const apiSecrets = [apiKey];
+const webhookSecrets = [apiKey, signingKey];
 
 function currentPaymentMode() {
   const mode = configuredMode.value();
@@ -25,16 +23,20 @@ function currentPaymentMode() {
   return mode;
 }
 
-function stripeForMode(mode) {
-  const key = mode === 'live' ? liveApiKey.value() :
-    mode === 'test' ? testApiKey.value() : null;
-  return new Stripe(requireModeKey(key, mode), {maxNetworkRetries: 2, timeout: 20000});
+function stripeForMode(mode = currentPaymentMode()) {
+  const activeMode = currentPaymentMode();
+  if (mode !== activeMode) {
+    throw new Error(`Configured Stripe key is for ${activeMode} mode, not ${mode}.`);
+  }
+  return new Stripe(requireModeKey(apiKey.value(), activeMode), {maxNetworkRetries: 2, timeout: 20000});
 }
 
-function signingKeyForMode(mode) {
-  if (mode === 'live') return liveSigningKey.value();
-  if (mode === 'test') return testSigningKey.value();
-  throw new Error('Unknown Stripe payment mode.');
+function signingKeyForMode(mode = currentPaymentMode()) {
+  const activeMode = currentPaymentMode();
+  if (mode !== activeMode) {
+    throw new Error(`Configured Stripe webhook secret is for ${activeMode} mode, not ${mode}.`);
+  }
+  return signingKey.value();
 }
 
 module.exports = {apiSecrets, webhookSecrets, currentPaymentMode, stripeForMode,

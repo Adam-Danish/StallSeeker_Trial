@@ -137,7 +137,7 @@ void main() {
     final now =
         DateTime.utc(2026, 10, 19, 17); // 1am on 20 October in Malaysia.
     final result = DemoSalesSummary.fromOrders([
-      order(payment: 'paid', paidAt: now),
+      order(mode: 'live', payment: 'paid', paidAt: now),
       order(payment: 'paid', paidAt: now, refund: 250),
       order(payment: 'paid', paidAt: DateTime.utc(2026, 10, 19, 15)),
       order(vendorId: 'other', payment: 'paid', paidAt: now),

@@ -6,7 +6,7 @@ const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {getFirestore, Timestamp} = require('firebase-admin/firestore');
 const {isStripePaymentMode, TERMINAL} = require('./stripe-payment-core.cjs');
 const {paymentService} = require('./stripe-payment-service.cjs');
-const {apiSecrets, webhookSecrets, stripeForMode, signingKeyForMode} =
+const {apiSecrets, webhookSecrets, currentPaymentMode, stripeForMode, signingKeyForMode} =
   require('./stripe-payment-config.cjs');
 
 const db = getFirestore();
@@ -67,12 +67,9 @@ exports.stripeWebhook = onRequest({...options, secrets: webhookSecrets,
   invoker: 'public'}, async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('POST required');
   let event;
-  let expectedLive;
+  const mode = currentPaymentMode();
+  const expectedLive = mode === 'live';
   try {
-    const payload = JSON.parse(req.rawBody.toString('utf8'));
-    if (typeof payload.livemode !== 'boolean') throw new Error('Invalid Stripe event mode.');
-    expectedLive = payload.livemode;
-    const mode = expectedLive ? 'live' : 'test';
     event = stripeForMode(mode).webhooks.constructEvent(req.rawBody,
       req.get('stripe-signature'), signingKeyForMode(mode));
   } catch (_) {
@@ -101,18 +98,20 @@ exports.closeCancelledStripePayment = onDocumentUpdated({...options,
   document: 'bookings/{bookingId}', retry: true}, async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
-  if (!isStripePaymentMode(after.paymentMode) || !TERMINAL.has(after.status) ||
+  if (!isStripePaymentMode(after.paymentMode) || after.paymentMode !== currentPaymentMode() ||
+      !TERMINAL.has(after.status) ||
       ['refunded', 'refund_failed'].includes(after.paymentStatus) ||
       (before.status === after.status && before.paymentStatus === after.paymentStatus)) return;
   await service().sync(event.params.bookingId, {close: true});
 });
 
 exports.expireStripePayments = onSchedule({...options, schedule: 'every 1 minutes'}, async () => {
+  const activeMode = currentPaymentMode();
   const due = await db.collection('bookings').where('status', '==', 'confirmed')
     .where('paymentStatus', 'in', ['awaiting_payment', 'pending', 'failed'])
     .where('paymentExpiresAt', '<=', Timestamp.now()).limit(100).get();
   for (const doc of due.docs) {
-    if (!isStripePaymentMode(doc.data().paymentMode) || doc.data().paymentStatus === 'paid') continue;
+    if (doc.data().paymentMode !== activeMode || doc.data().paymentStatus === 'paid') continue;
     try {
       await service().sync(doc.id);
     } catch (error) {
