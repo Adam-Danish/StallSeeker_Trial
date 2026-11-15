@@ -408,52 +408,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
     };
   }
 
-  Widget _progress(DemoOrder booking) {
-    final steps = [
-      if (booking.checkoutFirst)
-        'checkout_started'
-      else ...[
-        'requested',
-        'confirmed',
-      ],
-      if (booking.hasStripePayment) 'payment_confirmed',
-      'preparing',
-      'ready',
-      'collected'
-    ];
-    var position = steps.indexOf(booking.effectiveStatus);
-    if (booking.checkoutFirst && booking.status == 'confirmed') {
-      position = steps.indexOf(booking.paymentStatus == 'paid'
-          ? 'payment_confirmed'
-          : 'checkout_started');
-    } else if (booking.hasStripePayment &&
-        booking.status == 'confirmed' &&
-        booking.paymentStatus == 'paid') {
-      position = steps.indexOf('payment_confirmed');
-    }
-    return Column(children: [
-      for (var i = 0; i < steps.length; i++)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(children: [
-            Icon(i <= position ? Icons.check_circle : Icons.circle_outlined,
-                size: 20,
-                color: i <= position ? const Color(0xFF137547) : Colors.grey),
-            const SizedBox(width: 10),
-            Expanded(
-                child: Text(
-                    steps[i] == 'payment_confirmed'
-                        ? 'Payment confirmed'
-                        : steps[i] == 'checkout_started'
-                            ? 'Checkout started'
-                            : demoOrderStatusLabel(steps[i]),
-                    style: TextStyle(
-                        fontWeight: i == position ? FontWeight.bold : null))),
-          ]),
-        ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) => Stack(
         children: [
@@ -511,7 +465,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                                 const SizedBox(height: 10),
                                 if (booking.isActive ||
                                     booking.status == 'collected')
-                                  _progress(booking)
+                                  BookingProgress(booking: booking)
                                 else
                                   Text(
                                       demoOrderStatusLabel(
@@ -612,6 +566,86 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
             ),
         ],
       );
+}
+
+class BookingProgress extends StatelessWidget {
+  const BookingProgress(
+      {super.key, required this.booking, this.compact = false});
+
+  final DemoOrder booking;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      if (booking.checkoutFirst)
+        'checkout_started'
+      else ...[
+        'requested',
+        'confirmed',
+      ],
+      if (booking.hasStripePayment) 'payment_confirmed',
+      'preparing',
+      'ready',
+      'collected',
+    ];
+    var position = steps.indexOf(booking.effectiveStatus);
+    if (booking.checkoutFirst && booking.status == 'confirmed') {
+      position = steps.indexOf(booking.paymentStatus == 'paid'
+          ? 'payment_confirmed'
+          : 'checkout_started');
+    } else if (booking.hasStripePayment &&
+        booking.status == 'confirmed' &&
+        booking.paymentStatus == 'paid') {
+      position = steps.indexOf('payment_confirmed');
+    }
+
+    const reachedColor = Color(0xFF137547);
+    if (compact) {
+      if (position < 0) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Semantics(
+          label: 'Booking stage ${position + 1} of ${steps.length}',
+          child: Row(
+            spacing: 4,
+            children: [
+              for (var i = 0; i < steps.length; i++)
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: i <= position ? reachedColor : AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(children: [
+      for (var i = 0; i < steps.length; i++)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            Icon(i <= position ? Icons.check_circle : Icons.circle_outlined,
+                size: 20, color: i <= position ? reachedColor : Colors.grey),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(
+                    switch (steps[i]) {
+                      'payment_confirmed' => 'Payment confirmed',
+                      'checkout_started' => 'Checkout started',
+                      final status => demoOrderStatusLabel(status),
+                    },
+                    style: TextStyle(
+                        fontWeight: i == position ? FontWeight.bold : null))),
+          ]),
+        ),
+    ]);
+  }
 }
 
 class BookingSpecialInstructionsCard extends StatelessWidget {

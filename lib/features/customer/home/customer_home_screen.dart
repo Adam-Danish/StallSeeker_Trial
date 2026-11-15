@@ -12,6 +12,7 @@ import 'dart:async'; // bawak time, future dan unawaited
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import '../../../core/widgets/map_overlay.dart';
 import '../../../core/widgets/map_gesture_guard.dart';
 import '../../../core/widgets/web_map_loader.dart';
@@ -106,8 +107,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   bool _listOnly = false;
   bool _pointerOverResults = false;
   final Set<int> _resultPointers = {};
+  final Set<DiscoveryMapMenu> _openMapMenus = {};
   bool get _blockMapGestures =>
-      _pointerOverResults || _resultPointers.isNotEmpty;
+      _pointerOverResults ||
+      _resultPointers.isNotEmpty ||
+      _openMapMenus.isNotEmpty;
+
+  void _onMapMenuVisibilityChanged(DiscoveryMapMenu menu, bool open) {
+    setState(() {
+      if (open) {
+        _openMapMenus.add(menu);
+      } else {
+        _openMapMenus.remove(menu);
+      }
+    });
+  }
 
   void _trackResultPointer(int pointer, bool down) {
     if (!kIsWeb || !mounted) return;
@@ -1498,6 +1512,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       _selfCollectOnly = filters['selfCollectOnly'] == true;
       _recentOnly = filters['recentOnly'] == true;
       _listOnly = filters['listOnly'] == true;
+      if (_listOnly) _openMapMenus.clear();
       _searchCenter = filters['latitude'] == null
           ? null
           : LatLng((filters['latitude'] as num).toDouble(),
@@ -1854,6 +1869,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                                   },
                                   onTap: (_) => _searchFocus.unfocus(),
                                 )))),
+                // Intercept browser events above the HTML map and below the menus.
+                if (kIsWeb && _openMapMenus.isNotEmpty)
+                  const Positioned.fill(
+                    key: ValueKey('map-menu-pointer-shield'),
+                    child: SizedBox.expand(),
+                  ),
                 Positioned(
                     top: 10,
                     left: 12,
@@ -2143,6 +2164,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
   Widget _compactMapFilters() => DiscoveryMapFilters(
         category: _category,
+        onMenuVisibilityChanged: _listOnly ? null : _onMapMenuVisibilityChanged,
         hasExtraFilters: _priceRange != null ||
             _openingTime != null ||
             _statusFilter == 'Closed' ||
@@ -2172,6 +2194,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
                 _searchFocus.unfocus();
                 setState(() {
                   _listOnly = !_listOnly;
+                  if (_listOnly) _openMapMenus.clear();
                   _previewVendorId = null;
                   if (_listOnly) _mapController = null;
                 });
@@ -2670,41 +2693,89 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => PointerInterceptor(
+      clipBehavior: Clip.antiAlias,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .6,
+        minChildSize: .6,
+        maxChildSize: .9,
+        snap: true,
+        shouldCloseOnMinExtent: false,
+        builder: (context, scrollController) => PointerInterceptor(
           intercepting: kIsWeb,
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * .6,
-            child: Column(children: [
-              const AppSheetHeader(
-                  title: Text('Stalls in this area'),
-                  subtitle: Text('Choose a stall to find it on the map')),
-              const Divider(height: 1),
-              Expanded(
-                  child: ListView.separated(
-                itemCount: vendors.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 80),
-                itemBuilder: (context, index) {
-                  final vendor = vendors[index];
-                  return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      leading: _stallPhoto(vendor),
-                      title: Text(vendor.stallName),
-                      subtitle: Text([
-                        vendor.categoryLabel,
-                        _stallStatus(vendor),
-                        if (_distanceTo(vendor) != null) _distanceTo(vendor)!
-                      ].join(' · ')),
-                      trailing: const Icon(Icons.near_me_outlined,
-                          color: AppColors.primary),
-                      onTap: () => Navigator.pop(context, vendor));
-                },
-              )),
-            ]),
-          )),
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: {
+                ...ScrollConfiguration.of(context).dragDevices,
+                PointerDeviceKind.mouse,
+              },
+            ),
+            child: CustomScrollView(
+              controller: scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: .45),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      AppSheetHeader(
+                        title: Text('Stalls in this area'),
+                        subtitle: Text('Choose a stall to find it on the map'),
+                      ),
+                      Divider(height: 1),
+                    ],
+                  ),
+                ),
+                SliverSafeArea(
+                  top: false,
+                  sliver: SliverList.separated(
+                    itemCount: vendors.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, indent: 80),
+                    itemBuilder: (context, index) {
+                      final vendor = vendors[index];
+                      final distance = _distanceTo(vendor);
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        leading: _stallPhoto(vendor),
+                        title: Text(vendor.stallName),
+                        subtitle: Text([
+                          vendor.categoryLabel,
+                          _stallStatus(vendor),
+                          if (distance != null) distance,
+                        ].join(' · ')),
+                        trailing: const Icon(Icons.near_me_outlined,
+                            color: AppColors.primary),
+                        onTap: () => Navigator.pop(context, vendor),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
     if (mounted && selected != null) {
       await _selectVendor(selected);

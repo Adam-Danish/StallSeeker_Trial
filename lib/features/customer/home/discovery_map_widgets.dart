@@ -45,6 +45,8 @@ class DiscoveryMenuChoice extends StatelessWidget {
       );
 }
 
+enum DiscoveryMapMenu { category, options, filters }
+
 class DiscoveryMapFilters extends StatelessWidget {
   const DiscoveryMapFilters(
       {super.key,
@@ -62,6 +64,7 @@ class DiscoveryMapFilters extends StatelessWidget {
       required this.onRecent,
       required this.onReset,
       required this.moreItems,
+      this.onMenuVisibilityChanged,
       this.hasExtraFilters = false});
   final String? category;
   final bool openNow,
@@ -75,6 +78,7 @@ class DiscoveryMapFilters extends StatelessWidget {
   final ValueChanged<DiscoverySort> onSort;
   final VoidCallback onReset;
   final List<Widget> moreItems;
+  final void Function(DiscoveryMapMenu menu, bool open)? onMenuVisibilityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +117,10 @@ class DiscoveryMapFilters extends StatelessWidget {
               elevation: 2,
               child: MenuAnchor(
                 style: discoveryMenuStyle,
+                onOpen: () => onMenuVisibilityChanged?.call(
+                    DiscoveryMapMenu.category, true),
+                onClose: () => onMenuVisibilityChanged?.call(
+                    DiscoveryMapMenu.category, false),
                 menuChildren: [
                   for (final value in ['All stalls', ...stallCategories])
                     DiscoveryMenuChoice(
@@ -152,6 +160,10 @@ class DiscoveryMapFilters extends StatelessWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               MenuAnchor(
                   style: discoveryMenuStyle,
+                  onOpen: () => onMenuVisibilityChanged?.call(
+                      DiscoveryMapMenu.options, true),
+                  onClose: () => onMenuVisibilityChanged?.call(
+                      DiscoveryMapMenu.options, false),
                   menuChildren: moreItems,
                   builder: (_, controller, __) => IconButton(
                       tooltip: 'More map options',
@@ -161,6 +173,10 @@ class DiscoveryMapFilters extends StatelessWidget {
                           : controller.open())),
               MenuAnchor(
                   style: discoveryMenuStyle,
+                  onOpen: () => onMenuVisibilityChanged?.call(
+                      DiscoveryMapMenu.filters, true),
+                  onClose: () => onMenuVisibilityChanged?.call(
+                      DiscoveryMapMenu.filters, false),
                   menuChildren: [
                     DiscoveryMenuChoice(
                         label: 'Open now',

@@ -48,21 +48,27 @@ void main() {
           customerUnseenReady: unseen,
         );
 
+    final preparing = booking('first', 'preparing', false);
+    final ready = booking('second', 'ready', true);
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: Column(children: [
       BookingSummaryCard(
-          booking: booking('first', 'preparing', false),
+          booking: preparing,
           isVendor: false,
           onTap: () => opened.add('first')),
+      BookingProgress(booking: preparing, compact: true),
       BookingSummaryCard(
-          booking: booking('second', 'ready', true),
-          isVendor: false,
-          onTap: () => opened.add('second')),
+          booking: ready, isVendor: false, onTap: () => opened.add('second')),
+      BookingProgress(booking: ready, compact: true),
     ]))));
 
     expect(find.text('Preparing'), findsOneWidget);
     expect(find.text('Ready for collection'), findsOneWidget);
+    expect(find.bySemanticsLabel('Booking stage 3 of 5'), findsOneWidget);
+    expect(find.bySemanticsLabel('Booking stage 4 of 5'), findsOneWidget);
     expect(find.byType(CircleAvatar), findsOneWidget);
     await tester.tap(find.text('Stall second'));
     expect(opened, ['second']);

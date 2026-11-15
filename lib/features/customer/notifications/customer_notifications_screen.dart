@@ -5,11 +5,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/ios_grouped.dart';
+import '../../../core/models/demo_order.dart';
 import '../../../core/models/notification_model.dart';
+import '../../../core/services/demo_order_service.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../auth/screens/login_screen.dart';
+import '../../shared/booking_detail_screen.dart';
+import '../../shared/booking_payment_card.dart';
+import '../../shared/demo_orders_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
 
 class CustomerNotificationsScreen extends StatefulWidget {
@@ -25,6 +29,7 @@ class _CustomerNotificationsScreenState
   final _vendors = VendorService();
   final _uid = FirebaseAuth.instance.currentUser?.uid;
   late Stream<List<NotificationModel>> _stream;
+  Stream<List<DemoOrder>>? _bookings;
   final Set<String> _opening = {};
   final Set<String> _removedIds = {};
   int _limit = 50;
@@ -35,6 +40,14 @@ class _CustomerNotificationsScreenState
   void initState() {
     super.initState();
     _listen();
+    _listenToBookings();
+  }
+
+  void _listenToBookings() {
+    final user = FirebaseAuth.instance.currentUser;
+    _bookings = user != null && !user.isAnonymous && user.emailVerified
+        ? DemoOrderService().watchCustomerOrders(user.uid)
+        : null;
   }
 
   void _listen() {
@@ -135,14 +148,72 @@ class _CustomerNotificationsScreenState
     return '${local.day}/${local.month}/${local.year} · $time';
   }
 
+  Widget _bookingProgress() => StreamBuilder<List<DemoOrder>>(
+        stream: _bookings,
+        builder: (context, snapshot) {
+          final bookings = snapshot.data ?? const <DemoOrder>[];
+          final recent = [
+            ...bookings.where((booking) => booking.customerUnseenReady),
+            ...bookings.where(
+                (booking) => !booking.customerUnseenReady && booking.isActive),
+            ...bookings.where(
+                (booking) => !booking.customerUnseenReady && !booking.isActive),
+          ].take(3);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Booking progress',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                if (bookings.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextButton(
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              settings: const ResumePage('bookings'),
+                              builder: (_) =>
+                                  const DemoOrdersScreen(isVendor: false))),
+                      child: const Text('View all'),
+                    ),
+                  ),
+              ]),
+              if (snapshot.hasError)
+                ListTile(
+                  title: const Text('Could not load booking progress.'),
+                  trailing: TextButton(
+                      onPressed: () => setState(_listenToBookings),
+                      child: const Text('Retry')),
+                )
+              else if (!snapshot.hasData)
+                const LinearProgressIndicator()
+              else if (bookings.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Text('Your bookings will appear here.'),
+                )
+              else
+                for (final booking in recent) _bookingTile(booking),
+            ],
+          );
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
     final horizontalInset =
-        math.max(16.0, (MediaQuery.sizeOf(context).width - 960) / 2);
+        math.max(0.0, (MediaQuery.sizeOf(context).width - 960) / 2);
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) {
       return _empty('Your stall updates, in one place',
-          'Sign in and follow stalls or dishes to keep their updates here.',
+          'Sign in to track bookings and see updates from followed stalls and dishes.',
           action: TextButton(
               onPressed: () => Navigator.push(
                   context,
@@ -156,9 +227,6 @@ class _CustomerNotificationsScreenState
         child: StreamBuilder<List<NotificationModel>>(
           stream: _stream,
           builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return _errorState(snapshot.error!);
-            }
             final loading = !snapshot.hasData &&
                 snapshot.connectionState == ConnectionState.waiting;
             final all = (snapshot.data ?? [])
@@ -168,52 +236,68 @@ class _CustomerNotificationsScreenState
                 _onlyUnread ? all.where((item) => !item.isRead).toList() : all;
             return RefreshIndicator(
                 onRefresh: () async {
-                  setState(_listen);
+                  setState(() {
+                    _listen();
+                    _listenToBookings();
+                  });
                 },
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                       horizontalInset, 20, horizontalInset, 112),
                   children: [
-                    Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          CupertinoSlidingSegmentedControl<bool>(
-                            backgroundColor: const Color(0xFFE2E2E7),
-                            thumbColor: Colors.white,
-                            groupValue: _onlyUnread,
-                            children: const {
-                              false: Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 18),
-                                  child: Text('All')),
-                              true: Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 18),
-                                  child: Text('Unread')),
-                            },
-                            onValueChanged: (value) {
-                              if (value != null) {
-                                setState(() => _onlyUnread = value);
-                              }
-                            },
-                          ),
-                          TextButton(
-                              onPressed:
-                                  _marking || !all.any((item) => !item.isRead)
-                                      ? null
-                                      : () => _markRead(all),
-                              child: Text(_marking
-                                  ? 'Updating…'
-                                  : 'Mark shown as read')),
-                        ]),
+                    if (_bookings != null) ...[
+                      _bookingProgress(),
+                      const SizedBox(height: 16),
+                    ],
                     const Padding(
-                        padding: EdgeInsets.fromLTRB(8, 16, 8, 12),
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                         child: Text('STALL UPDATES',
                             style: TextStyle(
                                 fontSize: 12, color: Color(0xFF8E8E93)))),
-                    if (loading)
+                    if (!snapshot.hasError)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: [
+                              CupertinoSlidingSegmentedControl<bool>(
+                                backgroundColor: const Color(0xFFE2E2E7),
+                                thumbColor: Colors.white,
+                                groupValue: _onlyUnread,
+                                children: const {
+                                  false: Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 18),
+                                      child: Text('All')),
+                                  true: Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(horizontal: 18),
+                                      child: Text('Unread')),
+                                },
+                                onValueChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _onlyUnread = value);
+                                  }
+                                },
+                              ),
+                              TextButton(
+                                  onPressed: _marking ||
+                                          !all.any((item) => !item.isRead)
+                                      ? null
+                                      : () => _markRead(all),
+                                  child: Text(_marking
+                                      ? 'Updating…'
+                                      : 'Mark shown as read')),
+                            ]),
+                      ),
+                    const SizedBox(height: 12),
+                    if (snapshot.hasError)
+                      _errorState(snapshot.error!)
+                    else if (loading)
                       const LinearProgressIndicator()
                     else if (visible.isEmpty)
                       Padding(
@@ -236,17 +320,14 @@ class _CustomerNotificationsScreenState
                                 style: TextStyle(color: Color(0xFF8E8E93))),
                           ]))
                     else
-                      for (final item in visible) ...[
+                      for (final item in visible)
                         Dismissible(
                           key: ValueKey('notification-${item.id}'),
                           direction: DismissDirection.endToStart,
                           background: Container(
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 24),
-                            decoration: BoxDecoration(
-                              color: AppColors.closedRed,
-                              borderRadius: BorderRadius.circular(24),
-                            ),
+                            color: AppColors.closedRed,
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               mainAxisSize: MainAxisSize.min,
@@ -262,9 +343,7 @@ class _CustomerNotificationsScreenState
                           onDismissed: (_) => _remove(item),
                           child: _tile(item),
                         ),
-                        const SizedBox(height: 12),
-                      ],
-                    if (all.length >= _limit)
+                    if (!snapshot.hasError && all.length >= _limit)
                       Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: TextButton(
@@ -279,57 +358,57 @@ class _CustomerNotificationsScreenState
         ));
   }
 
-  Widget _tile(NotificationModel item) => Material(
-        color: item.isRead ? Colors.white : const Color(0xFFFFF5EC),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(
-            color: item.isRead
-                ? AppColors.border
-                : AppColors.primary.withValues(alpha: .18),
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          leading: AppIconTile(
-              icon: item.type == 'dish_available'
-                  ? Icons.restaurant_rounded
-                  : Icons.storefront_rounded,
-              color: item.isRead ? const Color(0xFF949499) : AppColors.primary),
-          title: Text(item.title,
-              style: TextStyle(
-                  fontSize: 17,
-                  letterSpacing: 0,
-                  fontWeight: item.isRead ? FontWeight.w400 : FontWeight.w500)),
-          subtitle: Padding(
-              padding: const EdgeInsets.only(top: 5),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (item.body.isNotEmpty)
-                      Text(item.body,
-                          style:
-                              const TextStyle(fontSize: 14, letterSpacing: 0)),
-                    const SizedBox(height: 5),
-                    Text(_date(item.createdAt),
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF8E8E93))),
-                  ])),
-          trailing: _opening.contains(item.id)
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : Icon(item.isRead ? Icons.chevron_right : Icons.circle,
-                  size: item.isRead ? 20 : 8,
-                  color: item.isRead
-                      ? const Color(0xFFAEAEB2)
-                      : AppColors.primary),
-          onTap: () => _open(item),
-        ),
+  Widget _tile(NotificationModel item) => _NotificationRow(
+        icon: item.type == 'dish_available'
+            ? Icons.restaurant_rounded
+            : Icons.storefront_rounded,
+        title: item.title,
+        body: TextSpan(text: item.body),
+        caption: _date(item.createdAt),
+        unread: !item.isRead,
+        opening: _opening.contains(item.id),
+        onTap: () => _open(item),
       );
+
+  Widget _bookingTile(DemoOrder booking) {
+    final statusColor = booking.effectiveStatus == 'ready'
+        ? AppColors.openGreen
+        : AppColors.primary;
+    final items = booking.items
+        .map((item) => '${item.quantity}x ${item.name}')
+        .join(', ');
+    final status = bookingStatusLabel(booking);
+    final payment = bookingPaymentLabel(booking);
+    final bookingSummary = [
+      if (booking.hasStripePayment && payment != status) payment,
+      if (items.isNotEmpty) items,
+    ].join(' · ');
+    return _NotificationRow(
+      key: ValueKey(booking.id),
+      icon: Icons.receipt_long_rounded,
+      iconColor: statusColor,
+      title: booking.stallName,
+      body: TextSpan(children: [
+        TextSpan(
+          text: status,
+          style: TextStyle(color: statusColor, fontWeight: FontWeight.w600),
+        ),
+        if (bookingSummary.isNotEmpty) TextSpan(text: '\n$bookingSummary'),
+      ]),
+      caption:
+          'RM ${(booking.totalCents / 100).toStringAsFixed(2)} · ${_date(booking.createdAt)}',
+      unread: booking.customerUnseenReady,
+      progress: BookingProgress(booking: booking, compact: true),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          settings: ResumePage('booking', booking.id),
+          builder: (_) =>
+              BookingDetailScreen(bookingId: booking.id, isVendor: false),
+        ),
+      ),
+    );
+  }
 
   Widget _errorState(Object error) {
     final code = error is FirebaseException ? error.code : 'unknown';
@@ -388,4 +467,128 @@ class _CustomerNotificationsScreenState
           if (action != null) action,
         ]),
       ));
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.caption,
+    required this.unread,
+    required this.onTap,
+    this.iconColor = AppColors.primary,
+    this.opening = false,
+    this.progress,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final TextSpan body;
+  final String caption;
+  final bool unread;
+  final bool opening;
+  final Widget? progress;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    // Reserve the same space for every row, including at larger text sizes.
+    final height = 52 +
+        1.35 * (scaler.scale(16) + 3 * scaler.scale(14) + scaler.scale(12));
+    return Material(
+      color: unread ? const Color(0xFFFFF5EC) : Colors.white,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: height,
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: iconColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(icon, size: 24, color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textDark,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Flexible(
+                              child: Text.rich(
+                                body,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  height: 1.3,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                            if (progress != null) progress!,
+                          ],
+                        ),
+                      ),
+                      if (unread || opening)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8, top: 5),
+                          child: opening
+                              ? const SizedBox.square(
+                                  dimension: 14,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(
+                                  Icons.circle,
+                                  size: 8,
+                                  color: AppColors.primary,
+                                  semanticLabel: 'Unread',
+                                ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, thickness: 1, color: AppColors.border),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

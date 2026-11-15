@@ -424,6 +424,65 @@ void main() {
     });
   }
 
+  testWidgets('map stall list expands, collapses, and scrolls', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final maps = _InteractiveMaps();
+    GoogleMapsFlutterPlatform.instance = maps;
+    final originalVendors = firestore.vendors;
+    firestore.vendors = [
+      for (var i = 0; i < 12; i++)
+        {
+          'stallName': 'Nasi Stall ${i.toString().padLeft(2, '0')}',
+          'category': 'Rice',
+          'latitude': 3.139 + i * .0001,
+          'longitude': 101.6869,
+          'isOpen': false,
+        },
+    ];
+    addTearDown(() {
+      GoogleMapsFlutterPlatform.instance = _PlaceholderMaps();
+      firestore.vendors = originalVendors;
+    });
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+    await tester.pumpAndSettle();
+    expect(find.text('12 stalls nearby'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('view-all-stalls')));
+    await tester.pumpAndSettle();
+
+    final title = find.text('Stalls in this area');
+    final list = find.descendant(
+      of: find.byType(DraggableScrollableSheet),
+      matching: find.byType(CustomScrollView),
+    );
+    expect(tester.getSize(list).height, closeTo(844 * .6, 1));
+    await tester.drag(title, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(list).height, closeTo(844 * .9, 1));
+    expect(tester.getTopLeft(list).dy, greaterThan(0));
+
+    await tester.drag(title, const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(list).height, closeTo(844 * .6, 1));
+    await tester.drag(title, const Offset(0, -240));
+    await tester.pumpAndSettle();
+
+    final lastStall = find.widgetWithText(ListTile, 'Nasi Stall 11');
+    expect(lastStall.hitTestable(), findsNothing);
+    await tester.scrollUntilVisible(lastStall, 180,
+        scrollable:
+            find.descendant(of: list, matching: find.byType(Scrollable)));
+    await tester.tap(lastStall);
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+    expect(maps.cameraMoves, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
       'cards follow viewport; scrolling leaves markers and camera unchanged; tapping focuses',
       (tester) async {
@@ -583,6 +642,60 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await location.updates.close();
   }, skip: !kIsWeb);
+
+  testWidgets('discovery menus block map gestures until dismissed',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme, home: const CustomerHomeScreen()));
+    await tester.pumpAndSettle();
+
+    final shield = find.byKey(const ValueKey('map-menu-pointer-shield'));
+    void expectMapBlocked(bool blocked) {
+      final map = tester.widget<GoogleMap>(find.byType(GoogleMap));
+      expect(map.scrollGesturesEnabled, !blocked);
+      expect(map.zoomGesturesEnabled, !blocked);
+      expect(map.rotateGesturesEnabled, !blocked);
+      expect(map.tiltGesturesEnabled, !blocked);
+      expect(map.webGestureHandling,
+          blocked ? WebGestureHandling.none : WebGestureHandling.auto);
+      expect(shield, kIsWeb && blocked ? findsOneWidget : findsNothing);
+    }
+
+    Future<void> tap(Finder finder) async {
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    expectMapBlocked(false);
+    await tap(find.text('All stalls'));
+    expectMapBlocked(true);
+    await tap(find.text('Malay Food'));
+    expectMapBlocked(false);
+
+    await tap(find.byTooltip('Filter stalls'));
+    await tap(find.text('Open now'));
+    expectMapBlocked(true);
+    await tap(find.text('Sort results'));
+    expect(find.text(DiscoverySort.rating.label), findsOneWidget);
+    expectMapBlocked(true);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expectMapBlocked(false);
+
+    await tap(find.byTooltip('More map options'));
+    expectMapBlocked(true);
+    await tap(find.text('List view'));
+    expect(find.byType(GoogleMap), findsNothing);
+    await tap(find.byTooltip('More map options'));
+    await tap(find.text('Map view'));
+    expectMapBlocked(false);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   for (final width in [320.0, 960.0]) {
     testWidgets('clear all discovery filters in map and list views at $width',
