@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vendor_model.dart';
+import '../vendor_details/share_stall_button.dart';
 
 class StallPreviewSheet extends StatefulWidget {
   const StallPreviewSheet({
@@ -180,6 +181,10 @@ class _StallPreviewSheetState extends State<StallPreviewSheet> {
                                       style: const TextStyle(
                                           color: AppColors.textMuted,
                                           fontSize: 12))),
+                              ShareStallButton(
+                                stallId: widget.vendor.vendorId,
+                                stallName: widget.vendor.stallName,
+                              ),
                               IconButton(
                                   tooltip: 'Collapse preview',
                                   onPressed: () => _resize(fullScreen

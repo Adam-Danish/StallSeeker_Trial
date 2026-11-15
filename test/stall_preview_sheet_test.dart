@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stallseeker/core/models/vendor_model.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
@@ -121,6 +122,30 @@ void _expectFullScreen(WidgetTester tester, Size size) {
 }
 
 void main() {
+  testWidgets('shares the selected stall directly from the map preview',
+      (tester) async {
+    final messenger = tester.binding.defaultBinaryMessenger;
+    String? copiedLink;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedLink = (call.arguments as Map)['text'] as String;
+      }
+      return null;
+    });
+    addTearDown(() =>
+        messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await _mount(tester, const Size(390, 844));
+    await tester.tap(find.byTooltip('Share stall'));
+    await tester.pumpAndSettle();
+    expect(find.text('Share on WhatsApp'), findsOneWidget);
+    await tester.tap(find.text('Copy link'));
+    await tester.pumpAndSettle();
+
+    expect(copiedLink, 'https://stallseeker.my/stall/tea');
+    expect(find.byKey(_surface), findsOneWidget);
+  });
+
   for (final width in [390.0, 960.0]) {
     testWidgets('preview slides in from the bottom at $width', (tester) async {
       const height = 844.0;
