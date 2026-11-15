@@ -7,6 +7,7 @@ import '../../../core/services/demo_order_service.dart';
 import '../../shared/booking_detail_screen.dart';
 import '../../shared/booking_payment_card.dart';
 import '../../auth/resume_navigation.dart';
+import '../profile/vendor_payout_details_screen.dart';
 
 class DemoSalesSummary {
   const DemoSalesSummary(
@@ -142,7 +143,20 @@ class _VendorPaymentHistoryScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppPageAppBar(title: const Text('Payment history')),
+      appBar: AppPageAppBar(
+        title: const Text('Payment history'),
+        actions: [
+          IconButton(
+            tooltip: 'Bank & Payouts',
+            onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    settings: const ResumePage('payout-details'),
+                    builder: (_) => const VendorPayoutDetailsScreen())),
+            icon: const Icon(Icons.account_balance_outlined),
+          ),
+        ],
+      ),
       body: StreamBuilder<List<DemoOrder>>(
           stream: _orders,
           builder: (context, snapshot) {
@@ -158,6 +172,20 @@ class _VendorPaymentHistoryScreenState
                     order.hasStripePayment && order.paymentStatus != 'unpaid')
                 .toList();
             return ListView(padding: const EdgeInsets.all(16), children: [
+              Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                      leading: const Icon(Icons.account_balance_outlined),
+                      title: const Text('Bank & Payout Details'),
+                      subtitle: const Text(
+                          'Set up your bank account and request earnings transfers'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              settings: const ResumePage('payout-details'),
+                              builder: (_) =>
+                                  const VendorPayoutDetailsScreen())))),
               if (orders.isEmpty)
                 const Padding(
                     padding: EdgeInsets.all(24),

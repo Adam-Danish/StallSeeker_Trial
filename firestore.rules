@@ -8,6 +8,39 @@ rules_version = '2';
 // Saved pins: users/{customerId}/savedLocations/{locationId}, with name
 // (1..60 chars), address (1..500 chars), latitude/longitude (valid coordinates),
 // isHome (bool; true only at the single 'home' ID), updatedAt (server timestamp).
+//
+// Assumed Data Model (Vendor Payouts):
+// Collection: vendorPayoutDetails
+// Document ID: {vendorId} (matches owning vendor UID)
+// Fields:
+//   - vendorId: string (required, immutable, == vendorId)
+//   - bankName: string (required, 2..80 chars, trimmed >= 2)
+//   - accountHolderName: string (required, 2..120 chars, trimmed >= 2)
+//   - accountNumber: string (required, 6..24 digits: ^[0-9]{6,24}$)
+//   - duitNowId: string (optional, <= 64 chars)
+//   - notes: string (optional, <= 200 chars)
+//   - updatedAt: timestamp (required, == request.time)
+//
+// Collection: vendorPayouts
+// Document ID: {payoutId} (auto-generated)
+// Fields:
+//   - vendorId: string (required, immutable, 1..128 chars)
+//   - stallName: string (optional, immutable, <= 160 chars)
+//   - amountCents: int (required, immutable, 100..50000000)
+//   - status: string (required: 'pending' on vendor create, 'paid' on admin direct create, 'paid'|'rejected' on admin update from 'pending')
+//   - bankName: string (required, immutable, 2..80 chars, trimmed >= 2)
+//   - accountHolderName: string (required, immutable, 2..120 chars, trimmed >= 2)
+//   - accountNumber: string (required, immutable, ^[0-9]{6,24}$)
+//   - duitNowId: string (optional, immutable, <= 64 chars)
+//   - vendorNote: string (optional, immutable, <= 240 chars)
+//   - requestedBy: string (required, immutable, == caller UID on create)
+//   - requestedAt: timestamp (required, immutable, == request.time on create)
+//   - transferReference: string (admin settlement only; required 2..120 trimmed>=2 when paid; absent or '' when rejected)
+//   - adminNote: string (admin settlement only; optional <= 240 when paid; required 2..240 trimmed>=2 when rejected)
+//   - settledByUid: string (admin settlement only; required == admin UID)
+//   - settledByEmail: string (admin settlement only; optional <= 254 chars)
+//   - settledAt: timestamp (admin settlement only; required == request.time)
+//   - updatedAt: timestamp (required, == request.time)
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -225,6 +258,172 @@ service cloud.firestore {
           && (resource.data.customerId == request.auth.uid
               || resource.data.vendorId == request.auth.uid);
       allow create, update, delete: if false;
+    }
+
+    function validVendorPayoutDetails(data, vendorId) {
+      return data.keys().hasOnly([
+              'vendorId', 'bankName', 'accountHolderName', 'accountNumber',
+              'duitNowId', 'notes', 'updatedAt'
+            ])
+          && data.keys().hasAll([
+              'vendorId', 'bankName', 'accountHolderName', 'accountNumber',
+              'updatedAt'
+            ])
+          && data.vendorId is string
+          && data.vendorId == vendorId
+          && data.bankName is string
+          && data.bankName.size() >= 2
+          && data.bankName.size() <= 80
+          && data.bankName.trim().size() >= 2
+          && data.accountHolderName is string
+          && data.accountHolderName.size() >= 2
+          && data.accountHolderName.size() <= 120
+          && data.accountHolderName.trim().size() >= 2
+          && data.accountNumber is string
+          && data.accountNumber.matches('^[0-9]{6,24}$')
+          && (!('duitNowId' in data)
+              || (data.duitNowId is string && data.duitNowId.size() <= 64))
+          && (!('notes' in data)
+              || (data.notes is string && data.notes.size() <= 200))
+          && data.updatedAt == request.time;
+    }
+
+    function validVendorPayoutBase(data) {
+      return data.vendorId is string
+          && data.vendorId.size() > 0
+          && data.vendorId.size() <= 128
+          && data.amountCents is int
+          && data.amountCents >= 100
+          && data.amountCents <= 50000000
+          && data.bankName is string
+          && data.bankName.size() >= 2
+          && data.bankName.size() <= 80
+          && data.bankName.trim().size() >= 2
+          && data.accountHolderName is string
+          && data.accountHolderName.size() >= 2
+          && data.accountHolderName.size() <= 120
+          && data.accountHolderName.trim().size() >= 2
+          && data.accountNumber is string
+          && data.accountNumber.matches('^[0-9]{6,24}$')
+          && (!('stallName' in data)
+              || (data.stallName is string && data.stallName.size() <= 160))
+          && (!('duitNowId' in data)
+              || (data.duitNowId is string && data.duitNowId.size() <= 64))
+          && (!('vendorNote' in data)
+              || (data.vendorNote is string && data.vendorNote.size() <= 240))
+          && data.requestedBy is string
+          && data.requestedBy.size() > 0
+          && data.requestedBy.size() <= 128
+          && data.requestedAt is timestamp
+          && data.updatedAt == request.time;
+    }
+
+    function validVendorPayoutPendingCreate(data) {
+      return data.keys().hasOnly([
+              'vendorId', 'stallName', 'amountCents', 'status', 'bankName',
+              'accountHolderName', 'accountNumber', 'duitNowId', 'vendorNote',
+              'requestedBy', 'requestedAt', 'updatedAt'
+            ])
+          && data.keys().hasAll([
+              'vendorId', 'amountCents', 'status', 'bankName',
+              'accountHolderName', 'accountNumber', 'requestedBy',
+              'requestedAt', 'updatedAt'
+            ])
+          && validVendorPayoutBase(data)
+          && data.status == 'pending'
+          && data.requestedBy == request.auth.uid
+          && data.requestedAt == request.time;
+    }
+
+    function validVendorPayoutSettlementFields(data) {
+      return data.keys().hasOnly([
+              'vendorId', 'stallName', 'amountCents', 'status', 'bankName',
+              'accountHolderName', 'accountNumber', 'duitNowId', 'vendorNote',
+              'transferReference', 'adminNote', 'requestedBy', 'requestedAt',
+              'settledByUid', 'settledByEmail', 'settledAt', 'updatedAt'
+            ])
+          && data.keys().hasAll([
+              'vendorId', 'amountCents', 'status', 'bankName',
+              'accountHolderName', 'accountNumber', 'requestedBy',
+              'requestedAt', 'settledByUid', 'settledAt', 'updatedAt'
+            ])
+          && validVendorPayoutBase(data)
+          && data.settledByUid == request.auth.uid
+          && data.settledAt == request.time
+          && (!('settledByEmail' in data)
+              || (data.settledByEmail is string
+                  && data.settledByEmail.size() <= 254))
+          && (!('adminNote' in data)
+              || (data.adminNote is string && data.adminNote.size() <= 240));
+    }
+
+    function validVendorPayoutDirectPaidCreate(data) {
+      return validVendorPayoutSettlementFields(data)
+          && data.status == 'paid'
+          && data.requestedBy == request.auth.uid
+          && data.requestedAt == request.time
+          && 'transferReference' in data
+          && data.transferReference is string
+          && data.transferReference.size() >= 2
+          && data.transferReference.size() <= 120
+          && data.transferReference.trim().size() >= 2;
+    }
+
+    function validVendorPayoutAdminUpdate(data, existing) {
+      return 'status' in existing
+          && existing.status == 'pending'
+          && data.diff(existing).affectedKeys().hasOnly([
+              'status', 'transferReference', 'adminNote', 'settledByUid',
+              'settledByEmail', 'settledAt', 'updatedAt'
+            ])
+          && validVendorPayoutSettlementFields(data)
+          && ((data.status == 'paid'
+                  && 'transferReference' in data
+                  && data.transferReference is string
+                  && data.transferReference.size() >= 2
+                  && data.transferReference.size() <= 120
+                  && data.transferReference.trim().size() >= 2)
+              || (data.status == 'rejected'
+                  && 'adminNote' in data
+                  && data.adminNote is string
+                  && data.adminNote.size() >= 2
+                  && data.adminNote.size() <= 240
+                  && data.adminNote.trim().size() >= 2
+                  && (!('transferReference' in data)
+                      || (data.transferReference is string
+                          && data.transferReference.size() == 0))));
+    }
+
+    // Private vendor payout bank details (kept off public vendors/{vendorId}).
+    match /vendorPayoutDetails/{vendorId} {
+      allow get: if ownsVendor(vendorId) || (signedIn() && directoryAdmin());
+      allow list: if signedIn() && directoryAdmin();
+      allow create: if ownsVendor(vendorId)
+          && validVendorPayoutDetails(request.resource.data, vendorId);
+      allow update: if ownsVendor(vendorId)
+          && 'vendorId' in resource.data
+          && resource.data.vendorId == vendorId
+          && validVendorPayoutDetails(request.resource.data, vendorId);
+      allow delete: if false;
+    }
+
+    // Auditable vendor payout requests and admin settlement records.
+    // Vendor list queries must filter by vendorId == request.auth.uid.
+    match /vendorPayouts/{payoutId} {
+      allow get, list: if signedIn() && (directoryAdmin()
+          || (verifiedAccount()
+              && resource.data.vendorId == request.auth.uid
+              && get(/databases/$(database)/documents/users/$(request.auth.uid))
+                  .data.role == 'vendor'));
+      allow create: if ('vendorId' in request.resource.data
+              && request.resource.data.vendorId is string
+              && ownsVendor(request.resource.data.vendorId)
+              && validVendorPayoutPendingCreate(request.resource.data))
+          || (signedIn() && directoryAdmin()
+              && validVendorPayoutDirectPaidCreate(request.resource.data));
+      allow update: if signedIn() && directoryAdmin()
+          && validVendorPayoutAdminUpdate(request.resource.data, resource.data);
+      allow delete: if false;
     }
 
     // Public review snapshot. Exactly one optional owner reply lives in the

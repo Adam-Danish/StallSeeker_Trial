@@ -25,14 +25,17 @@ exports.deleteAccount = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   const vendorRef = db.collection('vendors').doc(uid);
   const stallRef = db.collection('stalls').doc(uid);
+  const payoutDetailsRef = db.collection('vendorPayoutDetails').doc(uid);
   targets.set(userRef.path, userRef);
   targets.set(vendorRef.path, vendorRef);
   targets.set(stallRef.path, stallRef);
+  targets.set(payoutDetailsRef.path, payoutDetailsRef);
 
   await Promise.all([
     addQueryResults(targets, db.collection('follows').where('customerId', '==', uid)),
     addQueryResults(targets, db.collection('follows').where('vendorId', '==', uid)),
     addQueryResults(targets, db.collection('stalls').where('vendorId', '==', uid)),
+    addQueryResults(targets, db.collection('vendorPayouts').where('vendorId', '==', uid)),
   ]);
 
   try {

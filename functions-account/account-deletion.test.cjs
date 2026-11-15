@@ -8,6 +8,8 @@ function fixture() {
   const documents = new Map([
     ['users/old', {role: 'customer'}],
     ['vendors/old', {vendorId: 'old'}],
+    ['vendorPayoutDetails/old', {vendorId: 'old', bankName: 'Maybank'}],
+    ['vendorPayouts/payout-1', {vendorId: 'old', status: 'paid'}],
     ['follows/one', {customerId: 'old', vendorId: 'other'}],
     ['follows/two', {customerId: 'other', vendorId: 'old'}],
     ['users/other/dishFollows/old:item', {vendorId: 'old'}],

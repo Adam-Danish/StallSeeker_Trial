@@ -11,6 +11,7 @@ import '../../../core/services/demo_order_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../../core/services/vendor_location_service.dart';
 import '../profile/edit_stall_screen.dart';
+import '../profile/vendor_payout_details_screen.dart';
 import '../menu/vendor_menu_screen.dart';
 import '../../shared/manual_location_dialog.dart';
 import '../../shared/demo_orders_screen.dart';
@@ -347,6 +348,8 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
             const ResumePage('bookings')),
         onPaymentHistory: () => _push(
             const VendorPaymentHistoryScreen(), const ResumePage('payments')),
+        onPayouts: () => _push(const VendorPayoutDetailsScreen(),
+            const ResumePage('payout-details')),
         onOpenBooking: (booking) => _push(
             BookingDetailScreen(bookingId: booking.id, isVendor: true),
             ResumePage('booking', booking.id)),

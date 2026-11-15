@@ -1,4 +1,5 @@
 import 'edit_stall_screen.dart';
+import 'vendor_payout_details_screen.dart';
 import '../../auth/resume_navigation.dart';
 import '../../shared/profile_page.dart';
 import '../../shared/edit_profile_screen.dart';
@@ -229,6 +230,13 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           MaterialPageRoute(
               settings: const RouteSettings(name: '/edit-stall'),
               builder: (_) => const EditStallScreen())),
+      onPayoutDetails: guest
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  settings: const ResumePage('payout-details'),
+                  builder: (_) => const VendorPayoutDetailsScreen())),
     );
   }
 }

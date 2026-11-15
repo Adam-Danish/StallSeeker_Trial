@@ -23,6 +23,7 @@ import '../shared/notification_settings_screen.dart';
 import '../vendor/dashboard/vendor_demo_sales.dart';
 import '../vendor/menu/vendor_menu_screen.dart';
 import '../vendor/profile/edit_stall_screen.dart';
+import '../vendor/profile/vendor_payout_details_screen.dart';
 import '../vendor/reviews/vendor_reviews_screen.dart';
 
 class ResumePage extends RouteSettings {
@@ -61,6 +62,7 @@ class ResumePage extends RouteSettings {
       'menu' ||
       'stock' ||
       'payments' ||
+      'payout-details' ||
       'faq' ||
       'about' ||
       'privacy' ||
@@ -114,6 +116,7 @@ class ResumePage extends RouteSettings {
       'menu' when vendor => const VendorMenuScreen(),
       'stock' when vendor => const VendorMenuScreen(stockOnly: true),
       'payments' when vendor => const VendorPaymentHistoryScreen(),
+      'payout-details' when vendor => const VendorPayoutDetailsScreen(),
       'edit-stall' when vendor => const EditStallScreen(),
       'delete-account' when role != 'guest' => const DeleteAccountScreen(),
       'reports' when role != 'guest' =>

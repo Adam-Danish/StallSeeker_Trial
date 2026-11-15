@@ -30,6 +30,7 @@ class VendorDashboardView extends StatelessWidget {
     required this.onStock,
     required this.onBookings,
     required this.onPaymentHistory,
+    this.onPayouts,
     required this.onOpenBooking,
     required this.onAdvanceBooking,
     this.now,
@@ -55,6 +56,7 @@ class VendorDashboardView extends StatelessWidget {
   final VoidCallback onStock;
   final VoidCallback onBookings;
   final VoidCallback onPaymentHistory;
+  final VoidCallback? onPayouts;
   final ValueChanged<DemoOrder> onOpenBooking;
   final ValueChanged<DemoOrder> onAdvanceBooking;
   final DateTime? now;
@@ -682,10 +684,17 @@ class VendorDashboardView extends StatelessWidget {
           }),
         const SizedBox(height: 8),
         const Divider(height: 20),
-        TextButton.icon(
-            onPressed: onPaymentHistory,
-            icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: const Text('Payment history')),
+        Wrap(spacing: 8, runSpacing: 4, children: [
+          TextButton.icon(
+              onPressed: onPaymentHistory,
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('Payment history')),
+          if (onPayouts != null)
+            TextButton.icon(
+                onPressed: onPayouts,
+                icon: const Icon(Icons.account_balance_outlined, size: 18),
+                label: const Text('Bank & payouts')),
+        ]),
       ]),
     );
   }

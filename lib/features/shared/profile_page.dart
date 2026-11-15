@@ -31,6 +31,7 @@ class ProfilePage extends StatelessWidget {
     required this.onTerms,
     required this.onDeleteAccount,
     this.onEditStall,
+    this.onPayoutDetails,
     this.onOrders,
     this.onReports,
     this.bookingSection,
@@ -63,6 +64,7 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onTerms;
   final VoidCallback onDeleteAccount;
   final VoidCallback? onEditStall;
+  final VoidCallback? onPayoutDetails;
   final VoidCallback? onOrders;
   final VoidCallback? onReports;
   final Widget? bookingSection;
@@ -337,6 +339,10 @@ class ProfilePage extends StatelessWidget {
                     if (isVendor && onEditStall != null)
                       _row(CupertinoIcons.bag_fill, const Color(0xFFFFAE22),
                           'My Stall', onEditStall!),
+                    if (isVendor && onPayoutDetails != null)
+                      _row(CupertinoIcons.creditcard_fill,
+                          const Color(0xFF2E7D32), 'Bank & Payouts',
+                          onPayoutDetails!),
                     if (onReports != null && !isGuest)
                       _row(Icons.flag_outlined, accent, 'My reports',
                           onReports!),
