@@ -577,6 +577,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                         onReceipt: () => Navigator.push(
                             context,
                             MaterialPageRoute(
+                                settings: RouteSettings(
+                                    name:
+                                        '/receipt/${Uri.encodeComponent(booking.id)}'),
                                 builder: (_) =>
                                     BookingReceiptScreen(booking: booking)))),
                   ],

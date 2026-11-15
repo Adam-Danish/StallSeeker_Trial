@@ -334,10 +334,12 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
         onResumeLocation: _resume,
         onPreview: () {
           if (_vendor != null) {
-            _push(VendorDetailsScreen(vendor: _vendor!, previewOnly: true));
+            _push(VendorDetailsScreen(vendor: _vendor!, previewOnly: true),
+                const ResumePage('stall-preview'));
           }
         },
-        onEditStall: () => _push(const EditStallScreen()),
+        onEditStall: () =>
+            _push(const EditStallScreen(), const ResumePage('edit-stall')),
         onMenu: () => _push(const VendorMenuScreen(), const ResumePage('menu')),
         onStock: () => _push(
             const VendorMenuScreen(stockOnly: true), const ResumePage('stock')),

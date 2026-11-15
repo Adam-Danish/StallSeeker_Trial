@@ -23,6 +23,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/app_pill_navigation.dart';
 import '../../../core/widgets/tab_navigation_history.dart';
+import '../../../core/widgets/web_page_navigation.dart';
 import '../../../core/widgets/ios_grouped.dart';
 import '../../../core/constants/stall_categories.dart';
 import '../../../core/models/stall_schedule.dart';
@@ -53,7 +54,9 @@ import '../../shared/saved_locations_sheet.dart';
 import '../../shared/pin_location_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({super.key});
+  const CustomerHomeScreen({super.key, this.initialPath});
+
+  final String? initialPath;
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
@@ -71,7 +74,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
   Stream<int>? _bookingUnreadCount;
 
   late final _accountId = FirebaseAuth.instance.currentUser?.uid;
-  late int _selectedIndex = lastTab(_accountId, 'customer', _tabTitles.length);
+  late int _selectedIndex =
+      tabIndexForPath(widget.initialPath, customerTabPaths) ??
+          lastTab(_accountId, 'customer', _tabTitles.length);
   String _searchQuery = '';
   GoogleMapController? _mapController; // move the map dan zoom
   LatLng? _customerPosition;
@@ -948,6 +953,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    showTabPath(customerTabPaths[_selectedIndex]);
     return Scaffold(
       extendBody: true,
       backgroundColor:
@@ -2314,6 +2320,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
           onReport: () => Navigator.push(
               context,
               MaterialPageRoute(
+                  settings: ResumePage('report-stall', vendor.vendorId),
                   builder: (_) => ReportStallScreen(vendor: vendor))),
           onClose: _closeStallPreview,
           onExtentChanged: (extent) {
@@ -2362,7 +2369,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
               ));
       if (mounted && signIn == true) {
         Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            context,
+            MaterialPageRoute(
+                settings: const RouteSettings(name: '/login'),
+                builder: (_) => const LoginScreen()));
       }
       return false;
     }
@@ -2420,6 +2430,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen>
       Navigator.push(
           context,
           MaterialPageRoute(
+              settings: ResumePage('self-collect', vendor.vendorId),
               builder: (_) => DemoOrderCartScreen(vendor: vendor)));
     } catch (_) {
       _previewMessage('Could not open self-collect. Please retry.');

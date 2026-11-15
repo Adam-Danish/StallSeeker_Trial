@@ -83,6 +83,10 @@
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },
       {
+        "source": "/stall/**",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
         "source": "/maps-config.js",
         "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },

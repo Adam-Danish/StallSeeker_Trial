@@ -144,8 +144,11 @@ class _CustomerNotificationsScreenState
       return _empty('Your stall updates, in one place',
           'Sign in and follow stalls or dishes to keep their updates here.',
           action: TextButton(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen())),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      settings: const RouteSettings(name: '/login'),
+                      builder: (_) => const LoginScreen())),
               child: const Text('Sign in')));
     }
     return ColoredBox(

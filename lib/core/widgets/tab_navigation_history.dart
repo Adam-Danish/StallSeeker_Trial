@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
+import 'web_page_navigation.dart';
 import 'web_tab_back_gesture_stub.dart'
     if (dart.library.js_interop) 'web_tab_back_gesture_web.dart';
 
@@ -10,6 +11,14 @@ mixin TabNavigationHistory<T extends StatefulWidget> on State<T> {
   final _tabHistory = <LocalHistoryEntry>[];
   double _backDragDistance = 0;
   VoidCallback? _unregisterWebBackGesture;
+
+  void showTabPath(String path) {
+    if (!kIsWeb) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted)
+        webPageNavigation.showShellPath(ModalRoute.of(context), path);
+    });
+  }
 
   void rememberTabChange(VoidCallback restoreTab) {
     final route = ModalRoute.of(context);

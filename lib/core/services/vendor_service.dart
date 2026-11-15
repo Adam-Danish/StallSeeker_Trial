@@ -10,18 +10,18 @@ class VendorService {
 // read store id
   Future<VendorModel?> getVendorProfile(String vendorId) async {
     try {
-      DocumentSnapshot doc = await _vendorsRef.doc(vendorId).get();
-      if (doc.exists && doc.data() != null) {
-        return VendorModel.fromMap(
-          doc.data() as Map<String, dynamic>,
-          doc.id,
-        );
-      }
-      return null;
+      return await fetchVendorProfile(vendorId);
     } catch (e) {
       debugPrint('Error fetching vendor profile: $e');
       return null;
     }
+  }
+
+  Future<VendorModel?> fetchVendorProfile(String vendorId,
+      {GetOptions? options}) async {
+    final doc = await _vendorsRef.doc(vendorId).get(options);
+    final data = doc.data() as Map<String, dynamic>?;
+    return data == null ? null : VendorModel.fromMap(data, doc.id);
   }
 
 // update stall infroamtion

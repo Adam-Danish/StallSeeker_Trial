@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui' as ui;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stallseeker/core/models/demo_order.dart';
+import 'package:stallseeker/core/services/booking_receipt_service.dart';
 import 'package:stallseeker/core/theme/app_theme.dart';
 import 'package:stallseeker/features/shared/booking_payment_card.dart';
 import 'package:stallseeker/features/shared/booking_receipt_screen.dart';
@@ -255,6 +257,42 @@ void main() {
     expect(find.text('Remaining paid'), findsOneWidget);
     expect(find.text('cs_test_123'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  test('paid customer can export a PDF when the receipt endpoint is missing',
+      () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final booking = order(payment: 'paid', paidAt: DateTime.utc(2026, 11, 4));
+    final service = BookingReceiptService(
+      fetchPdf: (_) async => throw FirebaseFunctionsException(
+          code: 'not-found', message: 'Missing'),
+      currentUserId: () => booking.customerId,
+    );
+
+    final receipt = await service.preparePdf(booking);
+    expect(receipt.filename, 'StallSeeker-receipt-order.pdf');
+    expect(String.fromCharCodes(receipt.bytes.take(5)), '%PDF-');
+    await expectLater(service.preparePdf(order()), throwsStateError);
+  });
+
+  test('receipt fallback preserves server permission errors and ownership',
+      () async {
+    final booking = order(payment: 'paid', paidAt: DateTime.utc(2026, 11, 4));
+    final denied = FirebaseFunctionsException(
+        code: 'permission-denied', message: 'Denied');
+    final missing =
+        FirebaseFunctionsException(code: 'not-found', message: 'Missing');
+    final owner = BookingReceiptService(
+      fetchPdf: (_) async => throw denied,
+      currentUserId: () => booking.customerId,
+    );
+    final anotherUser = BookingReceiptService(
+      fetchPdf: (_) async => throw missing,
+      currentUserId: () => 'other',
+    );
+
+    await expectLater(owner.preparePdf(booking), throwsA(same(denied)));
+    await expectLater(anotherUser.preparePdf(booking), throwsA(same(missing)));
   });
 
   testWidgets('PDF export disables repeated taps and shows retryable failure',

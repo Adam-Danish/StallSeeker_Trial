@@ -14,6 +14,7 @@ Future<void> showLoginSheet(BuildContext context) {
   if (useDialog) {
     return showDialog<void>(
       context: context,
+      routeSettings: const RouteSettings(name: '/login'),
       barrierColor: Colors.black.withValues(alpha: .32),
       builder: (dialogContext) {
         final dialogMedia = MediaQuery.of(dialogContext);
@@ -40,6 +41,7 @@ Future<void> showLoginSheet(BuildContext context) {
 
   return showModalBottomSheet<void>(
     context: context,
+    routeSettings: const RouteSettings(name: '/login'),
     isScrollControlled: true,
     useSafeArea: false,
     isDismissible: true,
@@ -277,6 +279,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
+                                        settings: const RouteSettings(
+                                            name: '/forgot-password'),
                                         builder: (_) => ForgotPasswordScreen(
                                             initialEmail: _email.text.trim()))),
                             child: const Text('Forgot password?',
@@ -335,6 +339,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               : () => Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
+                                      settings: const RouteSettings(
+                                          name: '/register'),
                                       builder: (_) => const RegisterScreen())),
                           child: const Text('Sign up',
                               style: TextStyle(

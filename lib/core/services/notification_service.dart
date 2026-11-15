@@ -105,7 +105,8 @@ class NotificationService {
   // for taps in every app state. Permission is requested only after the
   // signed-in account is confirmed.
   // (foreground, background, terminated). Safe to call more than once.
-  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
+  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey,
+      {Uri? initialUri}) async {
     if (_initialized) {
       return;
     }
@@ -113,7 +114,7 @@ class NotificationService {
     _navigatorKey = navigatorKey;
 
     if (kIsWeb) {
-      final data = Uri.base.queryParameters;
+      final data = (initialUri ?? Uri.base).queryParameters;
       if (data['caseId'] != null) {
         _pendingCaseId = data['caseId'];
         _pendingCaseRecipient = data['recipientId'];

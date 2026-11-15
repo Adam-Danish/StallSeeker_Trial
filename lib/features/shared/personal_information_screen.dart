@@ -33,6 +33,7 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/edit-profile'),
         builder: (_) => EditProfileScreen(
           name: _name,
           email: widget.email,

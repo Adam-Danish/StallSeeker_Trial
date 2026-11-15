@@ -221,6 +221,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     final saved = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/edit-profile'),
             builder: (_) => EditProfileScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '',
@@ -240,6 +241,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     await Navigator.push(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/personal-information'),
             builder: (_) => PersonalInformationScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '',
@@ -254,6 +256,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     Navigator.push(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/change-password'),
             builder: (_) => ChangePasswordScreen(
                 email: _userModel?.email ??
                     FirebaseAuth.instance.currentUser?.email ??
@@ -323,11 +326,17 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
           MaterialPageRoute(
               settings: const ResumePage('terms'),
               builder: (_) => const LegalScreen(page: LegalPage.terms))),
-      onDeleteAccount: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+      onDeleteAccount: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              settings: const RouteSettings(name: '/delete-account'),
+              builder: (_) => const DeleteAccountScreen())),
       onLogout: () => confirmAndLogout(context, _authService),
       onSignIn: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          context,
+          MaterialPageRoute(
+              settings: const RouteSettings(name: '/login'),
+              builder: (_) => const LoginScreen())),
     );
   }
 }

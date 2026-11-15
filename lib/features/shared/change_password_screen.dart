@@ -148,6 +148,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       : () => Navigator.push(
                           context,
                           MaterialPageRoute(
+                              settings:
+                                  const RouteSettings(name: '/forgot-password'),
                               builder: (_) => ForgotPasswordScreen(
                                   initialEmail: widget.email))),
                   child: const Text('Forgot your current password?')),

@@ -226,6 +226,8 @@ class _CustomerFollowingScreenState extends State<CustomerFollowingScreen> {
                             onPressed: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
+                                    settings:
+                                        const RouteSettings(name: '/login'),
                                     builder: (_) => const LoginScreen())),
                             child: const Text('Sign in')))
                   else if (_showDishes)

@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/app_pill_navigation.dart';
 import '../../core/widgets/tab_navigation_history.dart';
+import '../../core/widgets/web_page_navigation.dart';
 import '../../core/services/demo_order_service.dart';
 import '../../core/services/last_tab.dart';
 import 'dashboard/vendor_dashboard_screen.dart';
@@ -14,7 +15,9 @@ import 'profile/vendor_profile_screen.dart';
 import '../shared/profile_page.dart';
 
 class VendorMainScreen extends StatefulWidget {
-  const VendorMainScreen({super.key});
+  const VendorMainScreen({super.key, this.initialPath});
+
+  final String? initialPath;
 
   @override
   State<VendorMainScreen> createState() => _VendorMainScreenState();
@@ -23,7 +26,9 @@ class VendorMainScreen extends StatefulWidget {
 class _VendorMainScreenState extends State<VendorMainScreen>
     with TabNavigationHistory<VendorMainScreen> {
   late final _accountId = FirebaseAuth.instance.currentUser?.uid;
-  late int _selectedIndex = lastTab(_accountId, 'vendor', 2);
+  late int _selectedIndex =
+      tabIndexForPath(widget.initialPath, vendorTabPaths) ??
+          lastTab(_accountId, 'vendor', vendorTabPaths.length);
   late final Stream<int> _newBookings = DemoOrderService().watchUnseenCount(
       FirebaseAuth.instance.currentUser?.uid ?? '',
       isVendor: true);
@@ -42,6 +47,7 @@ class _VendorMainScreenState extends State<VendorMainScreen>
 
   @override
   Widget build(BuildContext context) {
+    showTabPath(vendorTabPaths[_selectedIndex]);
     return Scaffold(
       extendBody: true,
       backgroundColor:

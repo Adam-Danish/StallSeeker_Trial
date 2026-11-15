@@ -1,19 +1,65 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:printing/printing.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/demo_order.dart';
+import 'booking_receipt_pdf.dart';
+
+typedef BookingReceiptFile = ({Uint8List bytes, String filename});
 
 class BookingReceiptService {
-  Future<void> exportPdf(String bookingId) async {
+  BookingReceiptService({
+    Future<BookingReceiptFile> Function(String)? fetchPdf,
+    String? Function()? currentUserId,
+  })  : _fetchPdf = fetchPdf ?? _serverPdf,
+        _currentUserId = currentUserId ?? _verifiedCustomerId;
+
+  final Future<BookingReceiptFile> Function(String) _fetchPdf;
+  final String? Function() _currentUserId;
+
+  static String? _verifiedCustomerId() {
+    final user = FirebaseAuth.instance.currentUser;
+    return user != null && !user.isAnonymous && user.emailVerified
+        ? user.uid
+        : null;
+  }
+
+  Future<BookingReceiptFile> preparePdf(DemoOrder booking) async {
+    if (!booking.hasReceipt) {
+      throw StateError('Receipt available after payment.');
+    }
+
+    try {
+      return await _fetchPdf(booking.id);
+    } on FirebaseFunctionsException catch (error) {
+      const unavailable = {
+        'deadline-exceeded',
+        'internal',
+        'not-found',
+        'unavailable',
+        'unimplemented',
+      };
+      if (!unavailable.contains(error.code) ||
+          _currentUserId() != booking.customerId) {
+        rethrow;
+      }
+      final bytes = await buildBookingReceiptPdf(booking);
+      // The customer may have signed out while the PDF was being generated.
+      if (_currentUserId() != booking.customerId) rethrow;
+      return (bytes: bytes, filename: 'StallSeeker-receipt-${booking.id}.pdf');
+    }
+  }
+
+  static Future<BookingReceiptFile> _serverPdf(String bookingId) async {
     final result = await FirebaseFunctions.instance
-        .httpsCallable('getBookingReceipt')
-        .call({'bookingId': bookingId});
-    final data = Map<String, dynamic>.from(result.data as Map);
-    final bytes = base64Decode(data['pdfBase64'] as String);
-    final shared = await Printing.sharePdf(
-      bytes: bytes,
-      filename: data['filename'] as String,
+        .httpsCallable('getBookingReceipt',
+            options: HttpsCallableOptions(timeout: const Duration(seconds: 8)))
+        .call<Map<String, dynamic>>({'bookingId': bookingId});
+    return (
+      bytes: base64Decode(result.data['pdfBase64'] as String),
+      filename: result.data['filename'] as String,
     );
-    if (!shared) throw StateError('Could not save the PDF receipt.');
   }
 }

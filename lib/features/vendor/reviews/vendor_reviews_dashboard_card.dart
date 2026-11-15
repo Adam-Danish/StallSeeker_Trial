@@ -75,6 +75,7 @@ class _VendorReviewsDashboardCardState
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
+                    settings: const RouteSettings(name: '/vendor-reviews'),
                     builder: (_) => VendorReviewsScreen(
                       vendorId: widget.vendorId,
                       stallName: widget.stallName,

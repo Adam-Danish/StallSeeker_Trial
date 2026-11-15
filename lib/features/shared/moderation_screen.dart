@@ -63,8 +63,11 @@ class _ReportStallScreenState extends State<ReportStallScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Report sent for admin review.')));
-      await Navigator.pushReplacement(context,
-          MaterialPageRoute<void>(builder: (_) => const ModerationScreen()));
+      await Navigator.pushReplacement(
+          context,
+          MaterialPageRoute<void>(
+              settings: const RouteSettings(name: '/reports'),
+              builder: (_) => const ModerationScreen()));
     } catch (error) {
       if (mounted) setState(() => _error = moderationError(error));
     } finally {
@@ -84,6 +87,7 @@ class _ReportStallScreenState extends State<ReportStallScreen> {
             onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
+                    settings: const RouteSettings(name: '/reports'),
                     builder: (_) => const ModerationScreen()))),
       ]),
       body: !verified
@@ -92,6 +96,7 @@ class _ReportStallScreenState extends State<ReportStallScreen> {
                   ? () => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
+                          settings: const RouteSettings(name: '/login'),
                           builder: (_) => const LoginScreen()))
                   : null)
           : Center(
@@ -221,6 +226,7 @@ class _VendorModerationBannerState extends State<VendorModerationBanner> {
               onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
+                      settings: const RouteSettings(name: '/reports'),
                       builder: (_) => const ModerationScreen(isVendor: true))),
             ));
       });

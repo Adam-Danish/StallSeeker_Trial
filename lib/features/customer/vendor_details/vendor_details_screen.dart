@@ -20,12 +20,15 @@ import '../../../core/services/follow_service.dart';
 import '../../../core/services/dish_follow_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../auth/screens/login_screen.dart';
+import '../../auth/resume_navigation.dart';
 import '../orders/demo_order_cart_screen.dart';
+import 'share_stall_button.dart';
 
 class VendorDetailsScreen extends StatefulWidget {
   final VendorModel vendor;
   final String? initialDishId;
   final bool previewOnly;
+  final VoidCallback? onExplore;
   // Freeze profile fields for the unsaved Edit stall preview.
   final bool draftPreview;
   final PickedPhoto? draftPhoto;
@@ -35,6 +38,7 @@ class VendorDetailsScreen extends StatefulWidget {
       required this.vendor,
       this.initialDishId,
       this.previewOnly = false,
+      this.onExplore,
       this.draftPreview = false,
       this.draftPhoto})
       : assert(!draftPreview || previewOnly),
@@ -403,7 +407,9 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
               Navigator.pop(dialogContext);
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                MaterialPageRoute(
+                    settings: const RouteSettings(name: '/login'),
+                    builder: (_) => const LoginScreen()),
               );
             },
             child: const Text('Log In'),
@@ -464,14 +470,26 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     final customerId = currentUser?.uid;
     final isGuest = currentUser?.isAnonymous ?? true;
     final isTablet = MediaQuery.sizeOf(context).width >= 700;
+    final isShared = widget.onExplore != null;
+    final unavailable = _vendor.isSuspended ||
+        (isShared && (_vendorDeleted || _vendor.stallName.trim().isEmpty));
+    final showActions = (!widget.previewOnly || isShared) && !unavailable;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppPageAppBar(
-        title: Text(widget.previewOnly ? 'Stall preview' : 'Stall details'),
+        title: Text(widget.previewOnly && !isShared
+            ? 'Stall preview'
+            : 'Stall details'),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
+          if (isShared)
+            IconButton(
+              tooltip: 'Explore StallSeeker',
+              icon: const Icon(Icons.home_outlined),
+              onPressed: widget.onExplore,
+            ),
           if (!widget.previewOnly && !_vendorDeleted)
             IconButton(
                 tooltip: 'Report this stall',
@@ -479,8 +497,9 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                 onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
+                        settings: ResumePage('report-stall', _vendor.vendorId),
                         builder: (_) => ReportStallScreen(vendor: _vendor)))),
-          if (!widget.draftPreview)
+          if (!widget.draftPreview && (!isShared || !unavailable))
             IconButton(
               icon: _isRefreshing
                   ? const SizedBox(
@@ -491,6 +510,14 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                   : const Icon(Icons.refresh),
               tooltip: 'Refresh stall status',
               onPressed: _isRefreshing ? null : _refreshVendor,
+            ),
+          if (!widget.draftPreview &&
+              !_vendorDeleted &&
+              !unavailable &&
+              _vendor.stallName.trim().isNotEmpty)
+            ShareStallButton(
+              stallId: _vendor.vendorId,
+              stallName: _vendor.stallName,
             ),
           if (!widget.previewOnly && customerId != null)
             isGuest
@@ -512,17 +539,20 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
         ],
       ),
       // On tablet: buttons sit neatly in the left sidebar. On phone: sticky bottom bar.
-      bottomNavigationBar: isTablet || widget.previewOnly || _vendor.isSuspended
+      bottomNavigationBar: isTablet || !showActions
           ? null
           : SafeArea(
               minimum: const EdgeInsets.all(16),
               child: _buildActionButtons(isGuest: isGuest),
             ),
-      body: _vendor.isSuspended && !widget.previewOnly
-          ? const Center(
+      body: unavailable && (!widget.previewOnly || isShared)
+          ? Center(
               child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('This stall is temporarily unavailable.',
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                      isShared
+                          ? 'This stall is no longer available.'
+                          : 'This stall is temporarily unavailable.',
                       textAlign: TextAlign.center)))
           : isTablet
               ? _buildTabletLayout(context, isGuest: isGuest)
@@ -557,7 +587,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
             children: [
               ..._buildStallInfoWidgets(isTablet: true),
               const SizedBox(height: 20),
-              if (!widget.previewOnly) _buildActionButtons(isGuest: isGuest),
+              if (!widget.previewOnly || widget.onExplore != null)
+                _buildActionButtons(isGuest: isGuest),
             ],
           ),
         ),
@@ -716,7 +747,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (!_vendorDeleted &&
+        if (!widget.previewOnly &&
+            !_vendorDeleted &&
             _vendor.selfCollectEnabled &&
             _vendor.isOpenNow &&
             _vendor.hasValidLocation) ...[
@@ -729,6 +761,8 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                   : () => Navigator.push(
                       context,
                       MaterialPageRoute(
+                          settings:
+                              ResumePage('self-collect', _vendor.vendorId),
                           builder: (_) =>
                               DemoOrderCartScreen(vendor: _vendor))),
               icon: const Icon(Icons.shopping_bag_outlined),

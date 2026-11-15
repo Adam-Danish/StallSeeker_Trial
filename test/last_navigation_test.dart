@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stallseeker/core/services/last_tab.dart';
+import 'package:stallseeker/core/utils/stall_share_link.dart';
+import 'package:stallseeker/core/widgets/web_page_navigation.dart';
 import 'package:stallseeker/features/auth/resume_navigation.dart';
 import 'package:stallseeker/features/shared/booking_detail_screen.dart';
 
@@ -46,5 +48,28 @@ void main() {
     expect(ResumePage.read('invalid JSON'), isNull);
     expect(ResumePage.read('["booking",42,null]'), isNull);
     expect(const ResumePage('removed-page').screen('customer'), isNull);
+  });
+
+  test('each web tab maps to the correct shell index', () {
+    expect(tabIndexForPath('/notifications', customerTabPaths), 2);
+    expect(tabIndexForPath('/following', customerTabPaths), 1);
+    expect(tabIndexForPath('/vendor/settings', vendorTabPaths), 1);
+    expect(tabIndexForPath('/notifications', vendorTabPaths), isNull);
+  });
+
+  test('stall navigation and sharing use the same encoded path', () {
+    const stall = ResumePage('stall', 'stall #42', 'dish-1');
+    expect(stall.name, stallShareLink('stall #42').path);
+    expect(stallShareLink('stall #42').host, 'stallseeker.my');
+  });
+
+  test('private web routes retain IDs and require the right account role', () {
+    final booking = ResumePage.fromWebUri(Uri.parse('/booking/booking-42'))!;
+    expect(booking.id, 'booking-42');
+    expect(booking.screen('guest'), isNull);
+    expect(booking.screen('customer'), isA<BookingDetailScreen>());
+    expect(ResumePage.fromWebUri(Uri.parse('/booking/a%2Fb')), isNull);
+    expect(
+        ResumePage.fromWebUri(Uri.parse('/menu'))!.screen('customer'), isNull);
   });
 }

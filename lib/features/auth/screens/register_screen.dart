@@ -210,7 +210,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _phone,
                               keyboardType: TextInputType.phone,
                               textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.telephoneNumber],
+                              autofillHints: const [
+                                AutofillHints.telephoneNumber
+                              ],
                               decoration: _field(_role == 'vendor'
                                   ? 'Business phone number'
                                   : 'Phone number (optional)'),
@@ -265,6 +267,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       : () => Navigator.pushReplacement(
                                           context,
                                           MaterialPageRoute(
+                                              settings: const RouteSettings(
+                                                  name: '/login'),
                                               builder: (_) =>
                                                   const LoginScreen())),
                                   child: const Text('Sign in',

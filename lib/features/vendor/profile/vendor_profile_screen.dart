@@ -128,6 +128,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     final saved = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/edit-profile'),
             builder: (_) => EditProfileScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '')));
@@ -145,6 +146,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     await Navigator.push(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/personal-information'),
             builder: (_) => PersonalInformationScreen(
                 name: _userModel?.fullName ?? user?.displayName ?? '',
                 email: _userModel?.email ?? user?.email ?? '',
@@ -158,6 +160,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
     Navigator.push(
         context,
         MaterialPageRoute(
+            settings: const RouteSettings(name: '/change-password'),
             builder: (_) => ChangePasswordScreen(
                 email: _userModel?.email ??
                     FirebaseAuth.instance.currentUser?.email ??
@@ -210,13 +213,22 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           MaterialPageRoute(
               settings: const ResumePage('terms'),
               builder: (_) => const LegalScreen(page: LegalPage.terms))),
-      onDeleteAccount: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+      onDeleteAccount: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              settings: const RouteSettings(name: '/delete-account'),
+              builder: (_) => const DeleteAccountScreen())),
       onLogout: () => confirmAndLogout(context, _authService),
       onSignIn: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          context,
+          MaterialPageRoute(
+              settings: const RouteSettings(name: '/login'),
+              builder: (_) => const LoginScreen())),
       onEditStall: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => const EditStallScreen())),
+          context,
+          MaterialPageRoute(
+              settings: const RouteSettings(name: '/edit-stall'),
+              builder: (_) => const EditStallScreen())),
     );
   }
 }
