@@ -172,8 +172,15 @@ class _ReportStallScreenState extends State<ReportStallScreen> {
 }
 
 class VendorModerationBanner extends StatefulWidget {
-  const VendorModerationBanner({super.key, required this.vendorId});
+  const VendorModerationBanner({
+    super.key,
+    required this.vendorId,
+    this.isSuspended = false,
+    this.casesStream,
+  });
   final String vendorId;
+  final bool isSuspended;
+  final Stream<List<ModerationRecord>>? casesStream;
   @override
   State<VendorModerationBanner> createState() => _VendorModerationBannerState();
 }
@@ -189,11 +196,22 @@ class _VendorModerationBannerState extends State<VendorModerationBanner> {
   @override
   void didUpdateWidget(VendorModerationBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.vendorId != widget.vendorId) _listen();
+    if (oldWidget.vendorId != widget.vendorId ||
+        oldWidget.casesStream != widget.casesStream) {
+      _listen();
+    }
   }
 
   void _listen() {
-    _cases = ModerationService().vendorCases(widget.vendorId);
+    _cases = widget.casesStream ?? ModerationService().vendorCases(widget.vendorId);
+  }
+
+  void _openNotices(BuildContext context) {
+    Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+            settings: const RouteSettings(name: '/reports'),
+            builder: (_) => const ModerationScreen(isVendor: true)));
   }
 
   @override
@@ -202,32 +220,35 @@ class _VendorModerationBannerState extends State<VendorModerationBanner> {
       builder: (context, snapshot) {
         final active =
             (snapshot.data ?? []).where((record) => record.active).toList();
+        if (active.isEmpty) {
+          if (widget.isSuspended) {
+            return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ListTile(
+                  leading: const Icon(Icons.warning_amber_rounded),
+                  title: Text(snapshot.hasError
+                      ? 'Could not load admin notices'
+                      : 'Your listing is suspended'),
+                  subtitle: Text(snapshot.hasError
+                      ? 'Open to retry. Notices may be unavailable while offline.'
+                      : 'Tap to view admin notices.'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openNotices(context),
+                ));
+          }
+          return const SizedBox.shrink();
+        }
         return Card(
             margin: const EdgeInsets.only(bottom: 16),
             child: ListTile(
-              leading: Icon(active.isEmpty
-                  ? Icons.fact_check_outlined
-                  : Icons.warning_amber_rounded),
-              title: Text(snapshot.hasError
-                  ? 'Could not load admin notices'
-                  : active.isEmpty
-                      ? 'Admin notices & warning history'
-                      : active.first.status == 'suspended'
-                          ? 'Your listing is suspended'
-                          : 'Admin warning: correction required'),
-              subtitle: snapshot.hasError
-                  ? const Text(
-                      'Open to retry. Notices may be unavailable while offline.')
-                  : active.isEmpty
-                      ? null
-                      : Text(
-                          'Deadline: ${moderationTime(active.first.date('dueAt'))}'),
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: Text(active.first.status == 'suspended'
+                  ? 'Your listing is suspended'
+                  : 'Admin warning: correction required'),
+              subtitle: Text(
+                  'Deadline: ${moderationTime(active.first.date('dueAt'))}'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                      settings: const RouteSettings(name: '/reports'),
-                      builder: (_) => const ModerationScreen(isVendor: true))),
+              onTap: () => _openNotices(context),
             ));
       });
 }

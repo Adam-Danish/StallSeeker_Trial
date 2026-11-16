@@ -84,4 +84,61 @@ void main() {
     expect(find.textContaining('already been corrected'), findsOneWidget);
     expect(find.text('Submit correction or dispute'), findsNothing);
   });
+  testWidgets(
+      'vendor moderation banner is hidden unless there is an active warning or suspension',
+      (tester) async {
+    Future<void> pumpBanner(
+      Stream<List<ModerationRecord>> stream, {
+      bool isSuspended = false,
+    }) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: VendorModerationBanner(
+                  vendorId: 'vendor',
+                  isSuspended: isSuspended,
+                  casesStream: stream))));
+      await tester.pump();
+    }
+
+    await pumpBanner(Stream.value(const []));
+    expect(find.byType(Card), findsNothing);
+    expect(find.text('Admin notices & warning history'), findsNothing);
+
+    await pumpBanner(Stream.value(const [
+      ModerationRecord('resolved-1', {'status': 'resolved'})
+    ]));
+    expect(find.byType(Card), findsNothing);
+
+    await pumpBanner(Stream<List<ModerationRecord>>.error(Exception('offline')));
+    expect(find.byType(Card), findsNothing);
+
+    await pumpBanner(
+      Stream<List<ModerationRecord>>.error(Exception('offline')),
+      isSuspended: true,
+    );
+    expect(find.text('Could not load admin notices'), findsOneWidget);
+
+    await pumpBanner(
+      Stream.value(const []),
+      isSuspended: true,
+    );
+    expect(find.text('Your listing is suspended'), findsOneWidget);
+
+    await pumpBanner(Stream.value([
+      ModerationRecord('warn-1', {
+        'status': 'warning',
+        'dueAt': Timestamp.fromDate(DateTime.utc(2026, 11, 5, 4, 0)),
+      })
+    ]));
+    expect(find.text('Admin warning: correction required'), findsOneWidget);
+    expect(find.textContaining('Deadline:'), findsOneWidget);
+
+    await pumpBanner(Stream.value([
+      ModerationRecord('susp-1', {
+        'status': 'suspended',
+        'dueAt': Timestamp.fromDate(DateTime.utc(2026, 11, 5, 4, 0)),
+      })
+    ]));
+    expect(find.text('Your listing is suspended'), findsOneWidget);
+  });
 }

@@ -113,11 +113,13 @@ class VendorReviewSummaryContent extends StatelessWidget {
           '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'}',
           style: const TextStyle(color: AppColors.textMuted),
         ),
-        const SizedBox(height: 12),
-        Text(
-          '${summary.unanswered} awaiting reply',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
+        if (summary.unanswered > 0) ...[
+          const SizedBox(height: 12),
+          Text(
+            '${summary.unanswered} awaiting reply',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
         if (summary.updated > 0) ...[
           const SizedBox(height: 6),
           Text(

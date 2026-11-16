@@ -182,7 +182,9 @@ class _VendorReviewsViewState extends State<VendorReviewsView> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'} · ${summary.unanswered} awaiting reply',
+                  summary.unanswered > 0
+                      ? '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'} · ${summary.unanswered} awaiting reply'
+                      : '${summary.total} ${summary.total == 1 ? 'review' : 'reviews'}',
                 ),
                 const SizedBox(height: 20),
                 Wrap(

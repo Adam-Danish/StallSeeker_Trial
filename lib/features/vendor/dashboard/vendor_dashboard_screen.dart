@@ -315,7 +315,10 @@ class VendorDashboardScreenState extends State<VendorDashboardScreen> {
         vendor: _vendor,
         moderationCard: _vendor == null
             ? null
-            : VendorModerationBanner(vendorId: _vendor!.vendorId),
+            : VendorModerationBanner(
+                vendorId: _vendor!.vendorId,
+                isSuspended: _vendor!.isSuspended,
+              ),
         reviewsCard: _vendor == null
             ? null
             : VendorReviewsDashboardCard(

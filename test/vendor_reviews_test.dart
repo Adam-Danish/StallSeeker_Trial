@@ -177,6 +177,29 @@ void main() {
     expect(find.text('2 reviews'), findsOneWidget);
     expect(find.text('1 awaiting reply'), findsOneWidget);
   });
+  testWidgets(
+      'summary and header hide awaiting reply when owner replied to all reviews',
+      (tester) async {
+    final repliedReviews = [
+      review('A', 4, replied: true),
+      review('B', 5, replied: true),
+    ];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: VendorReviewSummaryContent(reviews: repliedReviews))));
+    expect(find.text('4.5 ★'), findsOneWidget);
+    expect(find.text('2 reviews'), findsOneWidget);
+    expect(find.textContaining('awaiting reply'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: VendorReviewsView(
+                reviews: repliedReviews,
+                stallName: 'Burger Pak Ali',
+                onReply: (_) {},
+                onDeleteReply: (_) {}))));
+    expect(find.text('2 reviews'), findsOneWidget);
+    expect(find.textContaining('awaiting reply'), findsNothing);
+  });
   testWidgets('reply editor keeps draft on failure and posts it on retry',
       (tester) async {
     var calls = 0;
