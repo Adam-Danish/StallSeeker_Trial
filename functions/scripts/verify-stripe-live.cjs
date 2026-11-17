@@ -3,7 +3,7 @@
 // Verifies live Stripe webhook, secrets, and deployed Cloud Functions without printing credentials.
 const assert = require('node:assert/strict');
 const {randomUUID} = require('node:crypto');
-const {liveClients, setSecretValue, project} = require('./configure-stripe-live.cjs');
+const {liveClients, project} = require('./configure-stripe-live.cjs');
 
 async function main() {
   const {stripe, sm, secrets} = await liveClients({storeKey: false});
