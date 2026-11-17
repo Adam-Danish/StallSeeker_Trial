@@ -490,7 +490,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn() && (request.auth.uid == userId || directoryAdmin());
       allow create: if signedIn() && request.auth.uid == userId
           && request.resource.data.role in ['customer', 'vendor'];
       allow update: if signedIn() && request.auth.uid == userId

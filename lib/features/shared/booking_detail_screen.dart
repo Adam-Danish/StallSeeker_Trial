@@ -162,13 +162,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
     if (state == AppLifecycleState.resumed && _hasStripePayment) {
       final showTransition = _checkoutLaunched && !widget.isVendor;
       _checkoutLaunched = false;
-      if (_busy) {
-        _refreshOnResume = true;
-        _refreshWithTransition |= showTransition;
-      } else {
-        unawaited(showTransition
-            ? _checkPayment()
-            : _act(() => _service.refreshPayment(widget.bookingId)));
+      if (showTransition) {
+        if (_busy) {
+          _refreshOnResume = true;
+          _refreshWithTransition = true;
+        } else {
+          unawaited(_checkPayment());
+        }
       }
     }
   }
@@ -432,7 +432,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                 _hasStripePayment = booking.hasStripePayment;
                 if (!_initialPaymentCheck &&
                     booking.hasStripePayment &&
-                    booking.paymentStatus != 'unpaid') {
+                    (booking.awaitingPayment ||
+                        booking.paymentStatus == 'pending')) {
                   _initialPaymentCheck = true;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted && !_busy) {

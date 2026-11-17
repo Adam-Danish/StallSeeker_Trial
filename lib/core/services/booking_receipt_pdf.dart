@@ -15,11 +15,19 @@ Future<Uint8List> buildBookingReceiptPdf(DemoOrder booking) async {
   const fontSize = 11.0;
   const margin = 42.0;
   final width = PdfPageFormat.a4.width - 2 * margin;
-  final fontData = await rootBundle.load('assets/fonts/Poppins-Regular.ttf');
-  final glyphs = TtfParser(fontData).charToGlyphIndexMap;
-  final regular = pdf.Font.ttf(fontData);
-  final bold =
-      pdf.Font.ttf(await rootBundle.load('assets/fonts/Poppins-SemiBold.ttf'));
+  pdf.Font regular;
+  pdf.Font bold;
+  Map<int, int> glyphs = const {};
+  try {
+    final fontData = await rootBundle.load('assets/fonts/Poppins-Regular.ttf');
+    glyphs = TtfParser(fontData).charToGlyphIndexMap;
+    regular = pdf.Font.ttf(fontData);
+    bold =
+        pdf.Font.ttf(await rootBundle.load('assets/fonts/Poppins-SemiBold.ttf'));
+  } catch (_) {
+    regular = pdf.Font.helvetica();
+    bold = pdf.Font.helveticaBold();
+  }
   final content = <pdf.Widget>[];
 
   Future<void> addLine(String text,

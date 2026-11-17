@@ -109,7 +109,14 @@ function paymentService({db, stripe, stripeForMode, Timestamp, returnUrl, now = 
   async function sync(id, {failed = false, close = false} = {}) {
     let {booking, payment} = await read(id);
     if (!booking || !['test', 'live'].includes(booking.paymentMode)) return;
-    const stripeClient = getStripe(booking.paymentMode);
+    let stripeClient;
+    try {
+      stripeClient = getStripe(booking.paymentMode);
+    } catch (_) {
+      // If Stripe credentials are not available for this booking's mode (e.g. legacy test order
+      // running in live environment), we cannot and need not sync with Stripe.
+      return;
+    }
     if (booking.paymentStatus === 'refunded') return;
     const due = booking.status === 'confirmed' &&
       booking.paymentExpiresAt?.toMillis() <= now() && booking.paymentStatus !== 'paid';

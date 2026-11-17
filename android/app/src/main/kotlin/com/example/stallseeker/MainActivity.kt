@@ -45,7 +45,12 @@ class MainActivity : FlutterFragmentActivity() {
                 // Store pending data and launch the system save dialog
                 pendingBytes = bytes
                 pendingResult = result
-                createDocumentLauncher.launch(filename)
+                try {
+                    createDocumentLauncher.launch(filename)
+                } catch (e: Exception) {
+                    result.error("launch_failed", e.message, null)
+                    clearPending()
+                }
             }
     }
 

@@ -21,9 +21,7 @@ class BookingReceiptService {
 
   static String? _verifiedCustomerId() {
     final user = FirebaseAuth.instance.currentUser;
-    return user != null && !user.isAnonymous && user.emailVerified
-        ? user.uid
-        : null;
+    return user != null && !user.isAnonymous ? user.uid : null;
   }
 
   Future<BookingReceiptFile> preparePdf(DemoOrder booking) async {
@@ -33,16 +31,13 @@ class BookingReceiptService {
 
     try {
       return await _fetchPdf(booking.id);
-    } on FirebaseFunctionsException catch (error) {
-      const unavailable = {
-        'deadline-exceeded',
-        'internal',
-        'not-found',
-        'unavailable',
-        'unimplemented',
-      };
-      if (!unavailable.contains(error.code) ||
-          _currentUserId() != booking.customerId) {
+    } catch (error) {
+      if (error is FirebaseFunctionsException &&
+          error.code == 'permission-denied') {
+        rethrow;
+      }
+      final currentUid = _currentUserId();
+      if (currentUid == null || currentUid != booking.customerId) {
         rethrow;
       }
       final bytes = await buildBookingReceiptPdf(booking);

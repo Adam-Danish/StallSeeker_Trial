@@ -7,12 +7,25 @@ import 'booking_receipt_service.dart';
 
 Future<String?> downloadBookingReceipt(BookingReceiptFile receipt) async {
   if (Platform.isAndroid || Platform.isIOS) {
-    const channel = MethodChannel('stallseeker/receipt_download');
-    final saved = await channel.invokeMethod<bool>('savePdf', {
-      'bytes': receipt.bytes,
-      'filename': receipt.filename,
-    });
-    return saved == true ? 'Receipt saved.' : null;
+    try {
+      const channel = MethodChannel('stallseeker/receipt_download');
+      final saved = await channel.invokeMethod<bool>('savePdf', {
+        'bytes': receipt.bytes,
+        'filename': receipt.filename,
+      });
+      return saved == true ? 'Receipt saved.' : null;
+    } catch (_) {
+      // Fallback for Android/iOS if document picker is unavailable or fails
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File(
+            '${directory.path}${Platform.pathSeparator}${receipt.filename}');
+        await file.writeAsBytes(receipt.bytes, flush: true);
+        return 'Receipt saved.';
+      } catch (_) {
+        rethrow;
+      }
+    }
   }
 
   final downloads = await getDownloadsDirectory();

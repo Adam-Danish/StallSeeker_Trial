@@ -135,8 +135,9 @@ class BookingPaymentCard extends StatelessWidget {
                 const Text('Complete your payment securely with Stripe.',
                     style: TextStyle(fontSize: 12)),
               ],
-              if (booking.paymentStatus != 'unpaid' &&
-                  booking.paymentStatus != 'refunded')
+              if (booking.hasStripePayment &&
+                  (booking.awaitingPayment ||
+                      booking.paymentStatus == 'pending'))
                 TextButton.icon(
                     onPressed: busy ? null : onRefresh,
                     icon: const Icon(Icons.refresh, size: 18),
