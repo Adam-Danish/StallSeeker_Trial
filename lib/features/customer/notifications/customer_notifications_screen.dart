@@ -5,15 +5,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/models/demo_order.dart';
 import '../../../core/models/notification_model.dart';
-import '../../../core/services/demo_order_service.dart';
 import '../../../core/services/notification_history_service.dart';
 import '../../../core/services/vendor_service.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../shared/booking_detail_screen.dart';
-import '../../shared/booking_payment_card.dart';
-import '../../shared/demo_orders_screen.dart';
 import '../vendor_details/vendor_details_screen.dart';
 
 class CustomerNotificationsScreen extends StatefulWidget {
@@ -29,7 +25,6 @@ class _CustomerNotificationsScreenState
   final _vendors = VendorService();
   final _uid = FirebaseAuth.instance.currentUser?.uid;
   late Stream<List<NotificationModel>> _stream;
-  Stream<List<DemoOrder>>? _bookings;
   final Set<String> _opening = {};
   final Set<String> _removedIds = {};
   int _limit = 50;
@@ -40,14 +35,6 @@ class _CustomerNotificationsScreenState
   void initState() {
     super.initState();
     _listen();
-    _listenToBookings();
-  }
-
-  void _listenToBookings() {
-    final user = FirebaseAuth.instance.currentUser;
-    _bookings = user != null && !user.isAnonymous && user.emailVerified
-        ? DemoOrderService().watchCustomerOrders(user.uid)
-        : null;
   }
 
   void _listen() {
@@ -78,6 +65,17 @@ class _CustomerNotificationsScreenState
         } catch (_) {
           _message('Could not mark this alert as read.');
         }
+      }
+      if (item.bookingId != null) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            settings: ResumePage('booking', item.bookingId),
+            builder: (_) => BookingDetailScreen(
+                bookingId: item.bookingId!, isVendor: false),
+          ),
+        );
+        return;
       }
       if (item.vendorId.isEmpty) {
         _message('This alert has no stall link.');
@@ -148,64 +146,6 @@ class _CustomerNotificationsScreenState
     return '${local.day}/${local.month}/${local.year} · $time';
   }
 
-  Widget _bookingProgress() => StreamBuilder<List<DemoOrder>>(
-        stream: _bookings,
-        builder: (context, snapshot) {
-          final bookings = snapshot.data ?? const <DemoOrder>[];
-          final recent = [
-            ...bookings.where((booking) => booking.customerUnseenReady),
-            ...bookings.where(
-                (booking) => !booking.customerUnseenReady && booking.isActive),
-            ...bookings.where(
-                (booking) => !booking.customerUnseenReady && !booking.isActive),
-          ].take(3);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('Booking progress',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-                if (bookings.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TextButton(
-                      onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              settings: const ResumePage('bookings'),
-                              builder: (_) =>
-                                  const DemoOrdersScreen(isVendor: false))),
-                      child: const Text('View all'),
-                    ),
-                  ),
-              ]),
-              if (snapshot.hasError)
-                ListTile(
-                  title: const Text('Could not load booking progress.'),
-                  trailing: TextButton(
-                      onPressed: () => setState(_listenToBookings),
-                      child: const Text('Retry')),
-                )
-              else if (!snapshot.hasData)
-                const LinearProgressIndicator()
-              else if (bookings.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Text('Your bookings will appear here.'),
-                )
-              else
-                for (final booking in recent) _bookingTile(booking),
-            ],
-          );
-        },
-      );
-
   @override
   Widget build(BuildContext context) {
     final horizontalInset =
@@ -238,7 +178,6 @@ class _CustomerNotificationsScreenState
                 onRefresh: () async {
                   setState(() {
                     _listen();
-                    _listenToBookings();
                   });
                 },
                 child: ListView(
@@ -246,10 +185,6 @@ class _CustomerNotificationsScreenState
                   padding: EdgeInsets.fromLTRB(
                       horizontalInset, 20, horizontalInset, 112),
                   children: [
-                    if (_bookings != null) ...[
-                      _bookingProgress(),
-                      const SizedBox(height: 16),
-                    ],
                     const Padding(
                         padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                         child: Text('STALL UPDATES',
@@ -315,7 +250,7 @@ class _CustomerNotificationsScreenState
                                     fontWeight: FontWeight.w600)),
                             const SizedBox(height: 8),
                             const Text(
-                                'Updates appear here when a followed stall opens or a followed dish is restocked.',
+                                'Updates from followed stalls and dishes, plus changes to your bookings, appear here.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Color(0xFF8E8E93))),
                           ]))
@@ -361,7 +296,9 @@ class _CustomerNotificationsScreenState
   Widget _tile(NotificationModel item) => _NotificationRow(
         icon: item.type == 'dish_available'
             ? Icons.restaurant_rounded
-            : Icons.storefront_rounded,
+            : item.bookingId != null
+                ? Icons.receipt_long_rounded
+                : Icons.storefront_rounded,
         title: item.title,
         body: TextSpan(text: item.body),
         caption: _date(item.createdAt),
@@ -369,46 +306,6 @@ class _CustomerNotificationsScreenState
         opening: _opening.contains(item.id),
         onTap: () => _open(item),
       );
-
-  Widget _bookingTile(DemoOrder booking) {
-    final statusColor = booking.effectiveStatus == 'ready'
-        ? AppColors.openGreen
-        : AppColors.primary;
-    final items = booking.items
-        .map((item) => '${item.quantity}x ${item.name}')
-        .join(', ');
-    final status = bookingStatusLabel(booking);
-    final payment = bookingPaymentLabel(booking);
-    final bookingSummary = [
-      if (booking.hasStripePayment && payment != status) payment,
-      if (items.isNotEmpty) items,
-    ].join(' · ');
-    return _NotificationRow(
-      key: ValueKey(booking.id),
-      icon: Icons.receipt_long_rounded,
-      iconColor: statusColor,
-      title: booking.stallName,
-      body: TextSpan(children: [
-        TextSpan(
-          text: status,
-          style: TextStyle(color: statusColor, fontWeight: FontWeight.w600),
-        ),
-        if (bookingSummary.isNotEmpty) TextSpan(text: '\n$bookingSummary'),
-      ]),
-      caption:
-          'RM ${(booking.totalCents / 100).toStringAsFixed(2)} · ${_date(booking.createdAt)}',
-      unread: booking.customerUnseenReady,
-      progress: BookingProgress(booking: booking, compact: true),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          settings: ResumePage('booking', booking.id),
-          builder: (_) =>
-              BookingDetailScreen(bookingId: booking.id, isVendor: false),
-        ),
-      ),
-    );
-  }
 
   Widget _errorState(Object error) {
     final code = error is FirebaseException ? error.code : 'unknown';
@@ -480,7 +377,6 @@ class _NotificationRow extends StatelessWidget {
     required this.onTap,
     this.iconColor = AppColors.primary,
     this.opening = false,
-    this.progress,
   });
 
   final IconData icon;
@@ -490,7 +386,6 @@ class _NotificationRow extends StatelessWidget {
   final String caption;
   final bool unread;
   final bool opening;
-  final Widget? progress;
   final VoidCallback onTap;
 
   @override
@@ -560,7 +455,6 @@ class _NotificationRow extends StatelessWidget {
                                 color: AppColors.textMuted,
                               ),
                             ),
-                            if (progress != null) progress!,
                           ],
                         ),
                       ),

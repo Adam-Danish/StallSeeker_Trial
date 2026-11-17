@@ -44,3 +44,34 @@ exports.recordVendorOpeningHistory = onDocumentUpdated({
     if (page.size < 200) break;
   }
 });
+
+exports.recordBookingProgressHistory = onDocumentUpdated({
+  document: 'bookings/{bookingId}',
+  region: 'asia-southeast1',
+  retry: true,
+}, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!after || before?.status === after.status ||
+      !['preparing', 'ready', 'collected'].includes(after.status) ||
+      typeof after.customerId !== 'string' || !after.customerId) return;
+  const labels = {
+    preparing: 'is being prepared',
+    ready: 'is ready for collection',
+    collected: 'has been collected',
+  };
+  const bookingId = event.params.bookingId;
+  const id = createHash('sha256').update(`${bookingId}:${event.id}`).digest('hex');
+  const record = {
+    vendorId: typeof after.vendorId === 'string' ? after.vendorId : '',
+    bookingId,
+    title: typeof after.stallName === 'string' && after.stallName.trim()
+      ? after.stallName.trim().slice(0, 120) : 'Booking update',
+    body: `Your booking ${labels[after.status]}.`,
+    type: 'booking_progress',
+    isRead: false,
+    createdAt: Timestamp.fromDate(new Date(event.time)),
+  };
+  await createOnce(db.collection('users').doc(after.customerId)
+    .collection('notifications').doc(id), record);
+});

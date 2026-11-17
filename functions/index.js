@@ -16,6 +16,8 @@ Object.assign(exports, require('./moderation.cjs'));
 // description, menu, etc.) does not trigger a notification.
 exports.recordVendorOpeningHistory =
   require('./notification-history.cjs').recordVendorOpeningHistory;
+exports.recordBookingProgressHistory =
+  require('./notification-history.cjs').recordBookingProgressHistory;
 exports.notifyFollowersOnDishAvailable =
   require('./dish-notifications.cjs').notifyFollowersOnDishAvailable;
 exports.cleanupDeletedDishFollows =

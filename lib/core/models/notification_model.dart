@@ -9,6 +9,7 @@ class NotificationModel {
       required this.createdAt,
       required this.isRead,
       this.itemId,
+      this.bookingId,
       this.type = 'vendor_opened'});
 
   final String id;
@@ -18,6 +19,7 @@ class NotificationModel {
   final DateTime? createdAt;
   final bool isRead;
   final String? itemId;
+  final String? bookingId;
   final String type;
 
   factory NotificationModel.fromMap(Map<String, dynamic> data, String id) {
@@ -30,6 +32,8 @@ class NotificationModel {
       createdAt: time is Timestamp ? time.toDate() : null,
       isRead: data['isRead'] == true,
       itemId: data['itemId'] is String ? data['itemId'] as String : null,
+      bookingId:
+          data['bookingId'] is String ? data['bookingId'] as String : null,
       type: data['type'] is String ? data['type'] as String : 'vendor_opened',
     );
   }
