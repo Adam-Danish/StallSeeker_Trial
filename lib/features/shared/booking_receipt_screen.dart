@@ -80,7 +80,7 @@ class _BookingReceiptScreenState extends State<BookingReceiptScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.download_outlined),
-            label: Text(_exporting ? 'Preparing PDF.' : 'Download PDF'),
+            label: Text(_exporting ? 'Preparing PDF…' : 'Download PDF'),
           ),
           const SizedBox(height: 12),
           Card(

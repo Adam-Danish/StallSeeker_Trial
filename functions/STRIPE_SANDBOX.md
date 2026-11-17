@@ -36,22 +36,21 @@ create a withdrawable vendor balance.
 Firebase project: `stallseeker-c2ffe`. Callable/HTTP/scheduled functions use
 `us-central1`; the Firestore cancellation trigger uses the database region,
 `asia-southeast1`.
-Store test credentials as `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, and
-live credentials as `STRIPE_LIVE_SECRET_KEY` and
-`STRIPE_LIVE_WEBHOOK_SECRET` in Google Secret Manager. The test secrets remain
-available to reconcile old test bookings after switching new bookings to live.
-Never place any secret in Flutter, Git, screenshots, or logs. Hosted Checkout
-needs no Stripe publishable key in this Flutter app.
+Store `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in Google Secret Manager
+for the active mode (`sk_live_...`/`rk_live_...` and live `whsec_...` for
+production `stallseeker-c2ffe`, or test keys on an isolated non-production
+project). Never place any secret in Flutter, Git, screenshots, or logs. Hosted
+Checkout needs no Stripe publishable key in this Flutter app.
 
-After the Stripe live account and live webhook endpoint are ready, run these
-commands from the repository root. The Firebase CLI prompts for the secret
-values; do not put them in command arguments:
+After the Stripe live account and live webhook endpoint are ready, configure
+the live secrets and deploy from the `StallSeeker_Trial` repository root:
 
 ```powershell
-firebase functions:secrets:set STRIPE_LIVE_SECRET_KEY --project stallseeker-c2ffe
-firebase functions:secrets:set STRIPE_LIVE_WEBHOOK_SECRET --project stallseeker-c2ffe
+firebase functions:secrets:set STRIPE_SECRET_KEY --project stallseeker-c2ffe
+node functions/scripts/configure-stripe-live.cjs
 Set-Content functions/.env.stallseeker-c2ffe "STRIPE_PAYMENT_MODE=live"
 firebase deploy --only functions --project stallseeker-c2ffe
+node functions/scripts/verify-stripe-live.cjs
 ```
 
 The `.env.*` files are git-ignored. This project is set to `live` for real card
@@ -66,14 +65,13 @@ Subscribed events: `checkout.session.completed`,
 `checkout.session.async_payment_failed`, `checkout.session.expired`,
 `payment_intent.payment_failed`, `charge.refunded`, `refund.updated`.
 
-The local `scripts/configure-stripe-sandbox.cjs` helper uses the signed-in Firebase
+The local `scripts/configure-stripe-live.cjs` helper uses the signed-in Firebase
 CLI account, reads credentials only in memory, and disables credential logging.
 On Windows it finds firebase-tools in `%APPDATA%/npm/node_modules`; set
-`FIREBASE_TOOLS_ROOT` for a different installation. It creates a sandbox webhook
-and stores its signing secret. If an endpoint already exists, the helper leaves
-it unchanged; keep the matching signing secret. It never switches to live mode.
-Create the live webhook endpoint separately in Stripe's Live mode and store its
-own signing secret as `STRIPE_LIVE_WEBHOOK_SECRET`.
+`FIREBASE_TOOLS_ROOT` for a different installation. It replaces any matching
+live webhook endpoint, creates the live webhook, and stores its signing secret
+in `STRIPE_WEBHOOK_SECRET` (the older `scripts/configure-stripe-sandbox.cjs`
+helper is for test mode only).
 
 ## Backend behavior
 
