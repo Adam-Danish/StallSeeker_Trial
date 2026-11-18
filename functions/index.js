@@ -24,6 +24,8 @@ exports.cleanupDeletedDishFollows =
   require('./dish-notifications.cjs').cleanupDeletedDishFollows;
 
 const bookings = require('./bookings.cjs');
+const ready = require('./booking-ready.cjs');
+const autoComplete = require('./auto-complete.cjs');
 exports.createBooking = bookings.createBooking;
 exports.updateBooking = bookings.updateBooking;
 exports.markBookingViewed = bookings.markBookingViewed;

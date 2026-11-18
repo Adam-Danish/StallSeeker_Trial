@@ -1,9 +1,10 @@
 'use strict';
 
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const { createHash } = require('node:crypto'); // hash import
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {onDocumentUpdated} = require('firebase-functions/v2/firestore');
-const {createHash} = require('node:crypto');
+
 const {getApps, initializeApp} = require('firebase-admin/app');
 const {getFirestore, Timestamp, FieldValue} = require('firebase-admin/firestore');
 const {getMessaging} = require('firebase-admin/messaging');
@@ -156,6 +157,21 @@ exports.updateBooking = onCall(async (request) => {
     } catch (error) {
       throw new HttpsError('failed-precondition', error.message);
     }
+    // Verify pickup code when customer marks collected
+    if (action === 'markCollected' && role === 'customer') {
+      const suppliedCode = request.data?.pickupCode;
+      if (typeof suppliedCode !== 'string' || suppliedCode.length === 0) {
+        throw new HttpsError('invalid-argument', 'Pickup code required to collect.');
+      }
+      const storedHash = booking.pickupCodeHash;
+      if (!storedHash) {
+        throw new HttpsError('failed-precondition', 'Pickup code not set by vendor.');
+      }
+      const providedHash = createHash('sha256').update(suppliedCode).digest('hex');
+      if (providedHash !== storedHash) {
+        throw new HttpsError('invalid-argument', 'Incorrect pickup code.');
+      }
+    }
     tx.update(ref, {
       status, updatedAt: Timestamp.fromMillis(now),
       ...(status === 'cancelled' && ['test', 'live'].includes(booking.paymentMode) &&
@@ -209,9 +225,39 @@ exports.markBookingViewed = onCall(async (request) => {
     if (!snap.exists) throw new HttpsError('not-found', 'Booking not found.');
     const booking = snap.data();
     if (uid === booking.vendorId && booking.vendorUnseenRequest === true) {
-      tx.update(ref, {vendorUnseenRequest: false});
+      // Verify pickup code when customer marks collected
+    if (action === 'markCollected' && role === 'customer') {
+      const suppliedCode = request.data?.pickupCode;
+      if (typeof suppliedCode !== 'string' || suppliedCode.length === 0) {
+        throw new HttpsError('invalid-argument', 'Pickup code required to collect.');
+      }
+      const storedHash = booking.pickupCodeHash;
+      if (!storedHash) {
+        throw new HttpsError('failed-precondition', 'Pickup code not set by vendor.');
+      }
+      const providedHash = createHash('sha256').update(suppliedCode).digest('hex');
+      if (providedHash !== storedHash) {
+        throw new HttpsError('invalid-argument', 'Incorrect pickup code.');
+      }
+    }
+    tx.update(ref, {vendorUnseenRequest: false});
     } else if (uid === booking.customerId && booking.customerUnseenReady === true) {
-      tx.update(ref, {customerUnseenReady: false});
+      // Verify pickup code when customer marks collected
+    if (action === 'markCollected' && role === 'customer') {
+      const suppliedCode = request.data?.pickupCode;
+      if (typeof suppliedCode !== 'string' || suppliedCode.length === 0) {
+        throw new HttpsError('invalid-argument', 'Pickup code required to collect.');
+      }
+      const storedHash = booking.pickupCodeHash;
+      if (!storedHash) {
+        throw new HttpsError('failed-precondition', 'Pickup code not set by vendor.');
+      }
+      const providedHash = createHash('sha256').update(suppliedCode).digest('hex');
+      if (providedHash !== storedHash) {
+        throw new HttpsError('invalid-argument', 'Incorrect pickup code.');
+      }
+    }
+    tx.update(ref, {customerUnseenReady: false});
     } else if (uid !== booking.customerId && uid !== booking.vendorId) {
       throw new HttpsError('permission-denied', 'This is not your booking.');
     }

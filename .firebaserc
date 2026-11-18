@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "stallseeker-c2ffe"
-  }
+    "default": "stallseeker-c2ffe",
+    "firebase deploy --only functions": "stallseeker-c2ffe"
+  },
+  "targets": {},
+  "etags": {}
 }
