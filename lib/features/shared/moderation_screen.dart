@@ -109,7 +109,7 @@ class _ReportStallScreenState extends State<ReportStallScreen> {
                         style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 12),
                     const Text(
-                        'Tell the admin which information did not match your visit. Reports are private and checked before any warning is issued. Each customer can report a stall once every 30 days.'),
+                        'Tell the admin which information did not match your visit. Reports are private and checked before any warning is issued. Each customer can report a stall once every 7 days.'),
                     const SizedBox(height: 24),
                     DropdownButtonFormField<String>(
                       initialValue: _reason,

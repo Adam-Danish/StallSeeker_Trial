@@ -1,6 +1,7 @@
 'use strict';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const WINDOW_MS = 30 * DAY_MS;
+// Reporting window changed from 30 days to 7 days (1 week)
+const WINDOW_MS = 7 * DAY_MS;
 const FIX_MS = 48 * 60 * 60 * 1000;
 const REASONS = ['wrong_location', 'opening_status', 'menu_prices', 'stall_details', 'other'];
 // Admin identity is authorized again by the trusted profile role in the

@@ -481,13 +481,7 @@ class _VendorPayoutDetailsViewState extends State<VendorPayoutDetailsView> {
                 ),
               ],
             ),
-          if (s.testNetSalesCents > 0) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Note: ${formatRinggit(s.testNetSalesCents)} from Stripe Test mode orders is not transferable.',
-              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-            ),
-          ],
+
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: canRequest ? _openRequestDialog : null,

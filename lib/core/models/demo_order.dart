@@ -51,6 +51,11 @@ class DemoOrder {
       this.paymentExpiresAt,
       this.paymentPaidAt,
       this.paymentRefundedCents = 0,
+      this.confirmedAt,
+      this.preparingAt,
+      this.readyAt,
+      this.collectedAt,
+      this.cancelledAt,
       this.vendorUnseenRequest = false,
       this.customerUnseenReady = false});
 
@@ -73,7 +78,22 @@ class DemoOrder {
   final String? paymentReference;
   final DateTime? paymentExpiresAt;
   final DateTime? paymentPaidAt;
+  final DateTime? confirmedAt;
+  final DateTime? preparingAt;
+  final DateTime? readyAt;
+  final DateTime? collectedAt;
+  final DateTime? cancelledAt;
   final int paymentRefundedCents;
+  final DateTime? confirmedAt;
+  final DateTime? preparingAt;
+  final DateTime? readyAt;
+  final DateTime? collectedAt;
+  final DateTime? cancelledAt;
+  final DateTime? confirmedAt;
+  final DateTime? preparingAt;
+  final DateTime? readyAt;
+  final DateTime? collectedAt;
+  final DateTime? cancelledAt;
 
   bool get hasTestPayment => paymentMode == 'test';
   bool get hasStripePayment => paymentMode == 'test' || paymentMode == 'live';
@@ -135,6 +155,11 @@ class DemoOrder {
         'paymentExpiresAt': paymentExpiresAt?.toIso8601String(),
         'paymentPaidAt': paymentPaidAt?.toIso8601String(),
         'paymentRefundedCents': paymentRefundedCents,
+    'confirmedAt': confirmedAt?.toIso8601String(),
+    'preparingAt': preparingAt?.toIso8601String(),
+    'readyAt': readyAt?.toIso8601String(),
+    'collectedAt': collectedAt?.toIso8601String(),
+    'cancelledAt': cancelledAt?.toIso8601String(),
         'vendorUnseenRequest': vendorUnseenRequest,
         'customerUnseenReady': customerUnseenReady,
       };
